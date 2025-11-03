@@ -1,0 +1,32 @@
+# IDE
+**/.DS_Store/
+**/.idea/
+**/.vscode/
+
+# Build artifacts
+build/
+install/
+log/
+*.o
+*.a
+*.so
+*.exe
+a.out
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# ROS 2
+**/install/
+**/log/
+**/build/
+
+# Temporary files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
