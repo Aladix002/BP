@@ -9,14 +9,17 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
+# Find curl for HTTP communication
+find_package(CURL REQUIRED)
+
 set(SRC
-        src/example.cpp
         include/nodes/io_node.hpp
         src/nodes/io_node.cpp
         include/nodes/motor.hpp
@@ -37,9 +40,11 @@ set(SRC
         include/nodes/pid.hpp
         src/nodes/camera.cpp
         include/nodes/camera.hpp
+        include/nodes/esp32_bridge.hpp
+        src/nodes/esp32_bridge.cpp
 )
 
-set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
+set(AMENT_LIBS rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport)
 
 add_executable(${PROJECT_NAME} src/main.cpp src/nodes/io_node.cpp src/nodes/motor.cpp src/nodes/kinematics_odometry.cpp ${SRC})
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -48,8 +53,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         ${SDL2_INCLUDE_DIRS}
         /opt/ros/jazzy/include
 )
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS})
-ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs cv_bridge image_transport visualization_msgs)
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS} ${CURL_LIBRARIES})
+ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport visualization_msgs)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
 ament_package()

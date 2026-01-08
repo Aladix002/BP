@@ -4,6 +4,7 @@
 #include "nodes/imu_node.hpp"
 #include "nodes/pid.hpp"
 #include "nodes/camera.hpp"
+#include "nodes/esp32_bridge.hpp"
 
 using namespace nodes;
 
@@ -15,11 +16,13 @@ int main(int argc, char *argv[])
     auto imu_node = std::make_shared<ImuNode>();
     auto pid_node = std::make_shared<PidNode>(imu_node);
     auto camera_node = std::make_shared<CameraNode>();
+    auto esp32_bridge = std::make_shared<Esp32Bridge>();
 
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(button_listener);
     executor.add_node(imu_node);
     executor.add_node(camera_node);
+    executor.add_node(esp32_bridge);
 
 
     imu_node->setMode(ImuNodeMode::CALIBRATE);
