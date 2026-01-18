@@ -1,0 +1,19 @@
+[Unit]
+Description=LD19 Lidar Driver ROS2 Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rpi5
+Group=rpi5
+Environment="HOME=/home/rpi5"
+Environment="USER=rpi5"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/rpi5/ros2_ws/install/setup.bash && ros2 launch ld19_lidar lidar.launch.py'
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

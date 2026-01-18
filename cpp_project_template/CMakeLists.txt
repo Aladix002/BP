@@ -42,6 +42,12 @@ set(SRC
         include/nodes/camera.hpp
         include/nodes/esp32_bridge.hpp
         src/nodes/esp32_bridge.cpp
+        include/nodes/lidar_bridge.hpp
+        src/nodes/lidar_bridge.cpp
+        include/nodes/rpi_camera_publisher.hpp
+        src/nodes/rpi_camera_publisher.cpp
+        include/nodes/libcamera_publisher.hpp
+        src/nodes/libcamera_publisher.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport)
@@ -56,6 +62,31 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS} ${CURL_LIBRARIES})
 ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport visualization_msgs)
 
-install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
+# Standalone camera publisher executable (OpenCV/V4L2 - doesn't work on Pi 5)
+add_executable(rpi_camera_publisher src/rpi_camera_main.cpp src/nodes/rpi_camera_publisher.cpp)
+target_include_directories(rpi_camera_publisher PUBLIC
+        include
+        ${OpenCV_INCLUDE_DIRS}
+        /opt/ros/jazzy/include
+)
+target_link_libraries(rpi_camera_publisher ${OpenCV_LIBS})
+ament_target_dependencies(rpi_camera_publisher rclcpp sensor_msgs cv_bridge std_msgs)
+
+# Libcamera publisher executable (uses cam command - works on Pi 5)
+add_executable(libcamera_publisher src/libcamera_main.cpp src/nodes/libcamera_publisher.cpp)
+target_include_directories(libcamera_publisher PUBLIC
+        include
+        ${OpenCV_INCLUDE_DIRS}
+        /opt/ros/jazzy/include
+)
+target_link_libraries(libcamera_publisher ${OpenCV_LIBS})
+ament_target_dependencies(libcamera_publisher rclcpp sensor_msgs cv_bridge std_msgs)
+
+install(TARGETS ${PROJECT_NAME} rpi_camera_publisher libcamera_publisher DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()
 

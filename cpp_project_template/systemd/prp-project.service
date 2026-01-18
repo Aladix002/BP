@@ -1,0 +1,20 @@
+[Unit]
+Description=PRP Project ROS2 Service
+After=network.target ld19-lidar.service
+Wants=network-online.target
+Requires=ld19-lidar.service
+
+[Service]
+Type=simple
+User=rpi5
+Group=rpi5
+Environment="HOME=/home/rpi5"
+Environment="USER=rpi5"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/rpi5/BP/cpp_project_template/install/setup.bash && ros2 run prp_project prp_project'
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
