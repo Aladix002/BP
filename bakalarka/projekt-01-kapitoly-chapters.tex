@@ -1,0 +1,933 @@
+% Tento soubor nahraďte vlastním souborem s obsahem práce.
+%=========================================================================
+% Autoři: Michal Bidlo, Bohuslav Křena, Jaroslav Dytrych, Petr Veigend a Adam Herout 2019
+
+% Pro kompilaci po částech (viz projekt.tex), nutno odkomentovat a upravit
+%\documentclass[../projekt.tex]{subfiles}
+%\begin{document}
+
+\chapter{Úvod}
+
+Práca sa zaoberá výzvami mobilnej robotiky a teleprezencie, návrhom a implementáciou riadiaceho systému pre mobilného robota. Základnou platformou pre túto prácu je WAVE ROVER vybavený lidarom D300 LD19. Ako hlavný softvérový nástroj sa uvádza rámec ROS2 vzhľadom na to, že sa stal štandardom pri riadení a koordinácii robotických systémov. Cieľom tejto práce je nielen ukázať, čo všetko sa dá pomocou ROS2 na zvolenej hardvérovej platforme urobiť, ale navrhnúť systém, ktorý sa prispôsobí pri konfigurácii a experimentovaní s alternatívnymi komponentmi.
+
+V práci sa skúmajú metódy vývoja softvéru pre mobilné roboty, zoznamuje sa s možnosťami a obmedzeniami hardvéru WAVE ROVER a následne sa analyzuje použiteľnosť súčasných senzorov a riadiacich jednotiek motorov. V prípade potreby sú zapracované návrhy a implementácie týkajúce sa zmien v hardvéri vrátane výmeny motorov za motory s enkodérom pre schopné presné riadenie pohybu robota.
+
+Navrhovaný systém má možnosť prepnutia medzi diaľkovým a autonómnym ovládaním. Proces vývoja práce umožní dynamicky rekonfigurovať samotný riadiaci rámec, takže je možné experimentovať s rôznymi konfiguráciami hardvéru.
+
+
+\chapter{Hardware vybavenie} 
+\section{Raspberry Pi 5}
+
+V nasledujúcej sekcii poskytnem prehľad o Raspberry Pi 5, čo je najnovšia generácia týchto jednodoskových počítačov. Sekcia poukazuje na jeho hlavné vlastnosti a zmeny oproti predchádzajúcim modelom.
+
+\subsection*{Raspberry Pi 5}
+Raspberry Pi 5 je malý jednodoskový počítač navrhnutý na riešenie všemožných projektov. Primárne má slúžiť denne ako lacná ale výkonná platforma, ktorá podporuje rozvoj v oblasti elektroniky, programovania, Internetu vecí, alebo robotiky.\cite{rpi}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.7\textwidth]{obrazky/Raspberry_Pi_5_Specifications.jpg} 
+    \caption{Špecifikácie mikrokontroléru}
+    \label{fig:obrazok} 
+\end{figure}
+
+
+\subsection*{Ako funguje}
+Raspberry Pi 5 je založený na architektúre ARM a využíva procesor Cortex-A76\cite{rpi5}, ktorý je vybavený štyrmi jadrami pracujúcimi na frekvencii až 2,4 GHz. Táto architektúra a frekvencia umožňujú spracovanie viacerých úloh paralelne, čo je dôležité najmä pri projektoch, ktoré vyžadujú veľké množstvo výpočtových operácií, ako je práve tento.
+Na Wave Rover je napojený pomocou GPIO pinnov \cite{rpi}, ktoré sa dajú prispôsobiť ako vstupy na čítanie signálov alebo výstupy na ovládanie.
+
+
+\subsection*{Porovnanie s Raspberry Pi 4B}
+Pri porovnaní s modelom Raspberry Pi 4B prináša Pi 5 zlepšenia  hlavne v týchto oblastiach:
+\begin{itemize} 
+\item Výkon: Pi 5 má procesor ARM Cortex-A76, ktorý je oproti Cortex-A72 v modeli 4B rýchlejší a efektívnejší.
+\item Rozšírenie možností: Na rozdiel od 4B, Pi 5 má natívne PCIe rozhranie.
+\item Grafický výkon: Pi 5 zvládne 4K obraz na dvoch obrazovkách pri 60 fps, zatiaľ čo 4B podporoval len jeden 4K výstup.
+\end{itemize}
+
+
+
+\section{General Driver Board for Robots}
+
+Driver Board slúži ako medzičlánok medzi mikrokontrolérom, napríklad Raspberry Pi, a motormi robota. Umožňuje bezpečné a efektívne ovládanie motorov, ktoré zahŕňa riadenie rýchlosti, smeru a celkového výkonu pohybu robota.
+
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.9\textwidth]{obrazky/general-driver-for-robots-4.png} 
+    \caption{General Driver Board for Robots} 
+    \label{fig:obrazok} 
+\end{figure}
+
+\subsection*{Ako funguje Driver Board}
+
+Driver Board prijíma signály z mikrokontroléra, ktoré obsahujú informácie o smere a rýchlosti pohybu. Tieto signály sú spracované tranzistormi alebo H-mostmi na doske ovládača, ktoré zabezpečujú riadenie prúdu pre motory. Ak napríklad mikrokontrolér vyšle signál PWM s rôznymi frekvenciami, doska ovládača tento signál prevedie na riadenie prúdu do motora, čím riadi jeho rýchlosť. Ak mikrokontrolér zmení polaritu signálu, potom doska ovládača zmení smer prúdu a motor sa otáča opačným smerom. To umožňuje robotickým systémom vykonávať veľmi presné pohyby.\cite{waveshare_driver}
+
+
+
+\section{Wave Rover}
+
+Wave Rover je experimentálna platforma pre mobilnú robotiku, ktorá umožňuje vývoj a testovanie širokej škály softvérových a hardvérových aplikácií. Tento robotický systém je navrhnutý tak, aby zvládal pohyb na rôznych povrchoch a poskytoval údaje na analýzu pohybu a navigáciu. Wave Rover má viacero senzorov a aktuátorov, ktoré umožňujú interakciu s prostredím a poskytujú flexibilitu pri modifikácii a rozširovaní hardvéru podľa potrieb výskumu a vývoja.
+
+
+\subsection*{Stavba tela}
+Konštrukcia zahŕňa stabilitu a odolnosť pri pohybe na rôznych typoch povrchov. Preto sa dosiahol dobrý pomer pevných, ale ľahkých materiálov rámu tela robota, aby sa zabezpečila menšia celková hmotnosť, a pritom všetka potrebná pevnosť mohla chrániť vnútorné časti senzorov, motorov a batérií. To všetko zvýši jeho optimalizáciu pre lepšie vyváženie a manévrovacie schopnosti robota.\cite{waverover}
+
+\begin{figure}[H] % 
+    \centering
+    \includegraphics[width=0.5\textwidth]{obrazky/wave-rover-1.jpg} 
+    \caption{Základný Waverover bez rozšírení} 
+    \label{fig:obrazok} 
+\end{figure}
+
+\subsubsection*{Modularita a rozšíriteľnosť}
+Telo robota je navrhnuté tak, aby bolo možné ľahko pripojiť a vymeniť komponenty.
+nentov. V ráme sú štandardizované montážne body, ktoré umožňujú pripojenie ďalších
+ultrazvukové senzory, LIDAR alebo kamery a aktuátory. Rozšírenie:
+Rozširujúce piny GPIO a rozhrania ako I2C, SPI, UART a PWM umožňujú pripojenie ďalších
+zariadení a modulov.
+
+
+\subsection*{Inerciálny merací systém (IMU)}
+Wave Rover používa špecifický modul IMU, MPU-6050 integruje akcelerometer a gyroskop na jednom čipe. Hoci tento modul poskytuje informácie týkajúce sa pohybu a orientácie robota, je to dôležité pre veľmi presnú navigáciu a riadenie pohybu. Jednotlivé komponenty IMU a ich fungovanie.
+
+\subsubsection*{Akcelerometer}
+V module IMU MPU-6050 sa nachádza 3-osový akcelerometer, ktorý meria lineárne zrýchlenie
+Akcelerometer funguje na princípe kapacitnej zmeny v mikromechanických senzoroch. Vnútorná hmota napojená na pružinu pri namáhaní generuje elektrický signál ako dôsledok piezoelektrického efektu, kde kryštalické štruktúry dokážu produkovať napätie pri namáhaní, teda zmenou polohy sa prejavuje aj zmena kapacity.\cite{accelerometer}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.6\textwidth]{obrazky/acelerometer.png} 
+    \caption{Princíp fungovania akcelerometra} 
+    \label{fig:obrazok} 
+\end{figure}
+
+\subsubsection*{Gyroskop}
+Gyroskop využíva princíp zachovania momentu hybnosti. Hlavnou častou je hmot napojená na pružný systém a prípade pohybu vykazuje odpor voči smeru rotácie. Pri rotácii dochádza k výchylkám hmoty a podobne ako u akcelerometru sa to prevedie na elektrický signál.\cite{gyroskop}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.5\textwidth]{obrazky/gyro.png}
+    \caption{Princíp fungovania gyroskopu} 
+    \label{fig:obrazok} 
+\end{figure}
+
+
+\subsubsection*{Fúzia údajov pre navigáciu}
+Údaje z akcelerometra a gyroskopu sa kombinujú pomocou algoritmov, ako je Kalmanov filter
+alebo komplementárny filter, aby sa získali stabilné a presné údaje o polohe a orientácii.
+robota. Preto je riadenie a navigácia robota v reálnom čase plynulé a spoľahlivé.
+čase. Komplementárny filter sa používa v IMU.
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=1\textwidth]{obrazky/complementary.png} 
+    \caption{Komplementárny filter\cite{complementary_filter}}
+    \label{fig:obrazok} 
+\end{figure}
+
+
+
+\section{LIDAR}
+\subsection*{Čo je LIDAR}
+LIDAR (Light Detection and Ranging) je technológia, ktorá využíva laserové svetlo na
+meranie vzdialeností, ako aj na vytváranie trojrozmerných modelov prostredia.
+
+
+\subsection*{Princíp fungovania LIDAR}
+ Funguje tak, že zariadenie
+vysiela krátke dávky laserového svetla a meria, ako dlho trvá, kým sa svetlo odrazí od objektu a
+vráti späť. Na základe nameraného času návratu sa dá určiť vzdialenosť medzi snímačom a objektom
+a objekt. Táto technológia nachádza v súčasnosti veľmi široké uplatnenie v oblastiach, ako sú autonómne vozidlá,
+robotika a geodézia, kde schopnosť mapovať prostredie znamená veľa.\cite{lidar}
+
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.6\textwidth]{obrazky/lidar.png} 
+    \caption{Meranie vzdialenosti LiDARom}
+    \label{fig:obrazok} 
+\end{figure}
+
+Súčasné snímače LIDAR používajú určitý rotačný mechanizmus, ktorý zabezpečuje 360
+stupňov, čím sa získa kompletný 3D model prostredia v reálnom čase. Tieto informácie sa ukladá vo forme mračna bodov, ktoré poskytuje presný obraz o pro
+stred. Takéto modely sú nevyhnutné na navigáciu a detekciu prekážok v automatickom
+autonómnych a mobilných robotických systémoch.\cite{lidar}
+
+
+
+
+
+\section{Kamera s nočným videním}
+
+ Kamera disponuje 5-megapixelovým CMOS snímačom, ktorý podporuje nahrávanie HD videa a nahrávanie v tme.
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.7\textwidth]{obrazky/kamera.jpg} 
+    \caption{Zloženie kamery} 
+    \label{fig:obrazok} 
+\end{figure}
+
+\subsection*{Nočné videnie a IR technológia}
+Kamera OV5647 infračervené LED diódy na osvetlenie a
+snímanie obrazu v tme. Infračervené svetlo
+nie je viditeľné pre ľudské oko, ale pre snímač CMOS kamery áno.
+LED diódy generujú infračervené svetlo, ktoré sa odráža od objektov späť k snímaču fotoaparátu, čo mu umožňuje snímať fotografie aj v tme.
+Aby mohol fotoaparát pracovať vo dne aj v noci, používa IR-cut filter \cite{ir_filter}, ktorý sa automaticky zapína a vypína podľa svetelných podmienok. Počas dňa sa IR-cut
+filter blokuje infračervené svetlo, aby sa zabránilo skresleniu farieb a zaznamenávali sa snímky s
+prirodzenými farbami. V tme je IR-cut filter vypnutý a infračervené svetlo je
+dosiahne k snímaču a umožní nočné videnie. Systém umožňuje kamere získať vysokokvalitné snímky v denných aj nočných podmienkach, čo je dosť dôležité pre aplikácie, kde má robot alebo systém pracovať v rôznych svetelných podmienkach.\cite{nightvision}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{obrazky/filter.png} 
+    \caption{Filtrácia vlnových dĺžok počas dňa a noci} 
+    \label{fig:obrazok} 
+\end{figure}
+
+
+
+\section{Komunikačné rozhrania}
+
+\subsection*{I2C komunikačné rozhranie}
+
+I2C je sériové komunikačné rozhranie, ktoré umožňuje pripojenie
+rôznych zariadení na spoločnú dvojvodičovú zbernicu. Vďaka svojej jednoduchej architektúre je
+vhodné pre nízkorýchlostné periférne zariadenia, ako sú snímače, displeje alebo rozširujúce moduly.
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.7\textwidth]{obrazky/i2c1.png} 
+    \caption{Pripojenie na spoločnú zbernicu} 
+    \label{fig:obrazok} 
+\end{figure}
+
+\textbf{Základné vlastnosti:}
+\begin{itemize}
+    \item \textbf I2C používa iba dva vodiče: SDA (sériový prenos dát) a SCL (časovací signál), čo umožňuje pripojiť viacero zariadení na jednu zbernicu.
+    \item \textbf Funguje na princípe hlavného zariadenia (master) a podriadených zariadení (slave). Master zariadenie iniciuje a riadi komunikáciu na zbernici.
+    \item \textbf{Jedinečné adresovanie:} Každé zariadenie má jedinečnú adresu, ktorú master použije na identifikáciu a komunikáciu s konkrétnym zariadením na zbernici.
+    \item \textbf{Prenos dát}: Dáta sa prenášajú po bajtoch s potvrdením (ACK) po každom bajte. Komunikácia končí signálom STOP. \cite{i2c}
+\end{itemize}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.8\textwidth]{obrazky/i2c2.png} 
+    \caption{Príklad prenosu dát} 
+    \label{fig:obrazok} 
+\end{figure}
+
+
+
+\chapter{Robot Operating System 2}
+\label{kapitoly}
+
+\section{Úvod do ROS2}
+
+Táto časť poskytuje prehľad o ROS2, jeho histórii, vývoji a vylepšeniach oproti predchádzajúcej verzii ROS1. Prejdeme si aj výhody, ktoré ROS2 prináša do moderných robotických aplikácií, a prečo sa považuje za najlepšie riešenie pre mobilnú robotiku a teleprezenciu.
+
+\subsection*{Robot Operating System 2}
+
+
+ROS 2 (Robot Operating System 2) je moderná softvérová platforma tvorená z viacerých knižníc a nástrojov na vývoj v oblasti robotiky. Bola navrhnutá s cieľom prekonať obmedzenia prvej verzie a reagovať na požiadavky súčasných robotických systémov.
+
+ ROS 2 umožňuje efektívnu komunikáciu medzi týmito komponentmi vďaka použitiu štandardu DDS (Data Distribution Service), ktorý je osvedčený aj v kritických oblastiach, ako sú vojenské či finančné systémy. DDS prináša aj výhody, ako sú zabudovaná bezpečnosť, podpora pre reálne časové aplikácie a schopnosť pracovať v nestabilných sieťových podmienkach, napríklad pri Wi-Fi alebo satelitnej komunikácii.\cite{ros2}
+
+\subsection*{Rozdiel medzi ROS 1 a ROS 2}
+
+Jednou z najvýznamnejších zmien je odstránenie závislosti od centrálnej časti systému, tzv. ROS master. V ROS1 uchopenie ROS slúžilo ako jediný faktor zlyhania, čo znamenalo, že ak prestane fungovať, celý systém sa zastaví. ROS2 prešiel do decentralizovanej štruktúry, kde uzly hovoria priamo s každým iným, čo zvyšuje spoľahlivosť celého systému.
+
+Ďalším vylepšením je sprievodca v reálnom čase. ROS2 rieši tento problém použitím služby DDS (Data Distribution Service), ktorá umožňuje konfiguráciu Quality of Service (QoS) na optimalizáciu komunikácie a pomáha pri deterministickom vykonávaní úloh.
+
+ROS2 tiež predstavil myšlienku „komponentov“. Vďaka nemu môžu vývojári spustiť niekoľko uzlov v jednom spustiteľnom súbore,čo zvyšuje efektivitu komunikácie medzi uzlami.
+
+ROS2 taktiež prináša lepšiu podporu pre viaceré platformy. ROS1 fungoval primárne na Linuxe, ale ROS2 podporuje aj Windows a macOS, čím rozširuje svoj dosah a uľahčuje vývoj na rôznych zariadeniach.\cite{ros1_vs_ros2}
+
+\section{Práca s ROS2}
+
+Táto sekcia ukazuje jednoduchú prácu s jednotlivymi komponentmi, medzi ktoré patria uzly (nodes), témy (topics), služby (services) a akcie (actions).
+
+
+\subsubsection*{Uzly}
+Uzly sú základnými stavebnými prvkami systému ROS2, pričom každý uzol predstavuje
+samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výstup
+výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
+alebo akcií.
+
+V ROS2 uzly bežia iba v prípade potreby, čo zabezpečuje metóda \texttt{spin()}.
+
+\paragraph{Vytvorenie uzla:} V ROS2 sa uzol vytvára pomocou triedy \texttt{Node} v rámci knižnice \texttt{rclpy}. Uzol musí byť inicializovaný a registrovaný v rámci ROS2 siete. \cite{ros2_doc}
+
+\begin{algorithm}
+\caption{Implementácia jednoduchého uzlu}
+\begin{algorithmic}[1]
+\State class TurtleBot4FirstNode(Node):
+\State \hspace{1em}def \_\_init\_\_(self):
+\State \hspace{2em}super().\_\_init\_\_('turtlebot4\_first\_python\_node')
+
+\State def main(args = None):
+\State \hspace{1em}rclpy.init(args)
+\State \hspace{1em}node = TurtleBot4FirstNode()
+\State \hspace{1em}rclpy.spin(node)
+\State \hspace{1em}node.destroy\_node()
+\State \hspace{1em}rclpy.shutdown()
+\end{algorithmic}
+\end{algorithm}
+
+Každý uzol beží vo svojom vlastnom výpočtovom cykle. ROS2 poskytuje funkciu \texttt{rclpy.spin()}, ktorá udržiava uzol aktívny a zabezpečí, že môže reagovať na prichádzajúce správy alebo udalosti.
+
+\subsubsection*{Témy}
+Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy. Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát.\cite{topic}
+
+\paragraph{Publikovanie na tému:} Uzol môže publikovať správy na konkrétnu tému. Publikované správy sú odosielané všetkým uzlom, ktoré sa na danú tému odoberajú.
+
+\begin{algorithm}[H]
+\caption{Implementácia publikácie na Topic}
+\begin{algorithmic}[1]
+\State class TalkerNode(Node):
+\State \hspace{1em}def \_\_init\_\_(self):
+\State \hspace{2em}self.counter = 0
+\State \hspace{2em}super().\_\_init\_\_('talker\_node\_py')
+\State \hspace{2em}self.publisher\_ = self.create\_publisher(String, 'my\_topic', 10)
+\State \hspace{2em}self.timer\_ = self.create\_timer(0.5, self.publish\_callback)
+\State \hspace{2em}self.get\_logger().info("Talker Python node has been started")
+
+\State \hspace{1em}def publish\_callback(self):
+\State \hspace{2em}msg = String()
+\State \hspace{2em}msg.data = f'Hello \{self.counter\}'
+\State \hspace{2em}self.publisher\_.publish(msg)
+\State \hspace{2em}self.counter += 1
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Odber na tému:} Uzol má možnosť odberu témy, aby prijímal správy publikované inými uzlami. Pri prijatí správy sa spustí callback funkcia, ktorá spracuje prijaté dáta.
+
+\begin{algorithm}[H]
+\caption{Implementácia odberu Topicu}
+\begin{algorithmic}[1]
+\State def \_\_init\_\_(self):
+\State \hspace{1em}super().\_\_init\_\_("listener\_node\_py")
+\State \hspace{1em}self.get\_logger().info("Listener Python node has been created")
+\State \hspace{1em}self.subscriber\_ = self.create\_subscription(String, 'my\_topic', self.subscriber\_callback, 10)
+
+\State def subscriber\_callback(self, msg):
+\State \hspace{1em}data = msg.data
+\State \hspace{1em}self.get\_logger().info(f'received data: \{data\}')
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection*{Služby (services)}
+Služby umožňujú synchrónnu komunikáciu medzi uzlami, kde jeden uzol poskytuje službu a druhý uzol posiela požiadavku na túto službu.
+
+\paragraph{Vytvorenie služby:} Uzol poskytujúci službu musí definovať callback funkciu, ktorá spracuje požiadavky a vráti odpoveď. \cite{ros2_doc}
+
+\begin{algorithm}[H]
+\caption{Implementácia Service}
+\begin{algorithmic}[1]
+\State class MinimalService(Node):
+\State \hspace{1em}def \_\_init\_\_(self):
+\State \hspace{2em}super().\_\_init\_\_('minimal\_service')
+\State \hspace{2em}self.srv = self.create\_service(AddTwoInts, 'add\_two\_ints', self.add\_two\_ints\_callback)
+
+\State \hspace{1em}def add\_two\_ints\_callback(self, request, response):
+\State \hspace{2em}response.sum = request.a + request.b
+\State \hspace{2em}self.get\_logger().info('Incoming request\textbackslash{}na: \%d b: \%d' \% (request.a, request.b))
+\State \hspace{2em}return response
+
+\State def main(args=None):
+\State \hspace{1em}rclpy.init(args=args)
+\State \hspace{1em}minimal\_service = MinimalService()
+\State \hspace{1em}rclpy.spin(minimal\_service)
+\State \hspace{1em}rclpy.shutdown()
+
+\State if \_\_name\_\_ == '\_\_main\_\_':
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Použitie služby:} Uzol môže poslať požiadavku na službu a čakať na odpoveď. Používa sa na úlohy, ktoré vyžadujú okamžité spracovanie a odpoveď.
+
+\subsubsection*{Akcie (actions)}
+Akcie sú rozšírením služieb a sú navrhnuté na vykonávanie dlhších úloh. Poskytujú mechanizmus na sledovanie priebehu úlohy a umožňujú posielať priebežné aktualizácie.
+
+\paragraph{Vytvorenie akcie:} Akcia pozostáva z dvoch hlavných častí: servera, ktorý vykonáva úlohu, a klienta, ktorý iniciuje požiadavku na úlohu. \cite{ros2_doc}
+
+\begin{algorithm}
+\caption{Akcia na generovanie Fibonacciho čísel}
+\begin{algorithmic}[1]
+\Procedure{execute\_callback}{goal\_handle}
+\State sequence = [0, 1]
+\For{$i = 2$ \textbf{to} goal\_handle.request.order}
+\State sequence.append(sequence[i-1] + sequence[i-2])
+\EndFor
+\State \Return Fibonacci.Result(sequence=sequence)
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Sledovanie akcie:} Klient môže posielať požiadavky a prijímať spätné informácie o priebehu úlohy. To umožňuje komplexné spracovanie a interaktívne operácie.
+
+
+\subsection*{Vývoj v ROS2}
+
+Vývoj začína vytvorením pracovnej plochy zahŕňajúcej zdrojové súbory, inštaláciu a spúšťanie aplikácií. Pracovná plocha sa delí na tri hlavné časti: \texttt{src}, \texttt{build}, a \texttt{install}. Zdrojové súbory sú organizované do balíkov (packages), ktoré môžu obsahovať kód uzlov, konfigurácie, a definície správ.
+
+\begin{verbatim}
+Workspace/
+|-- build/
+|-- install/
+|-- log/
+|-- src/
+    |-- my_package/
+        |-- launch/
+        |-- config/
+        |-- resource/
+        |-- test/
+        |-- package.xml
+        |-- setup.py
+\end{verbatim}
+
+
+
+\section{Základné komponenty a nástroje ROS2}
+
+Táto sekcia sa zaoberá základnými nástrojmi používanými v ROS2, ktoré sa zameriavajú nie len na samotný vývoj, ale aj vizualizáciu, modelovanie a simuláciu.
+
+\subsection*{Rviz2 – vizualizácia dát a stavu robota}
+
+Rviz2 je vizualizačný nástroj, ktorý umožňuje zobraziť dáta zo senzorov a stav robota v reálnom čase.
+
+\subsubsection*{Funkcie Rviz2}
+Rviz2 je súčasťou distribúcie ROS2 a je možné ho spustiť pomocou príkazu \texttt{rviz2}.
+Rviz2 poskytuje nasledujúce funkcionality:
+\begin{itemize}
+    \item Vizualizácia 3D modelu robota.
+    \item Zobrazovanie dát zo senzorov ako napríklad LIDAR alebo kamera.
+    \item Vizualizácia plánovaných trás a interakcií s prostredím.
+\end{itemize}
+
+
+\subsection*{Gazebo simulátor}
+
+Gazebo využíva súbory vo formáte xacro na definovanie robotov, senzorov a prostredí. Tieto súbory špecifikujú fyzikálne vlastnosti, vizuálne prvky a správanie jednotlivých komponentov. Po zostavení a načítaní týchto súborov Gazebo spustí simuláciu.
+
+
+\subsubsection*{Integrácia s ROS2}
+Gazebo je integrované s ROS2 pomocou balíka \texttt{gazebo\_ros}, ktorý umožňuje spúšťanie simulácií a komunikáciu s ROS2 uzlami.
+
+\subsubsection*{Praktický príklad}
+\begin{verbatim}
+ros2 launch itt launch_sim.launch.py world:=./src/prekazky.world 
+\end{verbatim}
+Tento príkaz spustí simulátor Gazebo so zostaveným modelom robota vo vybranom prostredí.
+
+\section{Integrácia senzorov a akčných členov}
+
+Táto sekcia pokrýva všeobecné princípy integrácie senzorov a akčných členov do robotických systémov s použitím ROS2.
+
+
+\subsubsection*{Pripojenie senzorov a spracovanie dát}
+Senzory môžu byť pripojené k riadiacej jednotke cez rôzne komunikačné rozhrania. ROS2 balíky poskytujú ovládače, vďaka ktorým je ľahké pripojenie a konfigurácia senzorov.
+
+Na asynchrónnu výmenu dát medzi senzorickými uzlami a ostatnými komponentmi systému sa využívajú vyššie spomenuté témy. Napríklad LIDAR môže publikovať dáta o vzdialenostiach na tému \texttt{/scan}, ktoré potom odoberajú uzly zodpovedné za mapovanie alebo vyhýbanie sa prekážkam.
+
+\begin{algorithm}
+\caption{Odber dát zo senzora}
+\begin{algorithmic}[1]
+\State \texttt{def callback(msg):}
+\State \quad \texttt{print("Received data: ", msg.data)}
+\State \texttt{subscription = create\_subscription(SensorMsgType, 'sensor\_topic', callback, 10)}
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection*{Kalibrácia a nastavenie}
+Senzory často vyžadujú kalibráciu a konfiguráciu, aby správne fungovali. ROS2 podporuje používanie parametrov a konfiguračných súborov, ktoré umožňujú dynamické nastavenie parametrov senzorov bez nutnosti zmeny kódu.
+
+
+
+
+
+\chapter{Implementácia}
+
+\section{Model robota a simulovanie v Gazebo}
+
+Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov - LIDARu a kamerou. Tieto komponenty sú spojené do jedného súboru pomocou príkazu \texttt{xacro:include}, čo uľahčuje organizáciu a správu kódu.
+
+
+Hlavný súbor obsahuje odkazy na jednotlivé časti robota, ktoré sú pre prehľadnosť implementované v samostatných súboroch.
+
+\subsection*{Definícia tela}
+
+Základný podvozok robota tvorí spoj (\texttt{fixed joint}) s jeho základňou (\texttt{base\_link}). Podvozok je obdĺžnikový blok s definovanými vizuálnymi a kolíznymi vlastnosťami:
+
+\begin{lstlisting}[caption=Definícia podvozku]
+<link name="chassis">
+    <visual>
+        <origin xyz="0.15 0 0.02"/>
+        <geometry>
+            <box size="0.16 0.16 0.07"/>
+        </geometry>
+        <material name="white"/>
+    </visual>
+    <collision>
+        <origin xyz="0.15 0 0.02"/>
+        <geometry>
+            <box size="0.16 0.16 0.07"/>
+        </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.5" x="0.16" y="0.16" z="0.07">
+        <origin xyz="0.15 0 0.02" rpy="0 0 0"/>
+    </xacro:inertial_box>
+</link>
+\end{lstlisting}
+
+
+Kolesá boli pripojené k základni robota pomocou rotačných kĺbov (\texttt{continuous joint}). Každé koleso bolo definované ako valec s vizuálnymi a kolíznymi vlastnosťami.
+
+Každý má definovaný materiál aj vlastnosti, ktorý Gazebo využíva na vizualizáciu a simuláciu.
+
+
+\subsection*{Kamera a LIDAR}
+
+V súbore \texttt{camera.xacro} je definované, ako je kamera pripevnená na robotovi. Kamera je umiestnená na podvozku robota pomocou pevného kĺbu.
+
+Kamera je pripojená na určité miesto na podvozku v definovaných súradniciach. Tento kód ukazuje, ako je to nastavené:
+
+\begin{verbatim}
+<joint name="camera_joint" type="fixed">
+    <parent link="chassis"/>
+    <child link="camera_link"/>
+    <origin xyz="0.22 0 0.07" rpy="0 0 0"/>
+</joint>
+\end{verbatim}
+
+Rovnako ako kamera, aj LIDAR je pripojený k podvozku pomocou pevného kĺbu. Tento kĺb spája podvozok (link \texttt{chassis}) s rámom LIDARu (link \texttt{laser\_frame}).
+
+\begin{verbatim}
+<joint name="laser_joint" type="fixed">
+    <parent link="chassis"/>
+    <child link="laser_frame"/>
+    <origin xyz="0.1 0 0.07" rpy="0 0 0"/>
+</joint>
+\end{verbatim}
+
+
+\subsection*{Gazebo simulátor}
+
+V simulátore Gazebo som vytvoril jednoduchý svet, ktorý bol navrhnutý tak, aby zahŕňal prekážky pre demonštráciu funkčnosti simulovaných senzorov a manuálneho riadenia robota. \cite{gazebo}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.8\textwidth]{obrazky/gazebo world.png} 
+    \caption{Model Wave Roveru v Gazebo} 
+    \label{fig:obrazok} 
+\end{figure}
+
+
+\section{Návrh uzlov systému pre ROS2}
+
+Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa viaceré uzly, ktoré zabezpečujú autonómne riadenie, teleprezenciu, spracovanie senzorových dát, a umožňujú dynamickú rekonfiguráciu hardvéru a softvéru. Systém je navrhnutý tak, aby bol modulárny a ľahko upraviteľný, čo umožňuje experimentovať s rôznymi konfiguráciami hardvéru aj softvéru. Nasledujú popisy všetkých uzlov potrebných pre tento systém.
+
+Navehova
+
+\subsection*{Uzly ich funcie v systéme}
+
+\begin{itemize}
+    \item \textbf{LIDAR}
+        \begin{itemize}
+            \item Inicializácia a kalibrácia lidaru.
+            \item Zber dát o vzdialenosti, ktoré potom sošle ďalším uzlom na vyhodnotenie trasy a vyhýbanie sa prekážkam.
+            \item Publikuje spracových dát.
+        \end{itemize}
+
+    \item \textbf{Camera Telepresence}
+        \begin{itemize}
+            \item Zachytenie obrazových dát pre vzdialené zobrazenie.
+            \item Spracovanie obrazu pre bližšie informácie o prostredí.
+        \end{itemize}
+
+    \item \textbf{IMU}
+        \begin{itemize}
+            \item Inicializácia IMU a získavanie údajov o pohybe vozidla.
+            \item Kalibrácia a filtrácia údajov
+            \item Posielanie údajov ďalej pre navigáciu a vyhýbanie sa prekážkam.
+        \end{itemize}
+
+    \item \textbf{Motor Controller}
+        \begin{itemize}
+            \item Riadenie motorov na základe Navigaton Controll Uzlu.
+        \end{itemize}
+
+    \item \textbf{Navigation and Control}
+        \begin{itemize}
+            \item Prijímanie údajov z IMU, kamery, motorov a LIDARu.
+            \item Vyhodnotenie aktuálnej polohy a stavu vozidla.
+            \item Vydávanie príkazov Motor Controlleru na základe zisteného aktuálneho stavu.
+        \end{itemize}
+
+    \item \textbf{SLAM}\cite{slam}
+        \begin{itemize}
+            \item Tvorba mapy prostredia pomocou kamery a LIDARu.
+            \item Udržiavanie presnej pozície.
+        \end{itemize}
+
+    \item \textbf{Image Processing}
+        \begin{itemize}
+            \item Detekcia objektov a rozpoznanie prekážok.
+        \end{itemize}
+
+    \item \textbf{Obstacle Detection}
+        \begin{itemize}
+            \item Zber údajov z kamery a LIDARu.
+            \item Spätná väzba pre Motor Controller, aby sa zmenila trasa. 
+        \end{itemize}
+
+    \item \textbf{Telepresence and Remote Control}
+        \begin{itemize}
+            \item Komunikácia s vozidlom na diaľku.
+            \item Prepínanie medzi autonómnym riadením a manuálnym ovládaním.
+            \item Publikácia obrazu a ďalších údajov o stave robota. 
+        \end{itemize}
+
+
+    \begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\textwidth]{obrazky/nodes.png} % Cesta k obrázku
+    \caption{Vizualizácia komunikácie uzlov}
+    \label{fig:priklad} % Voliteľný štítok na odkazovanie
+    \end{figure}
+    
+\end{itemize}
+
+\section{Implementácia uzlov a komunikácia s UGV Base General}
+
+Táto sekcia popisuje detailnú implementáciu jednotlivých uzlov, ich ROS 2 topics, HTTP requesty a komunikáciu s UGV Base General systémom. UGV Base General je hardvérová platforma založená na ESP32, ktorá poskytuje HTTP API pre riadenie motorov, získavanie IMU dát a iné funkcie.
+
+\subsection*{ESP32 Bridge Node}
+
+ESP32 Bridge Node slúži ako most medzi ROS 2 systémom a UGV Base General hardvérom. Tento uzol komunikuje s ESP32 cez HTTP GET requesty a poskytuje ROS 2 topics pre motory a IMU.
+
+\subsubsection*{Komunikácia s UGV Base General}
+
+UGV Base General poskytuje HTTP server na porte 80, ktorý prijíma JSON príkazy cez GET requesty s query parametrom \texttt{json}. Formát URL je:
+\begin{verbatim}
+http://<ESP32_IP>/js?json=<URL_ENCODED_JSON>
+\end{verbatim}
+
+ESP32 Bridge Node používa knižnicu libcurl na odosielanie HTTP requestov. Každý príkaz je JSON objekt s poľom \texttt{T} (typ príkazu) a ďalšími parametrami podľa typu príkazu.
+
+\subsubsection*{ROS 2 Topics}
+
+ESP32 Bridge Node poskytuje nasledujúce topics:
+
+\textbf{Subscribers (vstupné príkazy):}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/cmd\_motor\_left} (std\_msgs/msg/UInt8) - Ovládanie ľavej strany motorov
+    \begin{itemize}
+        \item Hodnoty: 0-255, kde 127 = stoj
+        \item 0-126 = dozadu (čím menšie, tým rýchlejšie)
+        \item 128-255 = dopredu (čím väčšie, tým rýchlejšie)
+    \end{itemize}
+    
+    \item \texttt{/bpc\_prp\_robot/cmd\_motor\_right} (std\_msgs/msg/UInt8) - Ovládanie pravej strany motorov
+    \begin{itemize}
+        \item Rovnaký formát ako pre ľavú stranu
+    \end{itemize}
+\end{itemize}
+
+\textbf{Publishers (výstupné dáta):}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/imu} (sensor\_msgs/msg/Imu) - IMU dáta z ESP32
+    \begin{itemize}
+        \item \texttt{linear\_acceleration} - lineárne zrýchlenie (ax, ay, az) v m/s²
+        \item \texttt{angular\_velocity} - uhlová rýchlosť (gx, gy, gz) v rad/s
+        \item \texttt{header.frame\_id} = "imu\_link"
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{HTTP Requesty a JSON Príkazy}
+
+ESP32 Bridge konvertuje ROS 2 topic správy na JSON príkazy podľa UGV Base General protokolu:
+
+\textbf{Motor Control (CMD\_SPEED\_CTRL):}
+\begin{verbatim}
+{"T":1,"L":<left_speed>,"R":<right_speed>}
+\end{verbatim}
+Kde \texttt{left\_speed} a \texttt{right\_speed} sú hodnoty od -1.0 do +1.0. ESP32 Bridge automaticky konvertuje hodnoty 0-255 (127=stoj) z ROS topics na tento formát pomocou vzorca: \texttt{speed = (value - 127) / 127.0}.
+
+\textbf{IMU Data Request (CMD\_GET\_IMU\_DATA):}
+\begin{verbatim}
+{"T":126}
+\end{verbatim}
+ESP32 odpovedá JSON objektom:
+\begin{verbatim}
+{"T":1002,"ax":...,"ay":...,"az":...,"gx":...,"gy":...,"gz":...}
+\end{verbatim}
+
+ESP32 Bridge automaticky parsuje túto odpoveď a publikuje ju ako \texttt{sensor\_msgs/msg/Imu} na topic \texttt{/bpc\_prp\_robot/imu}.
+
+\subsubsection*{Parametre uzla}
+
+\begin{itemize}
+    \item \texttt{esp32\_ip} (string, default: "192.168.0.224") - IP adresa ESP32
+    \item \texttt{imu\_poll\_rate\_ms} (int, default: 50) - Frekvencia polling IMU dát v milisekundách (50ms = 20 Hz)
+\end{itemize}
+
+\subsection*{Motor Controller Node}
+
+Motor Controller Node poskytuje vyššiu úroveň abstrakcie pre riadenie motorov. Tento uzol publikuje príkazy na topic, ktorý môže byť odoberaný ESP32 Bridge uzlom alebo inými uzlami.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Publisher:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/set\_motor\_speeds} (std\_msgs/msg/UInt8MultiArray)
+    \begin{itemize}
+        \item \texttt{data[0]} - rýchlosť ľavého motora (0-255)
+        \item \texttt{data[1]} - rýchlosť pravého motora (0-255)
+    \end{itemize}
+\end{itemize}
+
+Motor Controller poskytuje metódu \texttt{set\_motor\_speeds()}, ktorá prijíma štruktúru \texttt{WheelSpeed} s hodnotami pre ľavé a pravé koleso. Tieto hodnoty sú automaticky konvertované a publikované na topic.
+
+\subsection*{Camera Node}
+
+Camera Node spracováva obrazové dáta z kamery a detekuje ArUco markery v obraze. Tento uzol využíva OpenCV knižnicu pre spracovanie obrazu.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscriber:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/camera/compressed} (sensor\_msgs/msg/CompressedImage)
+    \begin{itemize}
+        \item Prijíma komprimované obrazové dáta z kamery
+        \item Formát: JPEG komprimovaný obraz
+    \end{itemize}
+\end{itemize}
+
+\textbf{Publisher:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/tag\_detected} (std\_msgs/msg/Int32)
+    \begin{itemize}
+        \item Publikuje ID posledného detekovaného ArUco markeru
+        \item Hodnota -1 znamená, že žiadny marker nebol detekovaný
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+Camera Node prijíma komprimované obrazové dáta, ktoré dekóduje pomocou OpenCV. Následne aplikuje ArUco detektor, ktorý hľadá ArUco markery v obraze. Keď je marker detekovaný, jeho ID je publikované na topic \texttt{/bpc\_prp\_robot/tag\_detected}.
+
+\subsection*{IMU Node}
+
+IMU Node spracováva dáta z IMU senzora získané cez ESP32 Bridge. Tento uzol poskytuje kalibráciu a integráciu gyroskopických dát pre získanie orientácie robota.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscriber:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/imu} (sensor\_msgs/msg/Imu)
+    \begin{itemize}
+        \item Prijíma surové IMU dáta z ESP32 Bridge
+        \item Obsahuje lineárne zrýchlenie a uhlovú rýchlosť
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+IMU Node má dva režimy práce:
+
+\textbf{Režim kalibrácie (CALIBRATE):}
+\begin{itemize}
+    \item Zbierá vzorky gyroskopických dát počas 5 sekúnd
+    \item Vypočíta offset pre každú os
+    \item Offset sa používa na kompenzáciu driftu
+\end{itemize}
+
+\textbf{Režim integrácie (INTEGRATE):}
+\begin{itemize}
+    \item Integruje uhlovú rýchlosť z gyroskopu pre získanie orientácie
+    \item Používa PlanarImuIntegrator, ktorý aplikuje kalibrované offsety
+    \item Poskytuje metódu \texttt{getIntegratedResults()} pre získanie aktuálnej orientácie (yaw uhol)
+\end{itemize}
+
+\subsubsection*{Komunikácia s UGV Base General}
+
+IMU dáta sú získavané cez ESP32 Bridge Node, ktorý periodicky (podľa \texttt{imu\_poll\_rate\_ms}) posiela HTTP GET request s príkazom \texttt{\{"T":126\}} na ESP32. ESP32 odpovedá JSON objektom s IMU dátami, ktoré sú parsované a publikované ako ROS 2 topic.
+
+\subsection*{LIDAR Driver Node}
+
+LIDAR Driver Node číta dáta z LIDARu cez seriový port a publikuje ich ako LaserScan topic. Tento uzol podporuje viacero typov LIDARov vrátane D300 LD19.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Publisher:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
+    \begin{itemize}
+        \item \texttt{header.frame\_id} = "lidar\_link"
+        \item \texttt{ranges} - pole vzdialeností v metroch
+        \item \texttt{angle\_min}, \texttt{angle\_max} - minimálny a maximálny uhol skenovania
+        \item \texttt{range\_min}, \texttt{range\_max} - minimálna a maximálna merateľná vzdialenosť
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+LIDAR Driver Node otvára seriový port (typicky \texttt{/dev/ttyUSB0}) s baud rate 230400 a číta binárne dáta z LIDARu. Dáta sú parsované podľa typu LIDARu (D300, YDLIDAR, RPLIDAR) a konvertované do formátu \texttt{sensor\_msgs/msg/LaserScan}.
+
+\subsubsection*{Parametre uzla}
+
+\begin{itemize}
+    \item \texttt{serial\_port} (string, default: "/dev/ttyUSB0") - cesta k seriovému portu
+    \item \texttt{baud\_rate} (int, default: 230400) - rýchlosť seriovej komunikácie
+    \item \texttt{lidar\_type} (string, default: "d300") - typ LIDARu ("d300", "ydlidar", "rplidar")
+    \item \texttt{angle\_min}, \texttt{angle\_max} (float) - rozsah uhlov skenovania
+    \item \texttt{range\_min}, \texttt{range\_max} (float) - rozsah merateľných vzdialeností
+    \item \texttt{num\_readings} (int, default: 360) - počet meraní na jedno otočenie
+\end{itemize}
+
+\subsection*{LIDAR Filter Node}
+
+LIDAR Filter Node filtruje a spracúva dáta z LIDAR Driver Node. Tento uzol aplikuje filtre na LaserScan dáta a poskytuje agregované hodnoty pre rôzne smery.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscriber:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
+    \begin{itemize}
+        \item Prijíma surové LaserScan dáta z LIDAR Driver Node
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+LIDAR Filter Node aplikuje filtre na LaserScan dáta a vypočítava agregované hodnoty pre:
+\begin{itemize}
+    \item Front - vzdialenosť vpred
+    \item Back - vzdialenosť vzad
+    \item Front\_Left - vzdialenosť vpred-ľavo
+    \item Front\_Right - vzdialenosť vpred-vpravo
+\end{itemize}
+
+Tieto hodnoty môžu byť použité pre vyhýbanie sa prekážkam alebo navigáciu.
+
+\subsection*{Integrácia uzlov a komunikácia}
+
+Všetky uzly komunikujú cez ROS 2 topics, čo umožňuje modulárnu architektúru. ESP32 Bridge Node slúži ako jediný bod komunikácie s UGV Base General hardvérom cez HTTP. Ostatné uzly komunikujú iba cez ROS 2 topics, čo zjednodušuje architektúru a umožňuje jednoduchú výmenu komponentov.
+
+Tok dát v systéme:
+\begin{enumerate}
+    \item Hardvérové senzory (IMU, motory) → ESP32 (UGV Base General)
+    \item ESP32 → ESP32 Bridge Node (HTTP GET requesty)
+    \item ESP32 Bridge Node → ROS 2 topics
+    \item ROS 2 topics → Ostatné uzly (IMU Node, Motor Controller, atď.)
+    \item Ostatné uzly → ROS 2 topics → ESP32 Bridge Node → ESP32 → Hardvér
+\end{enumerate}
+
+Táto architektúra umožňuje jednoduchú integráciu nových uzlov bez potreby zmeny komunikácie s hardvérom.
+
+\subsection*{Button Listener Node}
+
+Button Listener Node slúži na detekciu stlačenia tlačidiel na robote. Tento uzol poskytuje jednoduchý mechanizmus na prepínanie stavov pomocou tlačidiel.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscriber:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/buttons} (std\_msgs/msg/UInt8)
+    \begin{itemize}
+        \item Prijíma informácie o stlačení tlačidiel
+        \item Hodnota 0 znamená stlačenie hlavného tlačidla
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+Button Listener Node prijíma správy o stlačení tlačidiel a prepína interný stav \texttt{active\_}. Keď je prijatá hodnota 0, stav sa prepne (toggle). Metóda \texttt{is\_active()} vráti aktuálny stav, ktorý môže byť použitý inými uzlami na riadenie správania robota.
+
+\subsection*{IO Node}
+
+IO Node poskytuje rozhranie pre vstupno-výstupné operácie, konkrétne pre tlačidlá a RGB LED diódy.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscriber:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/buttons} (std\_msgs/msg/UInt8)
+    \begin{itemize}
+        \item Prijíma informácie o stlačení tlačidiel
+        \item Uloží poslednú stlačenú hodnotu
+    \end{itemize}
+\end{itemize}
+
+\textbf{Publisher:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/rgb\_leds} (std\_msgs/msg/UInt8MultiArray)
+    \begin{itemize}
+        \item Publikuje farby pre RGB LED diódy
+        \item Pole hodnôt reprezentuje farby jednotlivých LED diód
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+IO Node poskytuje metódu \texttt{get\_button\_pressed()} pre získanie poslednej stlačenej hodnoty tlačidla a metódu \texttt{publish\_leds()} pre publikovanie farieb LED diód. Tento uzol slúži ako abstrakčná vrstva pre I/O operácie.
+
+\subsection*{PID Node}
+
+PID Node implementuje PID regulátor pre autonómne riadenie robota s vyhýbaním sa prekážkam. Tento uzol kombinuje dáta z LIDARu, IMU a ArUco detektora pre inteligentné riadenie pohybu.
+
+\subsubsection*{ROS 2 Topics}
+
+\textbf{Subscribers:}
+\begin{itemize}
+    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
+    \begin{itemize}
+        \item Prijíma LaserScan dáta z LIDARu
+        \item Používa sa na detekciu prekážok
+    \end{itemize}
+    
+    \item \texttt{/bpc\_prp\_robot/tag\_detected} (std\_msgs/msg/Int32)
+    \begin{itemize}
+        \item Prijíma ID detekovaného ArUco markeru
+        \item Používa sa na navigáciu k cieľu
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Fungovanie}
+
+PID Node implementuje nasledujúce správanie:
+
+\textbf{Stavy riadenia:}
+\begin{itemize}
+    \item \texttt{DRIVE\_FORWARD} - Jazda dopredu s vyhýbaním sa prekážkam
+    \item \texttt{TURN\_LEFT} - Otočenie doľava
+    \item \texttt{TURN\_RIGHT} - Otočenie doprava
+\end{itemize}
+
+\textbf{PID regulátor:}
+\begin{itemize}
+    \item Používa IMU Node pre získanie aktuálnej orientácie (yaw uhol)
+    \item Vypočítava chybu medzi požadovanou a aktuálnou orientáciou
+    \item Aplikuje PID algoritmus s parametrami Kp, Ki, Kd
+    \item Generuje príkazy pre motory na základe vypočítanej chyby
+\end{itemize}
+
+\textbf{Vyhýbanie sa prekážkam:}
+\begin{itemize}
+    \item Analyzuje LaserScan dáta z LIDARu
+    \item Detekuje prekážky vpred, vľavo a vpravo
+    \item Pri detekcii prekážky vykoná otočenie do voľného smeru
+    \item Po otočení pokračuje v jazde dopredu
+\end{itemize}
+
+\textbf{Navigácia k ArUco markeru:}
+\begin{itemize}
+    \item Pri detekcii ArUco markeru môže zmeniť správanie
+    \item Môže navigovať robota k markeru alebo vykonať špecifickú akciu
+\end{itemize}
+
+\subsubsection*{Komunikácia s Motor Controller}
+
+PID Node používa Motor Controller Node pre odosielanie príkazov motorom. Vypočítané rýchlosti kolies sú konvertované na formát \texttt{WheelSpeed} a odoslané cez \texttt{set\_motor\_speeds()}, ktoré publikuje na topic \texttt{/bpc\_prp\_robot/set\_motor\_speeds}.
