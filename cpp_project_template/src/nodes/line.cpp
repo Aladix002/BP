@@ -7,7 +7,7 @@ LineSensorListener::LineSensorListener()
       Kp(0.07), Kd(0.0015), Ki(0.001), base_speed(132), last_error(0.0), integral_(0.0f)
 {
     line_sensors_subscriber_ = this->create_subscription<std_msgs::msg::UInt16MultiArray>(
-        "/bpc_prp_robot/line_sensors", 10,
+        "/line_sensors", 10,
         std::bind(&LineSensorListener::on_line_sensors_msg, this, std::placeholders::_1));
 
     left_line_pub_ = this->create_publisher<std_msgs::msg::Bool>("/left_line_sensor", 10);

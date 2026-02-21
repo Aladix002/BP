@@ -109,7 +109,7 @@ namespace nodes
         : Node("lidar_filter")
     {
         sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-            "/bpc_prp_robot/lidar", 10,
+            "/scan", 10,
             std::bind(&LidarFilterNode::scan_callback, this, std::placeholders::_1)
         );
     }

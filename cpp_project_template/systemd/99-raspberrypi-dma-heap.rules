@@ -1,0 +1,2 @@
+# DMA heap pre Pi kameru – prístup bez root
+SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"

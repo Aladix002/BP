@@ -3,8 +3,8 @@
 namespace nodes {
     IoNode::IoNode() : Node("io_node") {
         button_subscriber_ = this->create_subscription<std_msgs::msg::UInt8>(
-            "/bpc_prp_robot/buttons", 10, std::bind(&IoNode::on_button_callback, this, std::placeholders::_1));
-        led_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>("/bpc_prp_robot/rgb_leds", 10);
+            "/buttons", 10, std::bind(&IoNode::on_button_callback, this, std::placeholders::_1));
+        led_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>("/rgb_leds", 10);
     }
 
     int IoNode::get_button_pressed() const {

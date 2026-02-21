@@ -18,12 +18,12 @@ namespace nodes {
           turn_start_yaw_(0.0f)
     {
         sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-            "/bpc_prp_robot/lidar", 10,
+            "/scan", 10,
             std::bind(&PidNode::scan_callback, this, std::placeholders::_1)
         );
 
         aruco_sub_ = this->create_subscription<std_msgs::msg::Int32>(
-        "/bpc_prp_robot/tag_detected", 10,
+        "/tag_detected", 10,
         std::bind(&PidNode::aruco_callback, this, std::placeholders::_1)
     );
 

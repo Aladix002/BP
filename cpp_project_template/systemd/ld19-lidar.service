@@ -1,15 +1,15 @@
 [Unit]
-Description=LD19 Lidar Driver ROS2 Service
+Description=LD19 Lidar Driver (ldlidar_ros2) - publikuje na /scan
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=rpi5
-Group=rpi5
-Environment="HOME=/home/rpi5"
-Environment="USER=rpi5"
-ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/rpi5/ros2_ws/install/setup.bash && ros2 launch ld19_lidar lidar.launch.py'
+User=aladix
+Group=aladix
+Environment="HOME=/home/aladix"
+Environment="USER=aladix"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source BP_INSTALL_PLACEHOLDER/setup.bash && ros2 launch ldlidar_ros2 ld19.launch.py'
 Restart=always
 RestartSec=5
 StandardOutput=journal

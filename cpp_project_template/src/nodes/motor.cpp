@@ -6,7 +6,7 @@ using namespace nodes;
 
 MotorController::MotorController()
     : Node("motor_controller") {
-    motor_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>("/bpc_prp_robot/set_motor_speeds", 10);
+    motor_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>("/set_motor_speeds", 10);
 }
 
 void MotorController::set_motor_speeds(const WheelSpeed& speeds) {

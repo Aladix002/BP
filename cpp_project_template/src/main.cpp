@@ -5,7 +5,6 @@
 #include "nodes/pid.hpp"
 #include "nodes/camera.hpp"
 #include "nodes/esp32_bridge.hpp"
-#include "nodes/lidar_bridge.hpp"
 
 using namespace nodes;
 
@@ -16,15 +15,14 @@ int main(int argc, char *argv[])
     auto button_listener = std::make_shared<ButtonListener>();
     auto imu_node = std::make_shared<ImuNode>();
     auto pid_node = std::make_shared<PidNode>(imu_node);
+    auto camera_node = std::make_shared<CameraNode>();
     auto esp32_bridge = std::make_shared<Esp32Bridge>();
-    auto lidar_bridge = std::make_shared<LidarBridge>();
 
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(button_listener);
     executor.add_node(imu_node);
     executor.add_node(camera_node);
     executor.add_node(esp32_bridge);
-    executor.add_node(lidar_bridge);
 
 
     imu_node->setMode(ImuNodeMode::CALIBRATE);

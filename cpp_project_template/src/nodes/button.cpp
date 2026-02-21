@@ -5,7 +5,7 @@ namespace nodes
     ButtonListener::ButtonListener() : Node("button_listener"), active_(false)
     {
         subscription_ = this->create_subscription<std_msgs::msg::UInt8>(
-            "/bpc_prp_robot/buttons", 10,
+            "/buttons", 10,
             std::bind(&ButtonListener::button_callback, this, std::placeholders::_1));
     }
 

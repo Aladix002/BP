@@ -9,7 +9,7 @@ namespace nodes {
 
 ImuNode::ImuNode() : Node("imu_node") {
     imu_subscriber_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        "/bpc_prp_robot/imu",
+        "/imu",
         10,
         std::bind(&ImuNode::on_imu_msg, this, std::placeholders::_1)
     );

@@ -41,13 +41,13 @@ Esp32Bridge::Esp32Bridge()
     // Create subscribers for left and right side motor control
     // Hodnoty 0-255, kde 127 = stoj, 0-126 = dozadu, 128-255 = dopredu
     cmd_motor_left_subscriber_ = this->create_subscription<std_msgs::msg::UInt8>(
-        "/bpc_prp_robot/cmd_motor_left",
+        "/cmd_motor_left",
         10,
         std::bind(&Esp32Bridge::on_cmd_motor_left, this, std::placeholders::_1)
     );
     
     cmd_motor_right_subscriber_ = this->create_subscription<std_msgs::msg::UInt8>(
-        "/bpc_prp_robot/cmd_motor_right",
+        "/cmd_motor_right",
         10,
         std::bind(&Esp32Bridge::on_cmd_motor_right, this, std::placeholders::_1)
     );
@@ -62,7 +62,7 @@ Esp32Bridge::Esp32Bridge()
     
     // Create IMU publisher
     imu_publisher_ = this->create_publisher<sensor_msgs::msg::Imu>(
-        "/bpc_prp_robot/imu",
+        "/imu",
         10
     );
     
@@ -73,8 +73,8 @@ Esp32Bridge::Esp32Bridge()
     );
     
     RCLCPP_INFO(this->get_logger(), "ESP32 Bridge ready");
-    RCLCPP_INFO(this->get_logger(), "Subscribed to /bpc_prp_robot/cmd_motor_left");
-    RCLCPP_INFO(this->get_logger(), "Subscribed to /bpc_prp_robot/cmd_motor_right");
+    RCLCPP_INFO(this->get_logger(), "Subscribed to /cmd_motor_left");
+    RCLCPP_INFO(this->get_logger(), "Subscribed to /cmd_motor_right");
 }
 
 void Esp32Bridge::send_json_command(const std::string& json_cmd) {

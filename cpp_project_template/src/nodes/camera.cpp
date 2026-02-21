@@ -6,11 +6,11 @@ CameraNode::CameraNode()
 
     // Image subscriber to receive the camera images
     image_subscriber_ = this->create_subscription<sensor_msgs::msg::CompressedImage>(
-        "/bpc_prp_robot/camera/compressed", 10,
+        "/camera/compressed", 10,
         std::bind(&CameraNode::image_callback, this, std::placeholders::_1));
 
     // ArUco ID publisher to send the last detected ArUco ID
-    aruco_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("/bpc_prp_robot/tag_detected", 10);
+    aruco_id_publisher_ = this->create_publisher<std_msgs::msg::Int32>("/tag_detected", 10);
 }
 
 void CameraNode::image_callback(const sensor_msgs::msg::CompressedImage::SharedPtr msg) {

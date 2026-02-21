@@ -40,8 +40,6 @@ set(SRC
         include/nodes/camera.hpp
         include/nodes/esp32_bridge.hpp
         src/nodes/esp32_bridge.cpp
-        include/nodes/lidar_bridge.hpp
-        src/nodes/lidar_bridge.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport)
