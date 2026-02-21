@@ -56,6 +56,27 @@ ros2 run prp_project prp_project
 - **ButtonListener** - Button detection
 - **Line** - Line detection
 
+## Remote Development
+
+Ak vyvíjate na PC a spúšťate na Raspberry Pi (napr. kvôli USB LIDARu), pozrite si:
+
+- **[REMOTE_DEVELOPMENT.md](REMOTE_DEVELOPMENT.md)** - Kompletný návod na vzdialený vývoj
+- **Rýchly start:**
+  ```bash
+  # Automatická synchronizácia (watch mode)
+  ./dev_remote.sh <rpi_ip> <rpi_user> watch
+  
+  # Alebo použite VS Code Remote SSH (odporúčané)
+  # Pozri REMOTE_DEVELOPMENT.md
+  ```
+
+## Documentation
+
+- [REMOTE_DEVELOPMENT.md](REMOTE_DEVELOPMENT.md) - Vzdialený vývoj PC → RPI
+- [RPI_SETUP.md](RPI_SETUP.md) - Setup Raspberry Pi
+- [cpp_project_template/D300_LIDAR_SETUP.md](cpp_project_template/D300_LIDAR_SETUP.md) - D300 LIDAR setup
+- [cpp_project_template/ESP32_TOPICS.md](cpp_project_template/ESP32_TOPICS.md) - ESP32 komunikácia
+
 ## License
 
 Apache-2.0
