@@ -10,6 +10,8 @@
 
 Práca sa zaoberá výzvami mobilnej robotiky a teleprezencie, návrhom a implementáciou riadiaceho systému pre mobilného robota. Základnou platformou pre túto prácu je WAVE ROVER vybavený lidarom D300 LD19. Ako hlavný softvérový nástroj sa uvádza rámec ROS2 vzhľadom na to, že sa stal štandardom pri riadení a koordinácii robotických systémov. Cieľom tejto práce je nielen ukázať, čo všetko sa dá pomocou ROS2 na zvolenej hardvérovej platforme urobiť, ale navrhnúť systém, ktorý sa prispôsobí pri konfigurácii a experimentovaní s alternatívnymi komponentmi.
 
+S úlohou úzko súvisia dve príbuzné bakalárske práce z tej istej fakulty. Práca Skoleka~\cite{balancujici_robot} rieši balancujúceho dvoukolového robota s ROS2 na Raspberry Pi 4B: využíva PID regulátory na základe dát z IMU a enkodérov, dálkové ovládanie cez Bluetooth a autonómny pohyb s vyhýbaním sa prekážkam pomocou ultrazvukového senzora; dôležitá je modularita systému (balíčky pre senzory, riadenie, Bluetooth) a spúšťanie cez launch súbory. Práca Onderku~\cite{mobilni_kamera} implementuje systém riadenia mobilného robota Adeept AWR 4WD v ROS2 s teleprezenciou a prepínaním medzi manuálnym a autonómnym režimom; systém beží distribuovane na RPi4 na robotovi a na stacionárnom PC, využíva Gazebo na simuláciu, rozšírenia slam\_toolbox a Nav2 na mapovanie a navigáciu a ros2\_control na riadenie pohybu. Obe práce demonštrujú dynamickú rekonfiguráciu riadiaceho softvéru a možnosti ROS2, čo je v priamom súlade s cieľom tejto práce (WAVE ROVER, RPi5, lidar, kamera, teleprezencia a autonómny pohyb s vyhýbaním sa prekážkam).
+
 V práci sa skúmajú metódy vývoja softvéru pre mobilné roboty, zoznamuje sa s možnosťami a obmedzeniami hardvéru WAVE ROVER a následne sa analyzuje použiteľnosť súčasných senzorov a riadiacich jednotiek motorov. V prípade potreby sú zapracované návrhy a implementácie týkajúce sa zmien v hardvéri vrátane výmeny motorov za motory s enkodérom pre schopné presné riadenie pohybu robota.
 
 Navrhovaný systém má možnosť prepnutia medzi diaľkovým a autonómnym ovládaním. Proces vývoja práce umožní dynamicky rekonfigurovať samotný riadiaci rámec, takže je možné experimentovať s rôznymi konfiguráciami hardvéru.
@@ -185,7 +187,34 @@ dosiahne k snímaču a umožní nočné videnie. Systém umožňuje kamere získ
     \label{fig:obrazok} 
 \end{figure}
 
+\section{Kamera na Raspberry Pi 5 s Ubuntu 24.04 a ROS 2 Jazzy}
+\label{sec:kamera-rpi5-ros2}
 
+Integrácia kamery na Raspberry Pi 5 s operačným systémom Ubuntu 24.04 (Noble) a ROS 2 Jazzy vyžaduje špecifický postup oproti starším verziam OS alebo iným kamerám. Táto sekcia stručne popisuje odôvodnenie zvoleného riešenia a používané komponenty podľa dokumentácie inštalácie pre RPi5~\cite{RPCameraRP5}.
+
+\subsection*{Prečo nie štandardný v4l2 ovládač}
+
+Na Raspberry Pi 5 s Ubuntu 24.04 nie je vhodné používať balík \texttt{ros-jazzy-v4l2-camera}. Kamerový subsystém RPi5 využíva \emph{libcamera} (resp. nástupcu \emph{rpicam}), nie klasický V4L2 legacy stack. Preto sa používa balík \texttt{camera\_ros}~\cite{camera_ros}, ktorý pracuje s libcamera a publikuje obraz na ROS 2 témy.
+
+\subsection*{Inštalácia a konfigurácia (prehľad)}
+
+Typický postup zahŕňa: (1) pridanie používateľa do skupiny \texttt{video}; (2) inštaláciu knižníc libcamera z PPA (napr. Marco Sonic rasppios) pre arm64 a Ubuntu 24.04; (3) úpravu \texttt{/boot/firmware/config.txt} (napr. \texttt{camera\_auto\_detect=0} a \texttt{dtoverlay=imx708,cam0} pre Pi Camera 3); (4) udev pravidlo pre DMA heap (\texttt{SUBSYSTEM=="dma\_heap", GROUP="video", MODE="0660"}); (5) inštaláciu \texttt{ros-jazzy-camera-ros} a voliteľne \texttt{ros-jazzy-image-transport-plugins}. Po reboote sa kamera spúšťa príkazom \texttt{ros2 run camera\_ros camera\_node} (prípadne s parametrami \texttt{width} a \texttt{height}).
+
+\subsection*{Témy a uzly z camera\_ros}
+
+Balík \texttt{camera\_ros} publikuje napr. témy \texttt{/camera/image\_raw}, \texttt{/camera/camera\_info} a \texttt{/camera/image\_raw/compressed}. Pre teleprezenciu alebo ďalšie spracovanie obrazu v ROS 2 sa môže použiť komprimovaný topic (\texttt{CompressedImage}) na zníženie záťaže siete, pričom je možné využiť \texttt{image\_transport republish} z \texttt{image\_raw} na \texttt{compressed}, ak to konfigurácia vyžaduje.
+
+\subsection*{Kalibrácia a camera\_info}
+
+Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hlásiť chýbajúci súbor v \texttt{\textasciitilde/.ros/camera\_info/} (napr. pre \texttt{imx708\_\_...\_640x480.yaml}). Odporúča sa vykonať kalibráciu podľa návodu (napr. NAV2 camera calibration) a uložiť výsledný YAML s názvom zodpovedajúcim očakávanému \texttt{camera\_name} a rozlíšeniu.
+
+\subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
+
+V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \texttt{/camera/image\_raw} (alebo príslušný komprimovaný topic). RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom; pri vizualizácii ďalších senzorov (napr. LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr. \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach.
+
+\subsection*{Súvis s implementáciou v tejto práci}
+
+[PLACEHOLDER: Tu doplníte stručný popis toho, aké uzly a témy v našej implementácii využívajú výstup z kamery (napr. ktorý node odoberá ktorý topic, či sa používa compressed alebo raw, a ako sa dáta z kamery spájajú s LIDARom/IMU pre navigáciu alebo teleprezenciu.)]
 
 \section{Komunikačné rozhrania}
 
@@ -442,11 +471,17 @@ Na asynchrónnu výmenu dát medzi senzorickými uzlami a ostatnými komponentmi
 \subsubsection*{Kalibrácia a nastavenie}
 Senzory často vyžadujú kalibráciu a konfiguráciu, aby správne fungovali. ROS2 podporuje používanie parametrov a konfiguračných súborov, ktoré umožňujú dynamické nastavenie parametrov senzorov bez nutnosti zmeny kódu.
 
+\subsection*{Súvis s príbuznými implementáciami (ROS2)}
+
+V prácach Skoleka~\cite{balancujici_robot} a Onderku~\cite{mobilni_kamera} sa v praxi využívajú koncepty ROS2 priamo súvisiace s touto úlohou. Z prvej práce je pre nás užitočné: rozdelenie projektu do balíčkov podľa funkcie (senzory, riadenie, komunikácia), publikovanie dát zo senzorov (IMU, enkodéry, ultrazvuk) na témy a ich odber v riadiacom uzle, použitie launch súborov na spúšťanie celej sady uzlov a voľba QoS pre nízku latenciu alebo garancie doručenia. Z druhej práce vyplýva: distribuované spúšťanie systému (uzly na robotovi a na stacionárnom PC), využitie tf2 pre transformácie medzi rámami robota a senzorov, konfiguračné YAML súbory pre parametre uzlov, remapovanie tém v launch súboroch a prípadne rozšírenie o \texttt{ros2\_control}, \texttt{slam\_toolbox} alebo Nav2 pre pokročilú navigáciu. Obe práce ukazujú prepínanie medzi režimami (manuálny / autonómny) ako príklad dynamickej rekonfigurácie riadiaceho softvéru, čo je požadované aj v zadaní tejto práce.
+
 
 
 
 
 \chapter{Implementácia}
+
+V tejto kapitole je popísaný návrh a priebeh implementácie. Niektoré časti sú označené ako placeholdery a doplnia sa po dokončení implementácie (konkrétne názvy topicov, parametre, launch súbory, obrázky z testov a pod.).
 
 \section{Model robota a simulovanie v Gazebo}
 
@@ -515,6 +550,8 @@ Rovnako ako kamera, aj LIDAR je pripojený k podvozku pomocou pevného kĺbu. Te
 
 V simulátore Gazebo som vytvoril jednoduchý svet, ktorý bol navrhnutý tak, aby zahŕňal prekážky pre demonštráciu funkčnosti simulovaných senzorov a manuálneho riadenia robota. \cite{gazebo}
 
+[PLACEHOLDER: Doplníte popis finálneho sveta, použité pluginy a spôsob spúšťania simulácie (príkaz alebo launch súbor).]
+
 \begin{figure}[H] 
     \centering
     \includegraphics[width=0.8\textwidth]{obrazky/gazebo world.png} 
@@ -527,9 +564,7 @@ V simulátore Gazebo som vytvoril jednoduchý svet, ktorý bol navrhnutý tak, a
 
 Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa viaceré uzly, ktoré zabezpečujú autonómne riadenie, teleprezenciu, spracovanie senzorových dát, a umožňujú dynamickú rekonfiguráciu hardvéru a softvéru. Systém je navrhnutý tak, aby bol modulárny a ľahko upraviteľný, čo umožňuje experimentovať s rôznymi konfiguráciami hardvéru aj softvéru. Nasledujú popisy všetkých uzlov potrebných pre tento systém.
 
-Navehova
-
-\subsection*{Uzly ich funcie v systéme}
+\subsection*{Uzly a ich funkcie v systéme}
 
 \begin{itemize}
     \item \textbf{LIDAR}
@@ -566,8 +601,7 @@ Navehova
 
     \item \textbf{SLAM}\cite{slam}
         \begin{itemize}
-            \item Tvorba mapy prostredia pomocou kamery a LIDARu.
-            \item Udržiavanie presnej pozície.
+            \item [PLACEHOLDER: Tvorba mapy prostredia pomocou kamery a LIDARu; udržiavanie presnej pozície -- doplníte po implementácii.]
         \end{itemize}
 
     \item \textbf{Image Processing}
@@ -600,7 +634,7 @@ Navehova
 
 \section{Implementácia uzlov a komunikácia s UGV Base General}
 
-Táto sekcia popisuje detailnú implementáciu jednotlivých uzlov, ich ROS 2 topics, HTTP requesty a komunikáciu s UGV Base General systémom. UGV Base General je hardvérová platforma založená na ESP32, ktorá poskytuje HTTP API pre riadenie motorov, získavanie IMU dát a iné funkcie.
+Táto sekcia popisuje detailnú implementáciu jednotlivých uzlov, ich ROS 2 topics, HTTP requesty a komunikáciu s UGV Base General systémom. UGV Base General je hardvérová platforma založená na ESP32, ktorá poskytuje HTTP API pre riadenie motorov, získavanie IMU dát a iné funkcie. Názvy topicov, parametre a detaily rozhrania môžu byť v závislosti od konfigurácie upravené; miesta na doplnenie po dokončení implementácie sú označené placeholdermi.
 
 \subsection*{ESP32 Bridge Node}
 
@@ -717,6 +751,8 @@ Camera Node spracováva obrazové dáta z kamery a detekuje ArUco markery v obra
 
 Camera Node prijíma komprimované obrazové dáta, ktoré dekóduje pomocou OpenCV. Následne aplikuje ArUco detektor, ktorý hľadá ArUco markery v obraze. Keď je marker detekovaný, jeho ID je publikované na topic \texttt{/bpc\_prp\_robot/tag\_detected}.
 
+[PLACEHOLDER: Doplníte zdroj obrazu (topic z camera\_ros alebo republish), kalibrácia kamery a prípadne ďalšie spracovanie obrazu.]
+
 \subsection*{IMU Node}
 
 IMU Node spracováva dáta z IMU senzora získané cez ESP32 Bridge. Tento uzol poskytuje kalibráciu a integráciu gyroskopických dát pre získanie orientácie robota.
@@ -827,6 +863,8 @@ Tok dát v systéme:
 
 Táto architektúra umožňuje jednoduchú integráciu nových uzlov bez potreby zmeny komunikácie s hardvérom.
 
+[PLACEHOLDER: Doplníte schému alebo obrázok grafu uzlov (rqt\_graph) a popis spúšťania systému (launch súbory, príkazy).]
+
 \subsection*{Button Listener Node}
 
 Button Listener Node slúži na detekciu stlačenia tlačidiel na robote. Tento uzol poskytuje jednoduchý mechanizmus na prepínanie stavov pomocou tlačidiel.
@@ -931,3 +969,12 @@ PID Node implementuje nasledujúce správanie:
 \subsubsection*{Komunikácia s Motor Controller}
 
 PID Node používa Motor Controller Node pre odosielanie príkazov motorom. Vypočítané rýchlosti kolies sú konvertované na formát \texttt{WheelSpeed} a odoslané cez \texttt{set\_motor\_speeds()}, ktoré publikuje na topic \texttt{/bpc\_prp\_robot/set\_motor\_speeds}.
+
+\section*{Placeholdery na doplnenie po implementácii}
+
+\begin{itemize}
+    \item \textbf{Launch súbory:} zoznam a popis launch súborov na spúšťanie uzlov (na robotovi, na PC), prípadne parametre príkazového riadka.
+    \item \textbf{Testovanie a merania:} výsledky testov (latencia, frekvencia topicov, správanie pri vyhýbaní sa prekážkam), prípadne screenshoty z RViz alebo \texttt{rqt\_graph}.
+    \item \textbf{Dynamická rekonfigurácia:} ako sa v systéme prepína medzi manuálnym a autonómnym režimom (tlačidlá, topic alebo služba).
+    \item \textbf{Distribuovaný beh:} ktoré uzly bežia na RPi a ktoré na stacionárnom PC, konfigurácia \texttt{ROS\_DOMAIN\_ID} alebo multicast.
+\end{itemize}
