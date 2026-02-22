@@ -9,7 +9,8 @@
 #include <iomanip>
 
 // Priame ovládanie motorov cez HTTP na ESP32 (bez esp32_bridge).
-// Držanie = jazda; dopredu+doprava = zábačka; dopredu+dozadu = prvý stlačený vyhrá.
+// Mapovanie L/R a kombinácií ako v ugv_base_general (movtionButton + cmdProcess):
+// T:1, L/R v rozsahu -1..1; priamo GET /js?json={"T":1,"L":...,"R":...}
 
 namespace {
 
@@ -40,13 +41,13 @@ KeyDir read_key_nonblock() {
     int n = read(STDIN_FILENO, buf, sizeof(buf));
     if (n <= 0) return KeyDir::None;
 
-    // Šípky: vpravo/vľavo prehodené (C=vpravo, D=vľavo na klávesnici)
+    // Šípky: štandard (vľavo = vľavo, vpravo = vpravo)
     if (n >= 3 && buf[0] == '\x1b' && (buf[1] == '[' || buf[1] == 'O')) {
         switch (buf[2]) {
             case 'A': return KeyDir::Up;
             case 'B': return KeyDir::Down;
-            case 'C': return KeyDir::Left;   // šípka vpravo → Left (prehodené)
-            case 'D': return KeyDir::Right;  // šípka vľavo → Right
+            case 'C': return KeyDir::Right;  // šípka vpravo
+            case 'D': return KeyDir::Left;   // šípka vľavo
         }
     }
     if (n == 1) {
@@ -54,11 +55,11 @@ KeyDir read_key_nonblock() {
         if (buf[0] == '+' || buf[0] == '=') return KeyDir::SpeedUp;
         if (buf[0] == '-') return KeyDir::SpeedDown;
         if (buf[0] >= '1' && buf[0] <= '9') { g_speed_digit = buf[0] - '0'; return KeyDir::SpeedDigit; }
-        // WASD: A a D prehodené
+        // WASD: štandard A=vľavo, D=vpravo
         if (buf[0] == 'w' || buf[0] == 'W') return KeyDir::Up;
         if (buf[0] == 's' || buf[0] == 'S') return KeyDir::Down;
-        if (buf[0] == 'a' || buf[0] == 'A') return KeyDir::Right;  // A → vpravo
-        if (buf[0] == 'd' || buf[0] == 'D') return KeyDir::Left;    // D → vľavo
+        if (buf[0] == 'a' || buf[0] == 'A') return KeyDir::Left;
+        if (buf[0] == 'd' || buf[0] == 'D') return KeyDir::Right;
     }
     return KeyDir::None;
 }
@@ -75,13 +76,15 @@ public:
         this->declare_parameter<double>("speed", 0.5);
         speed_ = std::max(0.1, std::min(1.0, this->get_parameter("speed").as_double()));
 
-        // Dlhý timeout: pri držaní často nepríde opakovanie klávesov (SSH/terminál), takže
-        // berieme „stlačené“ až do tohto času; zastavenie = medzerník alebo q
-        this->declare_parameter<int>("key_release_timeout_ms", 10000);
+        // Timeout pustenia: väčší než oneskorenie key repeat (~500 ms), aby pri držaní nepreseklo
+        this->declare_parameter<int>("key_release_timeout_ms", 550);
         key_release_timeout_ms_ = static_cast<int>(this->get_parameter("key_release_timeout_ms").as_int());
 
+        // Častejšia kontrola (50 Hz): plynulejšia jazda pri držaní, lepšia reakcia na pustenie
+        this->declare_parameter<int>("control_period_ms", 20);
+        int period_ms = std::max(5, std::min(100, static_cast<int>(this->get_parameter("control_period_ms").as_int())));
         timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(100),
+            std::chrono::milliseconds(period_ms),
             std::bind(&MotorHttpTeleopNode::timer_cb, this));
 
         if (setup_raw_stdin() != 0) {
@@ -91,7 +94,7 @@ public:
         curl_global_init(CURL_GLOBAL_DEFAULT);
 
         RCLCPP_INFO(this->get_logger(), "Motory HTTP teleop: %s", esp32_url_.c_str());
-        RCLCPP_INFO(this->get_logger(), "Drž = jazda (10 s alebo medzerník/q = stop) | 2 šípky = zábačka | +/- 1-9 = rýchlosť");
+        RCLCPP_INFO(this->get_logger(), "Drž = jazda, pustenie = stop | kontrolná slučka %d ms | +/- 1-9 = rýchlosť", period_ms);
     }
 
     ~MotorHttpTeleopNode() {
@@ -102,24 +105,28 @@ public:
 private:
     void timer_cb() {
         auto now = std::chrono::steady_clock::now();
-        KeyDir k = read_key_nonblock();
+        // Spracuj všetky čakajúce klávesy (W+D naraz = obe stlačené, zábačka hneď)
+        for (;;) {
+            KeyDir k = read_key_nonblock();
+            if (k == KeyDir::None) break;
 
-        if (k == KeyDir::Stop) {
-            last_up_ = last_down_ = last_left_ = last_right_ = std::chrono::steady_clock::time_point{};
-        } else if (k == KeyDir::SpeedUp) {
-            speed_ = std::min(1.0, speed_ + 0.1);
-            RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f", speed_);
-        } else if (k == KeyDir::SpeedDown) {
-            speed_ = std::max(0.1, speed_ - 0.1);
-            RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f", speed_);
-        } else if (k == KeyDir::SpeedDigit) {
-            speed_ = g_speed_digit / 9.0;
-            RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f (úroveň %d)", speed_, g_speed_digit);
-        } else {
-            if (k == KeyDir::Up) last_up_ = now;
-            if (k == KeyDir::Down) last_down_ = now;
-            if (k == KeyDir::Left) last_left_ = now;
-            if (k == KeyDir::Right) last_right_ = now;
+            if (k == KeyDir::Stop) {
+                last_up_ = last_down_ = last_left_ = last_right_ = std::chrono::steady_clock::time_point{};
+            } else if (k == KeyDir::SpeedUp) {
+                speed_ = std::min(1.0, speed_ + 0.1);
+                RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f", speed_);
+            } else if (k == KeyDir::SpeedDown) {
+                speed_ = std::max(0.1, speed_ - 0.1);
+                RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f", speed_);
+            } else if (k == KeyDir::SpeedDigit) {
+                speed_ = g_speed_digit / 9.0;
+                RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f (úroveň %d)", speed_, g_speed_digit);
+            } else {
+                if (k == KeyDir::Up) last_up_ = now;
+                if (k == KeyDir::Down) last_down_ = now;
+                if (k == KeyDir::Left) last_left_ = now;
+                if (k == KeyDir::Right) last_right_ = now;
+            }
         }
 
         auto ms = [&now](const std::chrono::steady_clock::time_point& t) {
@@ -139,28 +146,52 @@ private:
         } else if (up_ok) vertical = 1;
         else if (down_ok) vertical = -1;
 
-        // horizontal: 1 = šípka vpravo, -1 = šípka vľavo (prehodené ak na robote L/R sedí opačne)
+        // horizontal: 1 = left (L slower pri zábačke), -1 = right (R slower) – ako ugv A/D
         int horizontal = 0;
         if (left_ok && right_ok) {
             if (last_left_ < last_right_) horizontal = 1; else horizontal = -1;
         } else if (left_ok)  horizontal = 1;
         else if (right_ok) horizontal = -1;
 
-        // Menšie točenie: len 25 % rozdiel (0.25), nie 50 % – plynulejšia zábačka
-        const double turn_reduce = 0.25;
-        double L = vertical * speed_;
-        double R = vertical * speed_;
-        if (vertical != 0 && horizontal != 0) {
-            if (horizontal > 0) L *= (1.0 - turn_reduce);
-            else               R *= (1.0 - turn_reduce);
-        } else if (vertical == 0 && horizontal != 0) {
-            // Otáčanie na mieste tiež miernejšie: 70 % rýchlosti
-            const double turn_in_place = 0.7;
-            L =  horizontal * speed_ * turn_in_place;
-            R = -horizontal * speed_ * turn_in_place;
+        // Zábačky: base 0.5, curve 0.3 (ako ugv). Otáčanie na mieste: miernejšie 0.7 ako predtým.
+        const double base = 0.5 * speed_;
+        const double curve = 0.3 * speed_;
+        const double turn_in_place = 0.7 * speed_;
+        double L = 0.0, R = 0.0;
+
+        bool fwd = (vertical == 1);
+        bool bwd = (vertical == -1);
+        bool left = (horizontal == 1);
+        bool right = (horizontal == -1);
+
+        if (!up_ok && !down_ok && !left_ok && !right_ok) {
+            L = 0; R = 0;
+        } else if (fwd && !bwd && !left && !right) {
+            L = base; R = base;
+        } else if (bwd && !left && !right) {
+            L = -base; R = -base;
+        } else if (!fwd && !bwd && left && !right) {
+            L = -turn_in_place; R = turn_in_place;   // otáčanie vľavo na mieste
+        } else if (!fwd && !bwd && !left && right) {
+            L = turn_in_place; R = -turn_in_place;   // otáčanie vpravo na mieste
+        } else if (fwd && !bwd && left && !right) {
+            L = curve; R = base;   // forward+left
+        } else if (fwd && !bwd && !left && right) {
+            L = base; R = curve;   // forward+right
+        } else if (bwd && left && !right) {
+            L = -curve; R = -base; // back+left
+        } else if (bwd && !left && right) {
+            L = -base; R = -curve; // back+right
+        } else {
+            // Konflikt alebo obe horizontálne: preferencia ako v ugv (prvý stlačený)
+            if (fwd && left) { L = curve; R = base; }
+            else if (fwd && right) { L = base; R = curve; }
+            else if (bwd && left) { L = -curve; R = -base; }
+            else if (bwd && right) { L = -base; R = -curve; }
+            else if (left) { L = -turn_in_place; R = turn_in_place; }
+            else if (right) { L = turn_in_place; R = -turn_in_place; }
+            else { L = 0; R = 0; }
         }
-        L = std::max(-speed_, std::min(speed_, L));
-        R = std::max(-speed_, std::min(speed_, R));
 
         send_motors(L, R);
     }
