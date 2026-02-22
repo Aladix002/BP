@@ -19,50 +19,25 @@ find_package(image_transport REQUIRED)
 # Find curl for HTTP communication
 find_package(CURL REQUIRED)
 
-set(SRC
-        include/nodes/io_node.hpp
-        src/nodes/io_node.cpp
-        include/nodes/motor.hpp
-        src/nodes/motor.cpp
-        include/nodes/kinematics_odometry.hpp
-        src/nodes/kinematics_odometry.cpp
-        include/nodes/line.hpp
-        src/nodes/line.cpp
-        include/nodes/button.hpp
-        src/nodes/button.cpp
-        src/nodes/lidar.cpp
-        include/nodes/lidar.hpp
-        src/nodes/imu_node.cpp
-        include/nodes/imu_node.hpp
-        include/nodes/planar_imu_integrator.hpp
-        src/nodes/planar_imu_integrator.cpp
-        src/nodes/pid.cpp
-        include/nodes/pid.hpp
-        src/nodes/camera.cpp
-        include/nodes/camera.hpp
+# Main = manual_teleop + lidar_auto + cmd_mux + motor_driver; /scan z ldlidar_ros2
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/nodes/manual_teleop_node.cpp
+    src/nodes/lidar_auto_node.cpp
+    src/nodes/lidar_sectors.cpp
+    src/nodes/cmd_mux_node.cpp
+    src/nodes/motor_driver_node.cpp
 )
-
-set(AMENT_LIBS rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport)
-
-add_executable(${PROJECT_NAME} src/main.cpp src/nodes/io_node.cpp src/nodes/motor.cpp src/nodes/kinematics_odometry.cpp ${SRC})
-target_include_directories(${PROJECT_NAME} PUBLIC
-        include
-        ${OpenCV_INCLUDE_DIRS}
-        ${SDL2_INCLUDE_DIRS}
-        /opt/ros/jazzy/include
-)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS} ${CURL_LIBRARIES})
-ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs cv_bridge image_transport)
+target_include_directories(${PROJECT_NAME} PUBLIC include /opt/ros/jazzy/include)
+target_link_libraries(${PROJECT_NAME} ${CURL_LIBRARIES})
+ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
 
-# Motor HTTP teleop – priamo HTTP na ESP32 (bez esp32_bridge), šípky + rýchlosť
-add_executable(motor_http_teleop_node src/nodes/motor_http_teleop_node.cpp)
-ament_target_dependencies(motor_http_teleop_node rclcpp)
-target_link_libraries(motor_http_teleop_node ${CURL_LIBRARIES})
-install(TARGETS motor_http_teleop_node DESTINATION lib/${PROJECT_NAME})
-
 install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 

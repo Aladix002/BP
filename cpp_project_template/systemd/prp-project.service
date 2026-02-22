@@ -1,16 +1,16 @@
 [Unit]
-Description=PRP Project ROS2 Service
+Description=PRP Project (teleop + bridge, autonómna jazda s lidarom)
 After=network.target ld19-lidar.service
 Wants=network-online.target
 Requires=ld19-lidar.service
 
 [Service]
 Type=simple
-User=rpi5
-Group=rpi5
-Environment="HOME=/home/rpi5"
-Environment="USER=rpi5"
-ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/rpi5/BP/cpp_project_template/install/setup.bash && ros2 run prp_project prp_project'
+User=aladix
+Group=aladix
+Environment="HOME=/home/aladix"
+Environment="USER=aladix"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/aladix/Desktop/BP/install/setup.bash && ros2 run prp_project prp_project'
 Restart=always
 RestartSec=5
 StandardOutput=journal

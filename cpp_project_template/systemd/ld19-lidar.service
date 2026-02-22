@@ -9,7 +9,8 @@ User=aladix
 Group=aladix
 Environment="HOME=/home/aladix"
 Environment="USER=aladix"
-ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source BP_INSTALL_PLACEHOLDER/setup.bash && ros2 launch ldlidar_ros2 ld19.launch.py'
+Environment="ROS_DOMAIN_ID=0"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/aladix/Desktop/BP/install/setup.bash && ros2 launch ldlidar_ros2 ld19.launch.py'
 Restart=always
 RestartSec=5
 StandardOutput=journal
