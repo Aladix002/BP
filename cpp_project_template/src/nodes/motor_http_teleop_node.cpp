@@ -8,9 +8,7 @@
 #include <sstream>
 #include <iomanip>
 
-// Priame ovládanie motorov cez HTTP na ESP32.
-// Rýchlosť oboch strán cez 1-9; W+A / W+D = jedna strana pomalšie (zábačka); kontrola častá (10 ms).
-// Výstup: T:1 float -1..1 alebo T:11 PWM 0-255 (128=stop, 128+ dopredu, 127- dozadu).
+// Priame ovládanie motorov cez HTTP na ESP32. T:1, L/R float -1..1.
 
 namespace {
 
@@ -87,9 +85,6 @@ public:
         this->declare_parameter<double>("right_trim", 1.0);
         right_trim_ = std::max(0.5, std::min(1.5, this->get_parameter("right_trim").as_double()));
 
-        this->declare_parameter<bool>("use_pwm_255", false);
-        use_pwm_255_ = this->get_parameter("use_pwm_255").as_bool();
-
         // Timeout pustenia: väčší než oneskorenie key repeat (~500 ms), aby pri držaní nepreseklo
         this->declare_parameter<int>("key_release_timeout_ms", 550);
         key_release_timeout_ms_ = static_cast<int>(this->get_parameter("key_release_timeout_ms").as_int());
@@ -109,7 +104,7 @@ public:
 
         RCLCPP_INFO(this->get_logger(), "Motory HTTP teleop: %s", esp32_url_.c_str());
         RCLCPP_INFO(this->get_logger(), "WASD/šípky = smer | u/i = ľavý motor -/+ | o/p = pravý motor -/+ | +/- 1-9 = rýchlosť");
-        RCLCPP_INFO(this->get_logger(), "Trim L=%.2f R=%.2f | výstup: %s", left_trim_, right_trim_, use_pwm_255_ ? "PWM 0-255 (T:11)" : "float -1..1 (T:1)");
+        RCLCPP_INFO(this->get_logger(), "Trim L=%.2f R=%.2f", left_trim_, right_trim_);
     }
 
     ~MotorHttpTeleopNode() {
@@ -231,17 +226,8 @@ private:
 
     void send_motors(double left, double right) {
         std::ostringstream json;
-        if (use_pwm_255_) {
-            // 128 = stop, 128+ = dopredu, 127- = dozadu (0-255)
-            int L255 = static_cast<int>(128.0 + left * 127.0 + 0.5);
-            int R255 = static_cast<int>(128.0 + right * 127.0 + 0.5);
-            L255 = std::max(0, std::min(255, L255));
-            R255 = std::max(0, std::min(255, R255));
-            json << "{\"T\":11,\"L\":" << L255 << ",\"R\":" << R255 << "}";
-        } else {
-            json << std::fixed << std::setprecision(2);
-            json << "{\"T\":1,\"L\":" << left << ",\"R\":" << right << "}";
-        }
+        json << std::fixed << std::setprecision(2);
+        json << "{\"T\":1,\"L\":" << left << ",\"R\":" << right << "}";
         std::string json_str = json.str();
 
         CURL* curl = curl_easy_init();
@@ -263,7 +249,6 @@ private:
     double speed_;
     double left_trim_;
     double right_trim_;
-    bool use_pwm_255_;
     int key_release_timeout_ms_;
     std::chrono::steady_clock::time_point last_up_{};
     std::chrono::steady_clock::time_point last_down_{};
