@@ -13,6 +13,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_transport REQUIRED)
 
 # Find curl for HTTP communication
 find_package(CURL REQUIRED)
@@ -38,8 +40,6 @@ set(SRC
         include/nodes/pid.hpp
         src/nodes/camera.cpp
         include/nodes/camera.hpp
-        include/nodes/esp32_bridge.hpp
-        src/nodes/esp32_bridge.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs geometry_msgs cv_bridge image_transport)
@@ -52,9 +52,15 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         /opt/ros/jazzy/include
 )
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS} ${CURL_LIBRARIES})
-ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs)
+ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs cv_bridge image_transport)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
+
+# Motor HTTP teleop – priamo HTTP na ESP32 (bez esp32_bridge), šípky + rýchlosť
+add_executable(motor_http_teleop_node src/nodes/motor_http_teleop_node.cpp)
+ament_target_dependencies(motor_http_teleop_node rclcpp)
+target_link_libraries(motor_http_teleop_node ${CURL_LIBRARIES})
+install(TARGETS motor_http_teleop_node DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
