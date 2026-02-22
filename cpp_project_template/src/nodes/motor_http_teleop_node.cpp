@@ -8,13 +8,14 @@
 #include <sstream>
 #include <iomanip>
 
-// Priame ovládanie motorov cez HTTP na ESP32 (bez esp32_bridge).
-// Mapovanie L/R a kombinácií ako v ugv_base_general (movtionButton + cmdProcess):
-// T:1, L/R v rozsahu -1..1; priamo GET /js?json={"T":1,"L":...,"R":...}
+// Priame ovládanie motorov cez HTTP na ESP32.
+// Rýchlosť oboch strán cez 1-9; W+A / W+D = jedna strana pomalšie (zábačka); kontrola častá (10 ms).
+// Výstup: T:1 float -1..1 alebo T:11 PWM 0-255 (128=stop, 128+ dopredu, 127- dozadu).
 
 namespace {
 
-enum class KeyDir { None, Up, Down, Left, Right, Stop, SpeedUp, SpeedDown, SpeedDigit };
+enum class KeyDir { None, Up, Down, Left, Right, Stop, SpeedUp, SpeedDown, SpeedDigit,
+    LeftTrimUp, LeftTrimDown, RightTrimUp, RightTrimDown };
 int g_speed_digit = 5;  // 1-9, used when KeyDir::SpeedDigit
 
 int setup_raw_stdin() {
@@ -60,6 +61,11 @@ KeyDir read_key_nonblock() {
         if (buf[0] == 's' || buf[0] == 'S') return KeyDir::Down;
         if (buf[0] == 'a' || buf[0] == 'A') return KeyDir::Left;
         if (buf[0] == 'd' || buf[0] == 'D') return KeyDir::Right;
+        // Trim ľavá/pravá strana: u/i = ľavý motor -/+, o/p = pravý motor -/+
+        if (buf[0] == 'u' || buf[0] == 'U') return KeyDir::LeftTrimDown;
+        if (buf[0] == 'i' || buf[0] == 'I') return KeyDir::LeftTrimUp;
+        if (buf[0] == 'o' || buf[0] == 'O') return KeyDir::RightTrimDown;
+        if (buf[0] == 'p' || buf[0] == 'P') return KeyDir::RightTrimUp;
     }
     return KeyDir::None;
 }
@@ -76,12 +82,20 @@ public:
         this->declare_parameter<double>("speed", 0.5);
         speed_ = std::max(0.1, std::min(1.0, this->get_parameter("speed").as_double()));
 
+        this->declare_parameter<double>("left_trim", 1.0);
+        left_trim_ = std::max(0.5, std::min(1.5, this->get_parameter("left_trim").as_double()));
+        this->declare_parameter<double>("right_trim", 1.0);
+        right_trim_ = std::max(0.5, std::min(1.5, this->get_parameter("right_trim").as_double()));
+
+        this->declare_parameter<bool>("use_pwm_255", false);
+        use_pwm_255_ = this->get_parameter("use_pwm_255").as_bool();
+
         // Timeout pustenia: väčší než oneskorenie key repeat (~500 ms), aby pri držaní nepreseklo
         this->declare_parameter<int>("key_release_timeout_ms", 550);
         key_release_timeout_ms_ = static_cast<int>(this->get_parameter("key_release_timeout_ms").as_int());
 
-        // Častejšia kontrola (50 Hz): plynulejšia jazda pri držaní, lepšia reakcia na pustenie
-        this->declare_parameter<int>("control_period_ms", 20);
+        // Veľmi častá kontrola (100 Hz): W+A / W+D musia byť čo najčastejšie vyhodnotené
+        this->declare_parameter<int>("control_period_ms", 10);
         int period_ms = std::max(5, std::min(100, static_cast<int>(this->get_parameter("control_period_ms").as_int())));
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(period_ms),
@@ -94,7 +108,8 @@ public:
         curl_global_init(CURL_GLOBAL_DEFAULT);
 
         RCLCPP_INFO(this->get_logger(), "Motory HTTP teleop: %s", esp32_url_.c_str());
-        RCLCPP_INFO(this->get_logger(), "Drž = jazda, pustenie = stop | kontrolná slučka %d ms | +/- 1-9 = rýchlosť", period_ms);
+        RCLCPP_INFO(this->get_logger(), "WASD/šípky = smer | u/i = ľavý motor -/+ | o/p = pravý motor -/+ | +/- 1-9 = rýchlosť");
+        RCLCPP_INFO(this->get_logger(), "Trim L=%.2f R=%.2f | výstup: %s", left_trim_, right_trim_, use_pwm_255_ ? "PWM 0-255 (T:11)" : "float -1..1 (T:1)");
     }
 
     ~MotorHttpTeleopNode() {
@@ -121,6 +136,18 @@ private:
             } else if (k == KeyDir::SpeedDigit) {
                 speed_ = g_speed_digit / 9.0;
                 RCLCPP_INFO(this->get_logger(), "Rýchlosť: %.2f (úroveň %d)", speed_, g_speed_digit);
+            } else if (k == KeyDir::LeftTrimUp) {
+                left_trim_ = std::min(1.5, left_trim_ + 0.1);
+                RCLCPP_INFO(this->get_logger(), "Trim ľavý: %.2f", left_trim_);
+            } else if (k == KeyDir::LeftTrimDown) {
+                left_trim_ = std::max(0.5, left_trim_ - 0.1);
+                RCLCPP_INFO(this->get_logger(), "Trim ľavý: %.2f", left_trim_);
+            } else if (k == KeyDir::RightTrimUp) {
+                right_trim_ = std::min(1.5, right_trim_ + 0.1);
+                RCLCPP_INFO(this->get_logger(), "Trim pravý: %.2f", right_trim_);
+            } else if (k == KeyDir::RightTrimDown) {
+                right_trim_ = std::max(0.5, right_trim_ - 0.1);
+                RCLCPP_INFO(this->get_logger(), "Trim pravý: %.2f", right_trim_);
             } else {
                 if (k == KeyDir::Up) last_up_ = now;
                 if (k == KeyDir::Down) last_down_ = now;
@@ -156,7 +183,7 @@ private:
         // Zábačky: base 0.5, curve 0.3 (ako ugv). Otáčanie na mieste: miernejšie 0.7 ako predtým.
         const double base = 0.5 * speed_;
         const double curve = 0.3 * speed_;
-        const double turn_in_place = 0.7 * speed_;
+        const double turn_in_place = 0.4;  // konštantná rýchlosť otáčania na mieste (~2× pomalšie)
         double L = 0.0, R = 0.0;
 
         bool fwd = (vertical == 1);
@@ -193,13 +220,28 @@ private:
             else { L = 0; R = 0; }
         }
 
+        // Nezávislé nastavenie ľavej/pravej strany (trim)
+        L *= left_trim_;
+        R *= right_trim_;
+        L = std::max(-1.0, std::min(1.0, L));
+        R = std::max(-1.0, std::min(1.0, R));
+
         send_motors(L, R);
     }
 
     void send_motors(double left, double right) {
         std::ostringstream json;
-        json << std::fixed << std::setprecision(2);
-        json << "{\"T\":1,\"L\":" << left << ",\"R\":" << right << "}";
+        if (use_pwm_255_) {
+            // 128 = stop, 128+ = dopredu, 127- = dozadu (0-255)
+            int L255 = static_cast<int>(128.0 + left * 127.0 + 0.5);
+            int R255 = static_cast<int>(128.0 + right * 127.0 + 0.5);
+            L255 = std::max(0, std::min(255, L255));
+            R255 = std::max(0, std::min(255, R255));
+            json << "{\"T\":11,\"L\":" << L255 << ",\"R\":" << R255 << "}";
+        } else {
+            json << std::fixed << std::setprecision(2);
+            json << "{\"T\":1,\"L\":" << left << ",\"R\":" << right << "}";
+        }
         std::string json_str = json.str();
 
         CURL* curl = curl_easy_init();
@@ -219,6 +261,9 @@ private:
     std::string esp32_ip_;
     std::string esp32_url_;
     double speed_;
+    double left_trim_;
+    double right_trim_;
+    bool use_pwm_255_;
     int key_release_timeout_ms_;
     std::chrono::steady_clock::time_point last_up_{};
     std::chrono::steady_clock::time_point last_down_{};
