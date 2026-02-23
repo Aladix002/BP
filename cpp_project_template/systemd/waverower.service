@@ -1,0 +1,19 @@
+[Unit]
+Description=Waverower (teleop + lidar sektory + koridor PID + motor + IMU + camera compressed)
+After=network.target ld19-lidar.service camera-ros.service
+Wants=network-online.target ld19-lidar.service camera-ros.service
+
+[Service]
+Type=simple
+User=aladix
+Group=aladix
+Environment="HOME=/home/aladix"
+Environment="USER=aladix"
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/aladix/Desktop/BP/install/setup.bash && ros2 run waverower waverower'
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

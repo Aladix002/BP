@@ -475,6 +475,18 @@ Senzory často vyžadujú kalibráciu a konfiguráciu, aby správne fungovali. R
 
 V prácach Skoleka~\cite{balancujici_robot} a Onderku~\cite{mobilni_kamera} sa v praxi využívajú koncepty ROS2 priamo súvisiace s touto úlohou. Z prvej práce je pre nás užitočné: rozdelenie projektu do balíčkov podľa funkcie (senzory, riadenie, komunikácia), publikovanie dát zo senzorov (IMU, enkodéry, ultrazvuk) na témy a ich odber v riadiacom uzle, použitie launch súborov na spúšťanie celej sady uzlov a voľba QoS pre nízku latenciu alebo garancie doručenia. Z druhej práce vyplýva: distribuované spúšťanie systému (uzly na robotovi a na stacionárnom PC), využitie tf2 pre transformácie medzi rámami robota a senzorov, konfiguračné YAML súbory pre parametre uzlov, remapovanie tém v launch súboroch a prípadne rozšírenie o \texttt{ros2\_control}, \texttt{slam\_toolbox} alebo Nav2 pre pokročilú navigáciu. Obe práce ukazujú prepínanie medzi režimami (manuálny / autonómny) ako príklad dynamickej rekonfigurácie riadiaceho softvéru, čo je požadované aj v zadaní tejto práce.
 
+\subsection*{micro-ROS a integrácia s embedded zariadeniami}
+
+micro-ROS~\cite{microros} je rozšírenie ekosystému ROS~2 pre mikrokontroléry a embedded zariadenia s obmedzenou pamäťou a výkonom. Umožňuje, aby takéto zariadenia (napr. ESP32, STM32) vystupovali ako plnohodnotní účastníci ROS~2 siete: publikovali témy, odoberali témy, poskytovali alebo volali služby a pracovali s parametrami. Tým sa odstráni potreba vlastného protokolu (napr. HTTP alebo proprietárneho UART protokolu) medzi hlavným počítačom (Raspberry Pi) a riadiacou jednotkou na báze mikrokontroléra.
+
+\paragraph{Funkčnosť a prepojenie s ROS~2.}
+micro-ROS beží na embedded zariadení nad real-time operačným systémom (typicky FreeRTOS). Knižnica micro-ROS využíva rovnaké koncepty ako ROS~2 (DDS, témy, typy správ), ale s redukovanou závislosťou a pamäťovou náročnosťou. Komunikácia medzi mikrokontrolérom a zvyškom ROS~2 siete prebieha cez \emph{micro-ROS agenta}, ktorý beží na Linuxe (napr. na Raspberry Pi alebo na vývojovom PC). Agent prijíma dáta z embedded zariadenia cez transport (sériový port UART, WiFi alebo Ethernet) a premostí ich do DDS siete. Uzly bežiace na RPi a uzly bežiace na mikrokontroléri tak vidia navzájom svoje témy v rámci jednej ROS~2 doméne. micro-ROS je kompatibilný s distribúciami ROS~2 Humble a novšími (Iron, Jazzy)~\cite{microros_setup}.
+
+\paragraph{Vzorové uzly pre motor a IMU.}
+V rámci tejto práce boli pripravené vzorové ukážky micro-ROS kódu (adresár \texttt{micro\_ros\_examples} v projekte): (1)~subscriber na topic \texttt{/motor\_cmd} (typ \texttt{std\_msgs/msg/Float64MultiArray}) -- po prijatí hodnôt pre ľavý a pravý motor v rozsahu $-1$ až $1$ môže firmware na ESP32 priamo ovládať PWM alebo H-mosť; (2)~publisher topicu \texttt{/imu} (typ \texttt{sensor\_msgs/msg/Imu}) -- periodické čítanie akcelerometra a gyroskopu (napr. MPU6050 cez I2C) a publikovanie na ROS~2. V takejto architektúre by uzol \texttt{motor\_driver} na RPi nebol potrebný (ESP32 by odoberal \texttt{/motor\_cmd} priamo) a IMU dáta by prichádzali ako štandardný ROS~2 topic namiesto HTTP pollingu. [PLACEHOLDER: Doplniť výsledky testov pripojenia micro-ROS agenta s ESP32 a merania latencie, ak boli vykonané.]
+
+\paragraph{Placeholdery.}
+[PLACEHOLDER: Konkrétna verzia ESP-IDF a micro\_ros\_setup otestovaná s ROS~2 Humble/Jazzy; konfigurácia agenta (sériový port vs. WiFi) pre vašu sieť; rozhodnutie, či ESP32 publikuje/odoberá priamo témy \texttt{/motor\_cmd} a \texttt{/imu}, alebo iné názvy s remapom v launch súbore.]
 
 
 
@@ -482,6 +494,21 @@ V prácach Skoleka~\cite{balancujici_robot} a Onderku~\cite{mobilni_kamera} sa v
 \chapter{Implementácia}
 
 V tejto kapitole je popísaný návrh a priebeh implementácie. Niektoré časti sú označené ako placeholdery a doplnia sa po dokončení implementácie (konkrétne názvy topicov, parametre, launch súbory, obrázky z testov a pod.).
+
+\section{Aktuálna architektúra robota (autíčka)}
+
+Aktuálny softvérový systém robota (balík \texttt{waverower}, ROS~2 Jazzy) beží na Raspberry Pi a pozostáva z jedného procesu s viacerými uzlami spravovanými \texttt{MultiThreadedExecutor}. Hlavné uzly a ich úlohy sú nasledujúce.
+
+\textbf{Manuálne ovládanie a prepínanie režimov.} Uzol \texttt{manual\_teleop} odoberá vstup z klávesnice (WASD alebo šípky), publikuje príkazy na topic \texttt{/manual\_motor\_cmd} (správa \texttt{Float64MultiArray} s hodnotami ľavý/pravý motor v rozsahu $-1$ až $1$) a prepína medzi manuálnym a autonómnym režimom stlačením klávesy \texttt{m}. Režim je uložený v zdieľanej premennej \texttt{manual\_mode}.
+
+\textbf{Lidar a front sektor.} Uzol \texttt{lidar\_sectors} odoberá \texttt{/scan} (LaserScan), vyhodnocuje minimálnu vzdialenosť v \emph{frontovom sektore} (uhol $\pm 45°$, teda 90° spolu) a publikuje ju na topic \texttt{/lidar\_sectors} ako jednu hodnotu v metroch (alebo veľké číslo pri absencii dát).
+
+\textbf{Autonómne správanie (BT auto).} Uzol \texttt{bt\_auto} implementuje jednoduché správanie: (1)~ak je detegovaná osoba (topic \texttt{/detected\_people}, počet $> 0$), robot zastaví; (2)~ak je vzdialenosť vpredu (\texttt{/lidar\_sectors}) menšia ako prah \texttt{threshold\_stop\_m}, robot prejde do stavu \emph{turning} -- točí sa na mieste (ľavý/pravý motor s opačnými znamienkami, rovnaká rýchlosť ako pri manuálnom točení) po dobu \texttt{turn\_duration\_sec} sekúnd, potom pokračuje dopredu; (3)~inak ide dopredu. Otočka nevyužíva IMU; trvanie a smer (doľava/doprava) sú nastaviteľné parametrami.
+
+\textbf{Multiplexor príkazov a motor driver.} Uzol \texttt{cmd\_mux} podľa \texttt{manual\_mode} prepína výstup medzi \texttt{/manual\_motor\_cmd} a \texttt{/auto\_motor\_cmd} a publikuje zvolený príkaz na topic \texttt{/motor\_cmd}. Uzol \texttt{motor\_driver} odoberá \texttt{/motor\_cmd} a posiela hodnoty ľavý/pravý motor na ESP32 cez \textbf{HTTP} (GET požiadavka s JSON v query parametri). ESP32 (UGV Base General) následne riadi motory podľa prijatého príkazu. IMU dáta z ESP32 prichádzajú do systému cez uzol \texttt{imu\_http}, ktorý periodicky posiela HTTP požiadavku na ESP32 a publikuje odpoveď ako \texttt{sensor\_msgs/msg/Imu} na topic \texttt{/imu}. Kamera a ďalšie uzly (detekcia ArUco, atď.) sú súčasťou toho istého procesu.
+
+[PLACEHOLDER: Schéma grafu uzlov (\texttt{rqt\_graph}) a zoznam launch súborov alebo príkazov na spustenie systému na robotovi.]
+[PLACEHOLDER: Popis spúšťania na Raspberry Pi (systemd služba \texttt{waverower.service}, zdrojovanie workspace).]
 
 \section{Model robota a simulovanie v Gazebo}
 

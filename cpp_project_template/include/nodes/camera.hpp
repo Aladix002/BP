@@ -1,33 +1,50 @@
 #ifndef CAMERA_NODE_HPP
 #define CAMERA_NODE_HPP
 
-#include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/compressed_image.hpp"
-#include "std_msgs/msg/int32.hpp"
-#include "image_transport/image_transport.hpp"
-#include "cv_bridge/cv_bridge.hpp"
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/compressed_image.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
-#include <opencv2/aruco.hpp>
-#include "aruco_detector.hpp"
+#include <opencv2/dnn.hpp>
+#include <vector>
+#include <string>
 
-using namespace nodes;
+namespace nodes {
 
+/**
+ * Odbera obrazok z ROS (Image alebo CompressedImage), YOLO detekcia (ONNX).
+ * Publikuje /detected_objects, /detected_people, /camera/compressed.
+ */
 class CameraNode : public rclcpp::Node {
 public:
     CameraNode();
 
 private:
-    void image_callback(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
+    void image_callback(const sensor_msgs::msg::Image::SharedPtr msg);
+    void compressed_callback(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
+    void process_frame(cv::Mat& frame);
+    void detect_yolo(cv::Mat& frame, std::vector<cv::Rect>& boxes, std::vector<int>& class_ids, std::vector<float>& scores);
 
-    rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr image_subscriber_;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr aruco_id_publisher_;
-    image_transport::Publisher image_publisher_;
-    image_transport::ImageTransport it_;
-    int last_aruco_id_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_image_;
+    rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr sub_compressed_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_objects_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_people_count_;
+    rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr pub_compressed_;
+
+    std::string image_topic_;
+    bool use_compressed_ = false;
+    bool publish_compressed_ = true;
+    float conf_threshold_ = 0.45f;
+    float nms_threshold_ = 0.4f;
+    cv::dnn::Net net_;
+    std::vector<std::string> coco_names_;
+    int input_size_ = 640;
+    bool model_loaded_ = false;
 };
 
-#endif // CAMERA_NODE_HPP
+}  // namespace nodes
 
-
-
-
+#endif

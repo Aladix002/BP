@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-    <name>prp_project</name>
+    <name>waverower</name>
     <version>0.0.0</version>
     <description>Solution of PRP project</description>
     <maintainer email="xbotlo01@stud.fit.vut.cz">Filip Botlo</maintainer>
