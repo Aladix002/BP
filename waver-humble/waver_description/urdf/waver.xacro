@@ -1,269 +1,302 @@
 <?xml version="1.0"?>
 <robot name="waver" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:arg name="sim_control" default="gazebo" />
-  <xacro:arg name="camera_type" default="raspi" />
+  <xacro:arg name="sim_control"  default="gazebo" />
+  <xacro:arg name="camera_type" default="raspi"  />
 
-  <xacro:include filename="$(find waver_description)/urdf/materials.xacro" />
   <xacro:include filename="$(find waver_description)/urdf/util.xacro" />
-  <xacro:include filename="$(find waver_description)/urdf/lidar.xacro" />
-  <xacro:include filename="$(find waver_description)/urdf/imu.xacro" />
-
-  <!-- ************************** Simulation Control ************************** -->
 
   <xacro:if value="${'$(arg sim_control)' == 'gazebo'}">
     <xacro:include filename="$(find waver_description)/urdf/waver.gazebo.xacro" />
   </xacro:if>
 
-  <xacro:if value="${'$(arg sim_control)' == 'ros2'}">
-    <xacro:include filename="$(find waver_description)/urdf/waver.control.xacro" />
-  </xacro:if>
+  <!-- ── Materials ─────────────────────────────────────────────────── -->
+  <material name="dark_gray"><color rgba="0.13 0.13 0.13 1"/></material>
+  <material name="black">    <color rgba="0.05 0.05 0.05 1"/></material>
+  <material name="gray">     <color rgba="0.55 0.55 0.55 1"/></material>
+  <material name="green">    <color rgba="0.1  0.5  0.1  1"/></material>
+  <material name="blue">     <color rgba="0.1  0.1  0.75 1"/></material>
+  <material name="orange">   <color rgba="0.95 0.45 0.0  1"/></material>
+  <material name="silver">   <color rgba="0.78 0.78 0.78 1"/></material>
 
-  <!-- ***************************** Camera Type ***************************** -->
+  <!-- ── Chassis dimensions ──────────────────────────────────────────
+       WaveRover real dimensions (from CAD):
+         length 183 mm, width 130 mm, body height 50 mm
+       Top shell plate: 165×118×16 mm flat cover on body
+       Wheels: radius 40.6 mm, width 42.5 mm, separation 123 mm
+  ────────────────────────────────────────────────────────────────── -->
+  <xacro:property name="body_l"  value="0.183"/>
+  <xacro:property name="body_w"  value="0.130"/>
+  <xacro:property name="body_h"  value="0.050"/>
+  <xacro:property name="shell_h" value="0.016"/>
 
-  <xacro:if value="${'$(arg camera_type)' == 'raspi'}">
-    <xacro:include filename="$(find waver_description)/urdf/rasp_pi_camera.xacro" />
-  </xacro:if>
+  <!-- ── base_footprint (virtual ground reference) ──────────────────── -->
+  <link name="base_footprint"/>
 
-  <xacro:if value="${'$(arg camera_type)' == 'depth'}">
-    <xacro:include filename="$(find waver_description)/urdf/depth_camera_zedxm.xacro" />
-  </xacro:if>
+  <joint name="base_joint" type="fixed">
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+  </joint>
 
-  <!-- ******************************* Links ******************************* -->
-
-  <link name="base_footprint"></link>
-
+  <!-- ── Main chassis body ─────────────────────────────────────────── -->
   <link name="base_link">
     <inertial>
-      <mass value="${mass_base}" />
-      <origin xyz="${mass_center_base}" rpy="0 0 ${pi/2}" />
-      <inertia ixx="0.00024519341275127564" iyy="0.0001572047252476648" izz="0.0001572047252476648"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
+      <mass value="1.2"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.003" iyy="0.005" izz="0.006"
+               ixy="0" ixz="0" iyz="0"/>
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/base_link.stl" scale="${scale}" />
-      </geometry>
-      <xacro:dark_gray_material />
+    <!-- main rectangular body box -->
+    <visual name="body">
+      <origin xyz="0 0 0"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+      <material name="dark_gray"/>
+    </visual>
+    <!-- orange accent stripe on the front face -->
+    <visual name="front_stripe">
+      <origin xyz="${body_l/2 - 0.004} 0 0.006"/>
+      <geometry><box size="0.006 ${body_w - 0.010} 0.010"/></geometry>
+      <material name="orange"/>
+    </visual>
+    <!-- small bumper protrusion at rear -->
+    <visual name="rear_bumper">
+      <origin xyz="${-(body_l/2 + 0.006)} 0 ${-body_h/2 + 0.008}"/>
+      <geometry><box size="0.012 ${body_w + 0.004} 0.016"/></geometry>
+      <material name="black"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/base_link.stl" scale="${scale}" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
     </collision>
   </link>
 
+  <!-- ── Top cover plate (sits on top of chassis) ───────────────────── -->
   <link name="top_shell_link">
     <inertial>
-      <mass value="${mass_top}" />
-      <origin xyz="${mass_center_top}" rpy="0 0 ${pi/2}" />
-      <inertia ixx="0.0009909748444994777" iyy="0.0008084780487946392" izz="0.0016391807866491105"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
+      <mass value="0.050"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1.5e-4" iyy="2.0e-4" izz="3.0e-4"
+               ixy="0" ixz="0" iyz="0"/>
     </inertial>
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/top_shell_link.stl" scale="${scale}" />
-      </geometry>
-      <xacro:dark_gray_material />
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.165 0.118 ${shell_h}"/></geometry>
+      <material name="dark_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/top_shell_link.stl" scale="${scale}" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.165 0.118 ${shell_h}"/></geometry>
     </collision>
   </link>
 
-  <link name="accessories_link">
-    <visual>
-      <origin xyz="${position_acces}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/accessories_link.stl" scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
-    </visual>
-    <collision>
-      <origin xyz="${position_acces}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/accessories_link.stl" scale="${scale}" />
-      </geometry>
-    </collision>
-  </link>
+  <joint name="top_shell_joint" type="fixed">
+    <origin xyz="0 0 ${body_h/2 + shell_h/2}" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="top_shell_link"/>
+  </joint>
+  <gazebo reference="top_shell_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
 
-  <link name="accessories1_link">
-    <visual>
-      <origin xyz="${position_acces1}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/accessories1_link.stl" scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
-    </visual>
-  </link>
-
-  <link name="oled_screen_link">
-    <visual>
-      <origin xyz="${position_screen}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/oled_screen_link.stl" scale="${scale}" />
-      </geometry>
-      <xacro:dark_blue_material />
-    </visual>
-  </link>
-
-  <link name="wheel_back_left_link">
+  <!-- ── LiDAR LD19  (cylindrical puck on a mounting post) ────────────
+       Joint placed at centre of the puck.
+       Post visual is offset downward inside the same link so it renders
+       as an integrated mounting post below the spinning puck.
+  ────────────────────────────────────────────────────────────────── -->
+  <link name="lidar_link">
     <inertial>
-      <mass value="${mass_wbl}" />
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <inertia ixx="6.689307761499951e-05" iyy="4.2676101388344066e-05" izz="4.2578787253633605e-05"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
+      <mass value="0.046"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1.2e-5" iyy="1.5e-5" izz="1.9e-5"
+               ixy="0" ixz="0" iyz="0"/>
     </inertial>
-    <visual>
-      <origin xyz="${position_wbl}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/wheel_back_left_link.stl"
-          scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
+    <!-- vertical mounting post (below the puck) -->
+    <visual name="post">
+      <origin xyz="0 0 -0.033"/>
+      <geometry><cylinder radius="0.007" length="0.036"/></geometry>
+      <material name="silver"/>
+    </visual>
+    <!-- LD19 puck housing -->
+    <visual name="puck">
+      <origin xyz="0 0 0"/>
+      <geometry><cylinder radius="0.019" length="0.030"/></geometry>
+      <material name="gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
-      <geometry>
-        <cylinder radius="${wheel_radius}" length="${wheel_width}" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><cylinder radius="0.019" length="0.030"/></geometry>
     </collision>
   </link>
 
-  <link name="wheel_front_left_link">
+  <!-- z = top of chassis + shell thickness + post height + half puck -->
+  <joint name="lidar_joint" type="fixed">
+    <origin xyz="0.04 0 ${body_h/2 + shell_h + 0.036 + 0.015}" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="lidar_link"/>
+  </joint>
+  <gazebo reference="lidar_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+
+  <!-- ── Camera (front face, with PCB board + lens cylinder) ─────────── -->
+  <link name="rasp_pi_camera_link">
     <inertial>
-      <mass value="${mass_wfl}" />
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <inertia ixx="6.6894731155928e-05" iyy="4.2676101388344066e-05" izz="4.2580440794562095e-05"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
+      <mass value="0.0035"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1.7e-7" iyy="1.8e-7" izz="3.0e-7"
+               ixy="0" ixz="0" iyz="0"/>
     </inertial>
-    <visual>
-      <origin xyz="${position_wfl}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/wheel_front_left_link.stl"
-          scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
+    <!-- PCB board body -->
+    <visual name="board">
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.010 0.025 0.023"/></geometry>
+      <material name="black"/>
+    </visual>
+    <!-- lens cylinder pointing forward (+x) -->
+    <visual name="lens">
+      <origin xyz="0.007 0 0" rpy="0 ${pi/2} 0"/>
+      <geometry><cylinder radius="0.004" length="0.006"/></geometry>
+      <material name="blue"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
-      <geometry>
-        <cylinder radius="${wheel_radius}" length="${wheel_width}" />
-      </geometry>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.010 0.025 0.023"/></geometry>
     </collision>
   </link>
 
-  <link name="wheel_front_right_link">
+  <joint name="rasp_pi_camera_joint" type="fixed">
+    <origin xyz="${body_l/2 + 0.005} 0 0.005" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="rasp_pi_camera_link"/>
+  </joint>
+  <gazebo reference="rasp_pi_camera_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+
+  <!-- ── IMU (flat chip on top of chassis, hidden under shell) ─────── -->
+  <link name="imu_link">
     <inertial>
-      <mass value="${mass_wfr}" />
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <inertia ixx="6.689307761499951e-05" iyy="4.267610303653357e-05" izz="4.2578788901823125e-05"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
+      <mass value="0.010"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="3.4e-7" iyy="3.4e-7" izz="6.7e-7"
+               ixy="0" ixz="0" iyz="0"/>
     </inertial>
     <visual>
-      <origin xyz="${position_wfr}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/wheel_front_right_link.stl"
-          scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.020 0.020 0.004"/></geometry>
+      <material name="green"/>
     </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
-      <geometry>
-        <cylinder radius="${wheel_radius}" length="${wheel_width}" />
-      </geometry>
-    </collision>
   </link>
 
-  <link name="wheel_back_right_link">
-    <inertial>
-      <mass value="${mass_wbr}" />
-      <origin xyz="0 0 0" rpy="0 0 ${pi/2}" />
-      <inertia ixx="6.6894731155928e-05" iyy="4.267610303653357e-05" izz="4.25804424427516e-05"
-        ixy="0.0" iyz="0.0" ixz="0.0" />
-    </inertial>
-    <visual>
-      <origin xyz="${position_wbr}" rpy="0 0 ${pi/2}" />
-      <geometry>
-        <mesh filename="package://waver_description/meshes/wheel_back_right_link.stl"
-          scale="${scale}" />
-      </geometry>
-      <xacro:black_material />
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
-      <geometry>
-        <cylinder radius="${wheel_radius}" length="${wheel_width}" />
-      </geometry>
-    </collision>
-  </link>
-
-  <!-- ******************************* Links ******************************* -->
-
-  <joint
-    name="base_joint" type="fixed">
-    <origin xyz="0.0 0.0 33.7e-3" rpy="0 0 0" />
-    <parent link="base_footprint" />
-    <child link="base_link" />
+  <joint name="top_imu_joint" type="fixed">
+    <origin xyz="0 0 ${body_h/2 + 0.002}" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="imu_link"/>
   </joint>
+  <gazebo reference="top_imu_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
 
-  <joint name="base_top_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="top_shell_link" />
-  </joint>
+  <!-- ── Wheels ─────────────────────────────────────────────────────
+       Axis xyz="0 1 0" → spin around Y (correct for forward motion).
+  ────────────────────────────────────────────────────────────────── -->
+  <xacro:macro name="wheel" params="name xyz">
+    <link name="${name}">
+      <inertial>
+        <mass value="0.061"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="6.7e-5" iyy="4.3e-5" izz="4.3e-5"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <!-- tyre -->
+      <visual name="tyre">
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
+      <!-- silver rim ring (half-width, same radius, lighter colour) -->
+      <visual name="rim">
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius * 0.55}" length="${wheel_width * 0.3}"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+    </link>
+    <joint name="${name}_joint" type="continuous">
+      <origin xyz="${xyz}" rpy="0 0 0"/>
+      <parent link="base_link"/>
+      <child  link="${name}"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.0"/>
+    </joint>
+  </xacro:macro>
 
-  <joint name="top_acces_joint" type="fixed">
-    <origin xyz="${positions_acces_joint}" rpy="0 0 0" />
-    <parent link="top_shell_link" />
-    <child link="accessories_link" />
-  </joint>
+  <xacro:wheel name="wheel_front_left_link"  xyz=" 0.0654 ${ wheel_separation/2} 0"/>
+  <xacro:wheel name="wheel_front_right_link" xyz=" 0.0654 ${-wheel_separation/2} 0"/>
+  <xacro:wheel name="wheel_back_left_link"   xyz="-0.0653 ${ wheel_separation/2} 0"/>
+  <xacro:wheel name="wheel_back_right_link"  xyz="-0.0653 ${-wheel_separation/2} 0"/>
 
-  <joint name="top_acces1_joint" type="fixed">
-    <origin xyz="${positions_acces1_joint}" rpy="0 0 0" />
-    <parent link="top_shell_link" />
-    <child link="accessories1_link" />
-  </joint>
+  <!-- ── Gazebo sensor plugins ──────────────────────────────────────── -->
+  <gazebo reference="lidar_link">
+    <sensor name="lidar_sensor" type="gpu_lidar">
+      <always_on>true</always_on>
+      <update_rate>${lidar_frequency}</update_rate>
+      <visualize>false</visualize>
+      <topic>scan</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>${lidar_samples}</samples>
+            <resolution>1</resolution>
+            <min_angle>${lidar_min_angle}</min_angle>
+            <max_angle>${lidar_max_angle}</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>${lidar_min_range}</min>
+          <max>${lidar_max_range}</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise><type>gaussian</type><mean>0.0</mean><stddev>0.01</stddev></noise>
+      </ray>
+    </sensor>
+  </gazebo>
 
-  <joint name="top_screen_joint" type="fixed">
-    <origin xyz="${positions_screen_joint}" rpy="0 0 0" />
-    <parent link="top_shell_link" />
-    <child link="oled_screen_link" />
-  </joint>
+  <gazebo reference="rasp_pi_camera_link">
+    <sensor name="camera_sensor" type="camera">
+      <always_on>true</always_on>
+      <update_rate>15</update_rate>
+      <visualize>false</visualize>
+      <topic>camera</topic>
+      <camera>
+        <horizontal_fov>1.1519</horizontal_fov>
+        <image><format>R8G8B8</format><height>480</height><width>640</width></image>
+        <clip><near>0.05</near><far>100.0</far></clip>
+        <noise><type>gaussian</type><mean>0.0</mean><stddev>0.007</stddev></noise>
+      </camera>
+    </sensor>
+  </gazebo>
 
-  <joint name="wheel_back_left_joint" type="continuous">
-    <origin xyz="${position_wbl_joint}" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="wheel_back_left_link" />
-    <axis xyz="0 1 0" />
-  </joint>
-
-  <joint name="wheel_front_left_joint" type="continuous">
-    <origin xyz="${position_wfl_joint}" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="wheel_front_left_link" />
-    <axis xyz="0 1 0" />
-  </joint>
-
-  <joint name="wheel_front_right_joint" type="continuous">
-    <origin xyz="${position_wfr_joint}" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="wheel_front_right_link" />
-    <axis xyz="0 1 0" />
-  </joint>
-
-  <joint name="wheel_back_right_joint" type="continuous">
-    <origin xyz="${position_wbr_joint}" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="wheel_back_right_link" />
-    <axis xyz="0 1 0" />
-  </joint>
+  <gazebo reference="imu_link">
+    <gravity>true</gravity>
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>50</update_rate>
+      <visualize>false</visualize>
+      <topic>imu</topic>
+      <gz_frame_id>imu_link</gz_frame_id>
+    </sensor>
+  </gazebo>
 
 </robot>

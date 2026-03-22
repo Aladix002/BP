@@ -5,6 +5,12 @@
     <xacro:include filename="$(find waver_description)/urdf/util.xacro" />
 
     <link name="imu_link">
+        <inertial>
+            <mass value="0.010" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="3.4e-7" iyy="3.4e-7" izz="6.7e-7"
+                     ixy="0" ixz="0" iyz="0" />
+        </inertial>
         <visual>
             <origin xyz="${position_imu}" rpy="0 0 ${pi/2}" />
             <geometry>
@@ -20,14 +26,32 @@
         <child link="imu_link" />
     </joint>
 
+    <!-- Prevent Gazebo Harmonic from lumping this fixed joint into base_footprint -->
+    <gazebo reference="top_imu_joint">
+        <preserveFixedJoint>true</preserveFixedJoint>
+    </gazebo>
+
     <gazebo reference="imu_link">
         <material>Gazebo/Orange</material>
         <gravity>true</gravity>
         <sensor name="imu_sensor" type="imu">
             <always_on>true</always_on>
             <update_rate>100</update_rate>
-            <visualize>true</visualize>
+            <visualize>false</visualize>
             <topic>imu</topic>
+            <gz_frame_id>imu_link</gz_frame_id>
+            <imu>
+                <angular_velocity>
+                    <x><noise type="gaussian"><mean>0</mean><stddev>2e-4</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0</mean><stddev>2e-4</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0</mean><stddev>2e-4</stddev></noise></z>
+                </angular_velocity>
+                <linear_acceleration>
+                    <x><noise type="gaussian"><mean>0</mean><stddev>1.7e-2</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0</mean><stddev>1.7e-2</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0</mean><stddev>1.7e-2</stddev></noise></z>
+                </linear_acceleration>
+            </imu>
         </sensor>
     </gazebo>
 </robot>

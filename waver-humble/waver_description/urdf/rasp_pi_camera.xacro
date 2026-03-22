@@ -5,6 +5,12 @@
     <xacro:include filename="$(find waver_description)/urdf/util.xacro" />
 
     <link name="rasp_pi_camera_link">
+        <inertial>
+            <mass value="${rasp_pi_camera_mass}" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.7e-7" iyy="1.8e-7" izz="3.0e-7"
+                     ixy="0" ixz="0" iyz="0" />
+        </inertial>
         <visual>
             <origin xyz="0 0.0125 0" rpy="0 0 ${-pi/2}" />
             <geometry>
@@ -26,6 +32,11 @@
         <parent link="top_shell_link" />
         <child link="rasp_pi_camera_link" />
     </joint>
+
+    <!-- Prevent Gazebo Harmonic from lumping this fixed joint into base_footprint -->
+    <gazebo reference="rasp_pi_camera_joint">
+        <preserveFixedJoint>true</preserveFixedJoint>
+    </gazebo>
 
     <gazebo reference="rasp_pi_camera_link">
         <material>Gazebo/Black</material>

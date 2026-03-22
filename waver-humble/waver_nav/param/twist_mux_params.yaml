@@ -1,0 +1,21 @@
+# twist_mux priority configuration
+#
+# Teleop (keyboard) has higher priority than Nav2.
+# When no key is pressed for 0.5 s, Nav2 automatically regains control.
+#
+# Manual:    ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+#                --ros-args -r /cmd_vel:=/cmd_vel_key
+# Autonomous: use "Nav2 Goal" tool in RViz to click a destination
+
+twist_mux:
+  ros__parameters:
+    use_stamped: false
+    topics:
+      teleop:
+        topic   : /cmd_vel_key
+        timeout : 0.5
+        priority: 100
+      navigation:
+        topic   : /cmd_vel_nav
+        timeout : 2.0
+        priority: 10

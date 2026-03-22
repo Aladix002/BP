@@ -1,0 +1,76 @@
+# Wave Rover robot parameters
+# Shared by bringup launch files.  Override per-machine in a separate YAML.
+
+# ── Motor controller ────────────────────────────────────────────────────────
+motor_controller_node:
+  ros__parameters:
+    wheel_base:         0.20      # [m]  track width (center-to-center)
+    max_wheel_speed:    0.35      # [m/s]
+    max_pwm:           100.0      # [%]  clamped 0–100
+    pwm_boost:          2.35      # [-]  matches C++ node (overcomes stiction)
+    pwm_freq_hz:      800.0       # [Hz] PCA9685 carrier frequency
+    smooth_alpha:       0.8       # [-]  EMA coefficient (1.0 = no smoothing)
+    cmd_vel_timeout_ms: 500       # [ms] stop if no cmd_vel for this long
+    i2c_bus:            1
+    i2c_address:        0x40      # PCA9685 default address
+    use_mock:           false     # set true when running without HAT hardware
+
+# ── IMU stabilizer ──────────────────────────────────────────────────────────
+imu_stabilizer_node:
+  ros__parameters:
+    enabled:          true
+    Kp:               0.30
+    Ki:               0.01
+    Kd:               0.05
+    max_correction:   0.50        # [rad/s]
+
+# ── Mode manager ────────────────────────────────────────────────────────────
+mode_manager_node:
+  ros__parameters:
+    initial_mode:   "manual"      # "manual" | "auto"
+    teleop_topic:   "cmd_vel_teleop"
+    nav_topic:      "cmd_vel_nav"
+    output_topic:   "cmd_vel"
+
+# ── Watchdog ────────────────────────────────────────────────────────────────
+watchdog_node:
+  ros__parameters:
+    timeout_ms: 500
+    rate_hz:     50.0
+
+# ── IMU sensor node ─────────────────────────────────────────────────────────
+imu_node:
+  ros__parameters:
+    backend:        "http"        # "http" (ESP32) | "i2c" (direct RPi)
+    rate_hz:         50.0
+    frame_id:        "imu_link"
+    esp32_ip:        "192.168.0.224"
+    esp32_port:      80
+    http_timeout_s:  0.10
+    i2c_bus:         1
+    i2c_address:     0x68         # MPU6050 default; QMI8658 is 0x6B
+
+# ── Camera node ─────────────────────────────────────────────────────────────
+camera_node:
+  ros__parameters:
+    device_id:     0
+    width:         640
+    height:        480
+    fps:           30.0
+    frame_id:      "camera_link"
+    jpeg_quality:  80       # 1-100, lower = smaller bandwidth
+    publish_raw:   false    # keep false – raw Image is huge, not needed
+
+# ── twist_mux ───────────────────────────────────────────────────────────────
+# (used by bringup.launch.py as an alternative to mode_manager_node)
+twist_mux:
+  ros__parameters:
+    topics:
+      teleop:
+        topic:    cmd_vel_teleop
+        timeout:  0.5
+        priority: 100
+      navigation:
+        topic:    cmd_vel_nav
+        timeout:  2.0
+        priority: 10

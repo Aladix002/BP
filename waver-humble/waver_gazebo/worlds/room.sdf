@@ -1,339 +1,173 @@
 <?xml version='1.0'?>
-<sdf version='1.7'>
-  <world name='room'>
+<sdf version='1.9'>
+  <world name='waver_world'>
 
-    <plugin
-      filename="gz-sim-physics-system"
-      name="gz::sim::systems::Physics">
+    <!-- ==================== System plugins ==================== -->
+    <plugin filename="gz-sim-physics-system"       name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"  name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-imu-system"            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system"        name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
     </plugin>
 
-    <plugin
-      filename="gz-sim-user-commands-system"
-      name="gz::sim::systems::UserCommands">
-    </plugin>
+    <!-- ==================== Physics ==================== -->
+    <physics name='1ms' type='ignored'>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
 
-    <plugin
-      filename="gz-sim-scene-broadcaster-system"
-      name="gz::sim::systems::SceneBroadcaster">
-    </plugin>
+    <!-- ==================== Scene / Lighting ==================== -->
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+      <grid>false</grid>
+    </scene>
 
     <light name='sun' type='directional'>
-      <cast_shadows>0</cast_shadows>
-      <pose>0 0 10 0 -0 0</pose>
-      <diffuse>0.7 0.7 0.7 1</diffuse>
-      <specular>0.05 0.05 0.05 1</specular>
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
       <attenuation>
-        <range>1000</range>
-        <constant>0.9</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
+        <range>1000</range><constant>0.9</constant>
+        <linear>0.01</linear><quadratic>0.001</quadratic>
       </attenuation>
       <direction>-0.5 0.1 -0.9</direction>
     </light>
 
-    <physics name='1ms' type='ignored'>
-      <max_step_size>0.001</max_step_size>
-      <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>1000</real_time_update_rate>
-    </physics>
+    <light name='overhead' type='point'>
+      <pose>0 0 4 0 0 0</pose>
+      <diffuse>0.6 0.6 0.6 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <attenuation>
+        <range>20</range><constant>0.3</constant>
+        <linear>0.02</linear><quadratic>0.002</quadratic>
+      </attenuation>
+    </light>
 
-    <scene>
-      <ambient>0.35 0.35 0.35 1</ambient>
-      <background>0.55 0.55 0.55 1</background>
-      <shadows>0</shadows>
-      <grid>false</grid>
-    </scene>
-
+    <!-- ==================== Ground ==================== -->
     <model name='ground_plane'>
-      <static>1</static>
+      <static>true</static>
       <link name='link'>
         <collision name='collision'>
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>20 20</size>
-            </plane>
-          </geometry>
+          <geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
           <surface>
-            <friction>
-              <ode>
-                <mu>100</mu>
-                <mu2>50</mu2>
-              </ode>
-            </friction>
+            <friction><ode><mu>100</mu><mu2>50</mu2></ode></friction>
           </surface>
         </collision>
         <visual name='visual'>
-          <cast_shadows>0</cast_shadows>
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>20 20</size>
-            </plane>
-          </geometry>
+          <cast_shadows>false</cast_shadows>
+          <geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
           <material>
-            <ambient>0.85 0.85 0.85 1</ambient>
-            <diffuse>0.85 0.85 0.85 1</diffuse>
-            <specular>0.05 0.05 0.05 1</specular>
+            <ambient>0.75 0.75 0.75 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
           </material>
         </visual>
       </link>
     </model>
 
-    <model name='room_with_walls_10x10'>
-      <pose>-0 0 0 0 -0 0</pose>
-      <static>1</static>
+    <!-- ==================== Outer Walls (10×10 m room) ==================== -->
+    <model name='walls'>
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
 
-      <link name='Wall_1'>
-        <collision name='Wall_1_Collision'>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_1_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
+      <!-- South wall -->
+      <link name='wall_south'>
+        <pose>0 -5 1.25 0 0 0</pose>
+        <collision name='col'><geometry><box><size>10.3 0.2 2.5</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>10.3 0.2 2.5</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
         </visual>
-        <pose>-0.119159 -4.92736 0 0 -0 0</pose>
       </link>
 
-      <link name='Wall_2'>
-        <collision name='Wall_2_Collision'>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_2_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
+      <!-- North wall -->
+      <link name='wall_north'>
+        <pose>0 5 1.25 0 0 0</pose>
+        <collision name='col'><geometry><box><size>10.3 0.2 2.5</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>10.3 0.2 2.5</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
         </visual>
-        <pose>4.80584 -0.002362 0 0 -0 1.5708</pose>
       </link>
 
-      <link name='Wall_3'>
-        <collision name='Wall_3_Collision'>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_3_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
+      <!-- West wall -->
+      <link name='wall_west'>
+        <pose>-5 0 1.25 0 0 0</pose>
+        <collision name='col'><geometry><box><size>0.2 10.3 2.5</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>0.2 10.3 2.5</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
         </visual>
-        <pose>-0.119159 4.92264 0 0 -0 3.14159</pose>
       </link>
 
-      <link name='Wall_4'>
-        <collision name='Wall_4_Collision'>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_4_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>10 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
+      <!-- East wall -->
+      <link name='wall_east'>
+        <pose>5 0 1.25 0 0 0</pose>
+        <collision name='col'><geometry><box><size>0.2 10.3 2.5</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>0.2 10.3 2.5</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
         </visual>
-        <pose>-5.04416 -0.002362 0 0 -0 -1.5708</pose>
       </link>
-
-      <link name='Wall_11'>
-        <collision name='Wall_11_Collision'>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_11_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>-2.64666 3.75236 0 0 -0 -1.5708</pose>
-      </link>
-
-      <link name='Wall_16'>
-        <collision name='Wall_16_Collision'>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_16_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>-3.84066 0.028362 0 0 -0 0</pose>
-      </link>
-
-      <link name='Wall_18'>
-        <collision name='Wall_18_Collision'>
-          <geometry>
-            <box>
-              <size>4 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_18_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>4 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>-2.63516 -2.99164 0 0 -0 1.5708</pose>
-      </link>
-
-      <link name='Wall_24'>
-        <collision name='Wall_24_Collision'>
-          <geometry>
-            <box>
-              <size>6 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_24_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>6 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>-0.243157 2.00236 0 0 -0 -1.5708</pose>
-      </link>
-
-      <link name='Wall_28'>
-        <collision name='Wall_28_Collision'>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_28_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>2.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>-0.220157 -3.74164 0 0 -0 1.5708</pose>
-      </link>
-
-      <link name='Wall_36'>
-        <collision name='Wall_36_Collision'>
-          <geometry>
-            <box>
-              <size>3.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <pose>0 0 1.25 0 -0 0</pose>
-        </collision>
-        <visual name='Wall_36_Visual'>
-          <pose>0 0 1.25 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>3.5 0.15 2.5</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.45 0.45 0.45 1</ambient>
-            <diffuse>0.65 0.65 0.65 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <pose>1.44334 0.476862 0 0 -0 0</pose>
-      </link>
-
     </model>
+
+    <!-- ==================== Navigation obstacles ==================== -->
+
+    <!-- Box A: left-forward -->
+    <model name='obstacle_a'>
+      <static>true</static>
+      <pose>-2.5 2.0 0.4 0 0 0</pose>
+      <link name='link'>
+        <collision name='col'><geometry><box><size>0.4 1.2 0.8</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>0.4 1.2 0.8</size></box></geometry>
+          <material><ambient>0.5 0.35 0.1 1</ambient><diffuse>0.6 0.45 0.15 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Box B: right-forward -->
+    <model name='obstacle_b'>
+      <static>true</static>
+      <pose>2.5 -2.0 0.4 0 0 0</pose>
+      <link name='link'>
+        <collision name='col'><geometry><box><size>0.4 1.2 0.8</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>0.4 1.2 0.8</size></box></geometry>
+          <material><ambient>0.3 0.3 0.55 1</ambient><diffuse>0.4 0.4 0.65 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Wall segment: centre -->
+    <model name='obstacle_c'>
+      <static>true</static>
+      <pose>0.0 2.5 0.5 0 0 0</pose>
+      <link name='link'>
+        <collision name='col'><geometry><box><size>1.8 0.3 1.0</size></box></geometry></collision>
+        <visual name='vis'>
+          <geometry><box><size>1.8 0.3 1.0</size></box></geometry>
+          <material><ambient>0.55 0.4 0.3 1</ambient><diffuse>0.65 0.5 0.4 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Pillar: right-rear -->
+    <model name='obstacle_d'>
+      <static>true</static>
+      <pose>2.5 2.5 0.75 0 0 0</pose>
+      <link name='link'>
+        <collision name='col'><geometry><cylinder><radius>0.18</radius><length>1.5</length></cylinder></geometry></collision>
+        <visual name='vis'>
+          <geometry><cylinder><radius>0.18</radius><length>1.5</length></cylinder></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.55 0.55 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
   </world>
 </sdf>
