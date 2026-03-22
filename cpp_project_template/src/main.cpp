@@ -1,40 +1,33 @@
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp/executors.hpp>
-#include "nodes/manual.hpp"
-#include "nodes/lidar.hpp"
-#include "nodes/behavioral_tree_auto.hpp"
-#include "nodes/cmd_mux.hpp"
-#include "nodes/motor_driver.hpp"
-#include "nodes/camera.hpp"
-#include "nodes/imu.hpp"
-#include <atomic>
 #include <memory>
+
+#include <rclcpp/rclcpp.hpp>
+
+#include "nodes/wasd_motor_hat.hpp"
 
 int main(int argc, char* argv[])
 {
-    rclcpp::init(argc, argv);
+  rclcpp::init(argc, argv);
 
-    // Rezim: true = manual (WASD), false = auto (BT: person->stop, blocked->turn, else corridor). Prepinanie 'm' v manual_teleop.
-    auto manual_mode = std::make_shared<std::atomic<bool>>(true);
+  rclcpp::NodeOptions node_options;
+  // Pozor: automatically_declare_parameters_from_overrides(true) by zdvojilo declare v uzle (base_speed atď.).
+  node_options.parameter_overrides({
+      rclcpp::Parameter("pwm_boost", 2.35),
+      rclcpp::Parameter("snap_threshold", 0.22),
+      rclcpp::Parameter("smooth_alpha", 1.0),
+      rclcpp::Parameter("base_speed", 1.0),
+  });
 
-    auto manual_teleop = std::make_shared<ManualTeleopNode>(manual_mode);
-    auto lidar_sectors = std::make_shared<nodes::LidarSectorsNode>();
-    auto bt_auto = std::make_shared<nodes::BtAutoNode>();
-    auto cmd_mux = std::make_shared<nodes::CmdMuxNode>(manual_mode);
-    auto motor_driver = std::make_shared<nodes::MotorDriverNode>();
-    auto camera = std::make_shared<nodes::CameraNode>();
-    auto imu_http = std::make_shared<nodes::ImuHttpNode>();
-
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(manual_teleop);
-    executor.add_node(lidar_sectors);
-    executor.add_node(bt_auto);
-    executor.add_node(cmd_mux);
-    executor.add_node(motor_driver);
-    executor.add_node(camera);
-    executor.add_node(imu_http);
-    executor.spin();
-
+  try {
+    auto node = std::make_shared<nodes::WasdMotorHatNode>(node_options);
+    node->prepare_terminal();
+    node->start_input_thread();
+    rclcpp::spin(node);
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(rclcpp::get_logger("waverower"), "%s", e.what());
     rclcpp::shutdown();
-    return 0;
+    return 1;
+  }
+
+  rclcpp::shutdown();
+  return 0;
 }
