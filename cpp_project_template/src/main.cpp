@@ -11,6 +11,7 @@ int main(int argc, char* argv[])
   rclcpp::NodeOptions node_options;
   // Pozor: automatically_declare_parameters_from_overrides(true) by zdvojilo declare v uzle (base_speed atď.).
   node_options.parameter_overrides({
+      rclcpp::Parameter("control_mode", std::string("manual")),
       rclcpp::Parameter("pwm_boost", 2.35),
       rclcpp::Parameter("snap_threshold", 0.22),
       rclcpp::Parameter("smooth_alpha", 1.0),

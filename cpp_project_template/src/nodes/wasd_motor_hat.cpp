@@ -47,6 +47,12 @@ WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("teleop_max_angular_rad_s", 1.2);
   declare_parameter<bool>("teleop_invert_linear", true);
 
+  // IMU yaw korekcia: vyrovnávanie jazdy bez enkodérov
+  declare_parameter<bool>("imu_correction", false);
+  declare_parameter<double>("imu_yaw_kp", 0.15);
+  // imu_yaw_deadband: ignoruj gyro Z pod touto hodnotou [rad/s] (potlačenie šumu)
+  declare_parameter<double>("imu_yaw_deadband", 0.02);
+
   base_speed_ = std::clamp(base_speed_, 0.2, 1.0);
   turn_scale_ = std::clamp(turn_scale_, 0.1, 1.2);
   pwm_freq_hz_ = std::clamp(pwm_freq_hz_, 50.0, 1000.0);
@@ -67,6 +73,11 @@ WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
         teleop_topic, rclcpp::QoS(10),
         std::bind(&WasdMotorHatNode::teleop_twist_cb, this, std::placeholders::_1));
   }
+
+  // IMU subscription (voliteľná – aktivuje sa parametrom imu_correction:=true)
+  sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
+      "/imu", rclcpp::SensorDataQoS(),
+      std::bind(&WasdMotorHatNode::imu_cb, this, std::placeholders::_1));
 
   param_cb_ = add_on_set_parameters_callback(
       std::bind(&WasdMotorHatNode::on_param_change, this, std::placeholders::_1));
@@ -436,9 +447,34 @@ void WasdMotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn
   apply_tank(sl, sr, base, boost, snap, snap_turn, low_forward, in_place_boost);
 }
 
+void WasdMotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
+  std::lock_guard<std::mutex> lock(mu_);
+  imu_yaw_rate_ = msg->angular_velocity.z;
+}
+
 void WasdMotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
                                   double snap_fwd, double snap_turn, bool low_forward,
                                   double in_place_boost) {
+  // IMU yaw korekcia: keď ideme rovno (nízka rotácia), kompenzujeme drift
+  // bez enkodérov pomocou gyro Z. Ak robot stáča doprava (gyro_z > 0 v ROS = otočenie vľavo),
+  // zrýchlime ľavé koleso a spomalíme pravé.
+  double l = l_cmd;
+  double r = r_cmd;
+  if (get_parameter("imu_correction").as_bool() && !low_forward) {
+    const double kp       = get_parameter("imu_yaw_kp").as_double();
+    const double deadband = get_parameter("imu_yaw_deadband").as_double();
+    double yaw_rate = 0.0;
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      yaw_rate = imu_yaw_rate_;
+    }
+    if (std::abs(yaw_rate) > deadband) {
+      const double corr = kp * yaw_rate;
+      l = std::clamp(l - corr, -1.0, 1.0);
+      r = std::clamp(r + corr, -1.0, 1.0);
+    }
+  }
+
   const double snap_eff = low_forward ? snap_turn : snap_fwd;
   const double extra = low_forward ? in_place_boost : 1.0;
   auto to_pct = [&](double cmd) -> int {
@@ -450,14 +486,14 @@ void WasdMotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, doubl
     return std::min(100, static_cast<int>(std::lround(raw)));
   };
 
-  const int pl = to_pct(l_cmd);
-  const int pr = to_pct(r_cmd);
+  const int pl = to_pct(l);
+  const int pr = to_pct(r);
   if (pl <= 0 && pr <= 0) {
     hat_->motor_stop(0);
     hat_->motor_stop(1);
     return;
   }
-  hat_->apply_drive(pl, l_cmd > 0.0, pr, r_cmd > 0.0);
+  hat_->apply_drive(pl, l > 0.0, pr, r > 0.0);
 }
 
 }  // namespace nodes

@@ -6,6 +6,7 @@
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 
 #include <geometry_msgs/msg/twist.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 #include <cstdint>
 #include <atomic>
@@ -54,6 +55,12 @@ private:
 
   void apply_tank(double l_cmd, double r_cmd, double base, double boost, double snap_fwd,
                   double snap_turn, bool low_forward, double in_place_boost);
+
+  void imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg);
+
+  // IMU yaw korekcia pre jazdu rovne (bez enkodérov)
+  double imu_yaw_rate_{0.0};          // posledná hodnota gyro Z [rad/s]
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
   std::unique_ptr<MotorHatI2c> hat_;
   rclcpp::TimerBase::SharedPtr timer_;
