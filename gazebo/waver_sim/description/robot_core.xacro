@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- WaveRover dimensions -->
+  <xacro:property name="body_l"       value="0.183"/>
+  <xacro:property name="body_w"       value="0.130"/>
+  <xacro:property name="body_h"       value="0.050"/>
+  <xacro:property name="shell_h"      value="0.016"/>
+  <xacro:property name="wheel_radius" value="0.0406"/>
+  <xacro:property name="wheel_width"  value="0.0425"/>
+  <xacro:property name="wheel_sep"    value="0.123"/>
+  <xacro:property name="wheel_base"   value="0.131"/>
+
+  <material name="dark_gray"><color rgba="0.13 0.13 0.13 1"/></material>
+  <material name="black">    <color rgba="0.05 0.05 0.05 1"/></material>
+  <material name="gray">     <color rgba="0.55 0.55 0.55 1"/></material>
+  <material name="orange">   <color rgba="0.95 0.45 0.0  1"/></material>
+  <material name="silver">   <color rgba="0.78 0.78 0.78 1"/></material>
+  <material name="blue">     <color rgba="0.1  0.1  0.75 1"/></material>
+
+  <!-- base_footprint -->
+  <link name="base_footprint"/>
+  <joint name="base_footprint_joint" type="fixed">
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+  </joint>
+
+  <!-- Main chassis -->
+  <link name="base_link">
+    <inertial>
+      <mass value="1.2"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.003" iyy="0.005" izz="0.006"
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual name="body">
+      <origin xyz="0 0 0"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+      <material name="dark_gray"/>
+    </visual>
+    <visual name="front_stripe">
+      <origin xyz="${body_l/2 - 0.004} 0 0.006"/>
+      <geometry><box size="0.006 ${body_w - 0.010} 0.010"/></geometry>
+      <material name="orange"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Top shell plate -->
+  <link name="top_shell_link">
+    <inertial>
+      <mass value="0.050"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1.5e-4" iyy="2.0e-4" izz="3.0e-4"
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.165 0.118 ${shell_h}"/></geometry>
+      <material name="dark_gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="0.165 0.118 ${shell_h}"/></geometry>
+    </collision>
+  </link>
+  <joint name="top_shell_joint" type="fixed">
+    <origin xyz="0 0 ${body_h/2 + shell_h/2}" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="top_shell_link"/>
+  </joint>
+  <gazebo reference="top_shell_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+
+  <!-- Wheels -->
+  <xacro:macro name="wheel" params="name xyz">
+    <link name="${name}">
+      <inertial>
+        <mass value="0.061"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="6.7e-5" iyy="4.3e-5" izz="4.3e-5"
+                 ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual name="tyre">
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="black"/>
+      </visual>
+      <visual name="rim">
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius * 0.55}" length="${wheel_width * 0.3}"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+    </link>
+    <joint name="${name}_joint" type="continuous">
+      <origin xyz="${xyz}" rpy="0 0 0"/>
+      <parent link="base_link"/>
+      <child  link="${name}"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:wheel name="wheel_front_left"  xyz=" ${wheel_base/2}  ${wheel_sep/2} 0"/>
+  <xacro:wheel name="wheel_front_right" xyz=" ${wheel_base/2} -${wheel_sep/2} 0"/>
+  <xacro:wheel name="wheel_back_left"   xyz="-${wheel_base/2}  ${wheel_sep/2} 0"/>
+  <xacro:wheel name="wheel_back_right"  xyz="-${wheel_base/2} -${wheel_sep/2} 0"/>
+
+  <!-- Gazebo surface properties -->
+  <gazebo reference="base_link">
+    <mu1>0.2</mu1><mu2>0.2</mu2>
+    <selfCollide>false</selfCollide>
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+  <gazebo reference="top_shell_link">
+    <mu1>0.2</mu1><mu2>0.2</mu2>
+    <selfCollide>false</selfCollide>
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+
+  <xacro:macro name="wheel_gz" params="name">
+    <gazebo reference="${name}">
+      <mu1>1.0</mu1><mu2>0.12</mu2>
+      <fdir1>0 1 0</fdir1><kp>1e6</kp><kd>10</kd>
+      <selfCollide>false</selfCollide>
+      <material>Gazebo/Black</material>
+    </gazebo>
+  </xacro:macro>
+  <xacro:wheel_gz name="wheel_front_left"/>
+  <xacro:wheel_gz name="wheel_front_right"/>
+  <xacro:wheel_gz name="wheel_back_left"/>
+  <xacro:wheel_gz name="wheel_back_right"/>
+
+</robot>
