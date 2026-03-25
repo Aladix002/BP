@@ -10,6 +10,8 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(cv_bridge REQUIRED)
 
 # ── Hlavný executable: motor HAT + manuálne/auto ovládanie ──────────────────
 add_executable(waverower
@@ -24,9 +26,37 @@ ament_target_dependencies(waverower
     rclcpp geometry_msgs sensor_msgs
 )
 
+# ── Optical flow node: zarovnávanie jazdy podľa kamery (Lucas-Kanade) ────────
+add_executable(optical_flow
+    src/main_optical_flow.cpp
+    src/nodes/optical_flow.cpp
+)
+target_include_directories(optical_flow PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+ament_target_dependencies(optical_flow
+    rclcpp geometry_msgs sensor_msgs cv_bridge
+)
+target_link_libraries(optical_flow ${OpenCV_LIBS})
+
+# ── Dense optical flow node: zarovnávanie jazdy podľa kamery (Farneback) ─────
+add_executable(optical_flow_dense
+    src/main_optical_flow_dense.cpp
+    src/nodes/optical_flow_dense.cpp
+)
+target_include_directories(optical_flow_dense PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+ament_target_dependencies(optical_flow_dense
+    rclcpp geometry_msgs sensor_msgs cv_bridge
+)
+target_link_libraries(optical_flow_dense ${OpenCV_LIBS})
+
 # ── Inštalácia ───────────────────────────────────────────────────────────────
 install(TARGETS
     waverower
+    optical_flow
+    optical_flow_dense
     DESTINATION lib/${PROJECT_NAME}
 )
 

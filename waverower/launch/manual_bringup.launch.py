@@ -8,15 +8,17 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
-    use_imu = LaunchConfiguration("use_imu")
-    use_lidar = LaunchConfiguration("use_lidar")
+    use_imu    = LaunchConfiguration("use_imu")
+    use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
+    use_flow   = LaunchConfiguration("use_flow")
+    flow_algo  = LaunchConfiguration("flow_algo")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -69,6 +71,12 @@ def generate_launch_description():
             )
         ]
 
+    # Keď use_flow:=true, motor node číta z /teleop_cmd_vel_corrected (výstup optical_flow_node).
+    # Inak číta priamo z /teleop_cmd_vel.
+    motor_twist_topic = PythonExpression([
+        '"/teleop_cmd_vel_corrected" if "', use_flow, '" == "true" else "/teleop_cmd_vel"'
+    ])
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -91,6 +99,16 @@ def generate_launch_description():
                 default_value="false",
                 description="teleop_twist_keyboard → /teleop_cmd_vel (potrebuje balík teleop_twist_keyboard).",
             ),
+            DeclareLaunchArgument(
+                "use_flow",
+                default_value="false",
+                description="Optical flow korekcia jazdy podľa kamery.",
+            ),
+            DeclareLaunchArgument(
+                "flow_algo",
+                default_value="lk",
+                description="Algoritmus optical flow: lk (Lucas-Kanade sparse) | farneback (dense).",
+            ),
             DeclareLaunchArgument("i2c_bus", default_value="1"),
             DeclareLaunchArgument("i2c_address", default_value="64"),
             DeclareLaunchArgument(
@@ -103,13 +121,43 @@ def generate_launch_description():
                 executable="waverower",
                 name="wasd_motor_hat_node",
                 output="screen",
-                parameters=[
-                    {
-                        "control_mode": LaunchConfiguration("control_mode"),
-                        "i2c_bus": LaunchConfiguration("i2c_bus"),
-                        "i2c_address": LaunchConfiguration("i2c_address"),
-                    }
-                ],
+                parameters=[{
+                    "control_mode":       LaunchConfiguration("control_mode"),
+                    "i2c_bus":            LaunchConfiguration("i2c_bus"),
+                    "i2c_address":        LaunchConfiguration("i2c_address"),
+                    "manual_twist_topic": motor_twist_topic,
+                }],
+            ),
+            Node(
+                package="waverower",
+                executable="optical_flow",
+                name="optical_flow_node",
+                output="screen",
+                condition=IfCondition(
+                    PythonExpression(['"', use_flow, '" == "true" and "', flow_algo, '" != "farneback"'])
+                ),
+                parameters=[{
+                    "correction_gain":   1.5,
+                    "max_correction":    0.3,
+                    "forward_threshold": 0.05,
+                    "steer_deadzone":    0.12,
+                    "min_features":      15,
+                }],
+            ),
+            Node(
+                package="waverower",
+                executable="optical_flow_dense",
+                name="optical_flow_node",
+                output="screen",
+                condition=IfCondition(
+                    PythonExpression(['"', use_flow, '" == "true" and "', flow_algo, '" == "farneback"'])
+                ),
+                parameters=[{
+                    "correction_gain":   1.5,
+                    "max_correction":    0.3,
+                    "forward_threshold": 0.05,
+                    "steer_deadzone":    0.12,
+                }],
             ),
             Node(
                 package="teleop_twist_keyboard",
