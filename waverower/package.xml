@@ -12,22 +12,24 @@
     <build_depend>geometry_msgs</build_depend>
     <build_depend>sensor_msgs</build_depend>
     <build_depend>std_msgs</build_depend>
-    <build_depend>cv_bridge</build_depend>
-    <build_depend>libopencv-dev</build_depend>
-    <build_depend>ament_index_cpp</build_depend>
 
     <exec_depend>rclcpp</exec_depend>
     <exec_depend>geometry_msgs</exec_depend>
     <exec_depend>sensor_msgs</exec_depend>
     <exec_depend>std_msgs</exec_depend>
-    <exec_depend>cv_bridge</exec_depend>
-    <exec_depend>ament_index_cpp</exec_depend>
 
     <exec_depend>ldlidar_ros2</exec_depend>
     <exec_depend>mpu6050driver</exec_depend>
     <exec_depend>tf2_ros</exec_depend>
     <exec_depend>rviz2</exec_depend>
     <exec_depend>teleop_twist_keyboard</exec_depend>
+
+    <exec_depend>camera_ros</exec_depend>
+
+    <!-- Web UI (mobil): rosbridge + statické súbory v share/waverower/web_ui -->
+    <exec_depend>rosbridge_server</exec_depend>
+    <exec_depend>rosapi</exec_depend>
+    <exec_depend>ament_index_python</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

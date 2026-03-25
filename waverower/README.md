@@ -96,7 +96,7 @@ Spustiteľný súbor `waverower_teleop` je v koreni `BP/` a nastaví `WAVEROWER_
 
 ```bash
 bash ~/Desktop/BP/install/waverower/share/waverower/scripts/waverower_manual_teleop.sh
-bash ~/Desktop/BP/cpp_project_template/scripts/waverower_manual_teleop.sh
+bash ~/Desktop/BP/waverower/scripts/waverower_manual_teleop.sh
 ```
 
 Iný workspace: skopíruj `waverower_teleop` do jeho koreňa alebo `WAVEROWER_WS=/cesta/k/projekt bash .../waverower_manual_teleop.sh`.
@@ -129,6 +129,22 @@ IMU: musí byť zbuildený balík `mpu6050driver` v tom istom workspace (`colcon
 LiDAR: vyžaduje nainštalovaný balík `ldlidar_ros2` a správny `port_name` v jeho `ld19.launch.py` (predvolené `/dev/ttyUSB0`).
 
 Ak sa ti `/imu` objaví hneď po boot-e bez spustenia launchu, skontroluj systemd: `systemctl list-unit-files | grep -iE 'imu|mpu|ros'` a prípadne `sudo systemctl disable --now <služba>`.
+
+---
+
+### Web teleop z mobilu (`web_ui` + rosbridge)
+
+Jednoduchá stránka v `share/waverower/web_ui` (inšpirácia: [ros-ui-react](https://github.com/joshnewans/ros-ui-react) — tu čistý HTML/JS + [roslibjs](https://github.com/RobotWebTools/roslibjs)). Na robote:
+
+```bash
+sudo apt install ros-jazzy-rosbridge-suite
+source /opt/ros/jazzy/setup.bash && source ~/Desktop/BP/install/setup.bash
+ros2 launch waverower web_teleop_ui.launch.py
+```
+
+V telefóne (rovnaká Wi-Fi): prehliadač → `http://<IP-RPi>:8080` → **Pripojiť** (predvolene `ws://<rovnaký-host>:9090`). Príkazy idú na `/teleop_cmd_vel` ako pri klávesnicovom teleope. Obrázok berie z `/camera/compressed` (spusti `waverower_camera` alebo iný publisher); topic zmeníš v `web_ui/app.js` (`CAMERA_TOPIC`).
+
+Robot musí mať bežať `waverower` (napr. spolu s `manual_bringup` alebo `full_bringup` v druhom termináli).
 
 ---
 

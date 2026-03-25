@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Manuálna jazda (waverower) + voliteľne kamera, IMU (mpu6050driver), LD19, teleop."""
+"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (mpu6050driver), LD19, teleop."""
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -34,12 +34,47 @@ def generate_launch_description():
         condition=IfCondition(use_imu),
     )
 
+    try:
+        get_package_share_directory("camera_ros")
+        have_camera_ros = True
+    except PackageNotFoundError:
+        have_camera_ros = False
+
+    camera_stack = []
+    if have_camera_ros:
+        # camera_ros publikuje CompressedImage na
+        # /camera/camera_node/image_raw/compressed (namespace + node name).
+        camera_stack = [
+            Node(
+                package="camera_ros",
+                executable="camera_node",
+                name="camera_node",
+                namespace="camera",
+                output="screen",
+                condition=IfCondition(use_camera),
+                remappings=[
+                    ("image_raw", "/camera/image_raw"),
+                    ("camera_info", "/camera/camera_info"),
+                ],
+            )
+        ]
+    else:
+        camera_stack = [
+            LogInfo(
+                condition=IfCondition(use_camera),
+                msg=(
+                    "use_camera:=true vyžaduje nainštalovaný balík camera_ros "
+                    "(napr. sudo apt install ros-jazzy-camera-ros)."
+                ),
+            )
+        ]
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
                 "use_camera",
                 default_value="false",
-                description="Spusti waverower_camera (subscribe /camera/image_raw).",
+                description="Spusti camera_ros; web UI berie /camera/camera_node/image_raw/compressed.",
             ),
             DeclareLaunchArgument(
                 "use_imu",
@@ -77,13 +112,6 @@ def generate_launch_description():
                 ],
             ),
             Node(
-                package="waverower",
-                executable="waverower_camera",
-                name="waverower_camera",
-                output="screen",
-                condition=IfCondition(use_camera),
-            ),
-            Node(
                 package="teleop_twist_keyboard",
                 executable="teleop_twist_keyboard",
                 name="teleop_twist_keyboard",
@@ -93,5 +121,6 @@ def generate_launch_description():
             ),
             imu_include,
             lidar_include,
+            *camera_stack,
         ]
     )

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Wave Rover – teleop</title>
+  <link rel="stylesheet" href="style.css?v=3" />
+</head>
+<body>
+  <header>
+    <h1>Wave Rover</h1>
+    <p id="status" class="status off">Odpojené</p>
+  </header>
+
+  <section class="panel">
+    <label>Rosbridge (WebSocket)</label>
+    <input type="text" id="wsUrl" placeholder="ws://192.168.1.x:9090" autocomplete="off" />
+    <div class="row">
+      <button type="button" id="btnConnect">Pripojiť</button>
+      <button type="button" id="btnDisconnect" class="secondary">Odpojiť</button>
+    </div>
+  </section>
+
+  <section class="panel camera-wrap">
+    <label>Kamera</label>
+    <div id="camPlaceholder" class="cam-placeholder">Žiadny obraz – skontroluj topic a rosbridge</div>
+    <img id="cam" alt="Kamera" class="cam hidden" />
+  </section>
+
+  <section class="panel">
+    <label>Ovládanie <span class="hint">(drž tlačidlo)</span></label>
+    <div class="dpad">
+      <div></div>
+      <button type="button" class="drive" data-lx="0.5" data-az="0" aria-label="Vpred">▲</button>
+      <div></div>
+      <button type="button" class="drive" data-lx="0" data-az="0.9" aria-label="Vľavo">◀</button>
+      <button type="button" class="stop" id="btnStop" aria-label="Stop">■</button>
+      <button type="button" class="drive" data-lx="0" data-az="-0.9" aria-label="Vpravo">▶</button>
+      <div></div>
+      <button type="button" class="drive" data-lx="-0.5" data-az="0" aria-label="Späť">▼</button>
+      <div></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Na mobile otvor <code>http://&lt;IP Raspberry&gt;:8080</code> · Rovnaká Wi-Fi ako robot</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+  <script src="app.js?v=3"></script>
+</body>
+</html>
