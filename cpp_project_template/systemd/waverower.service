@@ -1,5 +1,5 @@
 [Unit]
-Description=Waverower (teleop + lidar sektory + koridor PID + motor + IMU + camera compressed)
+Description=Waverower motor node (ROS 2, teleop/cmd_vel → Motor HAT)
 After=network.target ld19-lidar.service camera-ros.service
 Wants=network-online.target ld19-lidar.service camera-ros.service
 

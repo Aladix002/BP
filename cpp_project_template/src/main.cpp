@@ -20,8 +20,8 @@ int main(int argc, char* argv[])
 
   try {
     auto node = std::make_shared<nodes::WasdMotorHatNode>(node_options);
-    node->prepare_terminal();
-    node->start_input_thread();
+    // Keyboard input is intentionally disabled.
+    // Control is expected via ROS topics (e.g. /teleop_cmd_vel or /cmd_vel).
     rclcpp::spin(node);
   } catch (const std::exception& e) {
     RCLCPP_ERROR(rclcpp::get_logger("waverower"), "%s", e.what());

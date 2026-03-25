@@ -27,18 +27,6 @@ ament_target_dependencies(waverower
     rclcpp geometry_msgs sensor_msgs
 )
 
-# ── IMU node: priamy I2C (MPU-6050) ─────────────────────────────────────────
-add_executable(waverower_imu
-    src/main_imu.cpp
-    src/nodes/imu_i2c.cpp
-)
-target_include_directories(waverower_imu PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-ament_target_dependencies(waverower_imu
-    rclcpp sensor_msgs
-)
-
 # ── Camera node: compressed image + voliteľný YOLO ──────────────────────────
 add_executable(waverower_camera
     src/main_camera.cpp
@@ -54,14 +42,13 @@ ament_target_dependencies(waverower_camera
 # ── Inštalácia ───────────────────────────────────────────────────────────────
 install(TARGETS
     waverower
-    waverower_imu
     waverower_camera
     DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY launch  DESTINATION share/${PROJECT_NAME})
-install(DIRECTORY config  DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY models  DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY doc     DESTINATION share/${PROJECT_NAME})
+install(PROGRAMS scripts/waverower_manual_teleop.sh DESTINATION share/${PROJECT_NAME}/scripts)
 
 ament_package()

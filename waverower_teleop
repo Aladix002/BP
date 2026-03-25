@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Spustenie z koreňa workspace: cd ~/Desktop/BP && ./waverower_teleop
+# Motor v tomto okne. S DISPLAY: nový lokálny terminál s teleopom. Bez (SSH na RPi): návod na teleop na PC.
+# Voliteľné: --motor-only
+
+WS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export WAVEROWER_WS="${WAVEROWER_WS:-$WS_ROOT}"
+exec bash "$WS_ROOT/cpp_project_template/scripts/waverower_manual_teleop.sh" "$@"

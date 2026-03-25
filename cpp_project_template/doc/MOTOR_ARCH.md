@@ -20,10 +20,11 @@
 Spustenie: `ros2 run waverower waverower`
 
 - Uzol: `wasd_motor_hat_node`
-- Vstup (manuál): WASD/šípky z TTY + `Twist` na `/teleop_cmd_vel` z PC
-- Vstup (auto): `Twist` na `/cmd_vel` (Nav2)
+- Vstup (manuál): `Twist` na `/teleop_cmd_vel` (napr. `teleop_twist_keyboard` s remapom)
+- Vstup (auto): `Twist` na `/cmd_vel` (iný uzol / plánovač)
+- Vstup z TTY (WASD) je v `main.cpp` vypnutý — ovládanie cez topicy.
 - Výstup: PWM na I2C Motor HAT
-- Prepínač: parameter `control_mode` = `manual` | `auto` → meniteľný **za behu** (kláves **M** alebo `ros2 param set`)
+- Prepínač: parameter `control_mode` = `manual` | `auto` → meniteľný **za behu** (`ros2 param set`)
 
 ```bash
 ros2 param set /wasd_motor_hat_node control_mode auto
@@ -49,25 +50,16 @@ Kľúčové parametre:
 
 ---
 
-### `waverower_imu` – IMU uzol (MPU-6050, priamy I2C)
+### IMU – balík `mpu6050driver` (MPU-6050 cez I2C)
 
-Spustenie: `ros2 run waverower waverower_imu`
+Vlastný IMU node v `waverower` bol odstránený. Použi komunitný driver (v workspace `src/ros2_mpu6050_driver`):
 
-- Uzol: `imu_i2c_node`
-- Výstup: `sensor_msgs/Imu` na `/imu`
+```bash
+ros2 launch mpu6050driver mpu6050driver_launch.py
+```
 
-Parametre:
-
-| Parameter | Default | Popis |
-|-----------|---------|-------|
-| `i2c_bus` | `1` | `/dev/i2c-X` |
-| `i2c_address` | `0x68` | 0x68 alebo 0x69 (MPU-6050) |
-| `publish_rate_hz` | `100.0` | Hz |
-| `gyro_range_dps` | `250` | 250 / 500 / 1000 / 2000 °/s |
-| `accel_range_g` | `2` | 2 / 4 / 8 / 16 g |
-| `frame_id` | `imu_link` | TF frame |
-
-> Iný čip? Zmeň register adresy v `src/nodes/imu_i2c.cpp` (blok `namespace {}` na začiatku súboru).
+- Uzol: `mpu6050driver_node`
+- Výstup: `sensor_msgs/Imu` na `/imu` (parametre v `mpu6050driver/share/mpu6050driver/params/mpu6050.yaml`)
 
 ---
 
@@ -83,29 +75,60 @@ Spustenie: `ros2 run waverower waverower_camera`
 
 ## Launch súbory
 
-### 1. Manuálna jazda + SLAM (mapovanie)
+### Jedným príkazom: motor + nový terminál s teleopom
+
+Skript sám načíta `/opt/ros/<distro>/setup.bash` a `${WAVEROWER_WS}/install/setup.bash` — **nemusíš** nič `source`-ovať pred spustením.
+
+**Odporúčané — z koreňa workspace** (`./` ako predtým):
 
 ```bash
-ros2 launch waverower slam.launch.py
-ros2 launch waverower slam.launch.py use_rviz:=true
-# Uloženie mapy:
-ros2 run nav2_map_server map_saver_cli -f ~/mapa_izba
+cd ~/Desktop/BP
+./waverower_teleop
 ```
 
-### 2. Autonómna navigácia (Nav2 + SLAM)
+Spustiteľný súbor `waverower_teleop` je v koreni `BP/` a nastaví `WAVEROWER_WS` podľa umiestnenia projektu.
+
+**RPi cez SSH, teleop na PC:** na Raspberry Pi `./waverower_teleop` spustí len motor a vypíše príkazy pre `teleop_twist_keyboard` na osobnom počítači. Na oboch strojoch musí byť **rovnaký `ROS_DOMAIN_ID`** (ak ho nenastavíš, často ostane default `0`), **rovnaká sieť** a nesmú blokovať DDS (UDP/multicast). Na PC stačí nainštalovaný ROS 2 (nemusíš mať workspace s `waverower` — len teleop publikuje `Twist`).
+
+**Len motor** (napr. lokálny desktop bez druhého okna): `./waverower_teleop --motor-only`
+
+**Alternatívy** (izolovaný install):
 
 ```bash
-ros2 launch waverower nav.launch.py
-ros2 launch waverower nav.launch.py use_camera:=true imu_correction:=true use_rviz:=true
+bash ~/Desktop/BP/install/waverower/share/waverower/scripts/waverower_manual_teleop.sh
+bash ~/Desktop/BP/cpp_project_template/scripts/waverower_manual_teleop.sh
 ```
 
-V RViz: použiť **"2D Nav Goal"** → kliknúť cieľovú pozíciu → robot naplánuje a prejde trasu.
+Iný workspace: skopíruj `waverower_teleop` do jeho koreňa alebo `WAVEROWER_WS=/cesta/k/projekt bash .../waverower_manual_teleop.sh`.
 
-### 3. Len motory (cmd_vel → HAT)
+**Cez `ros2 pkg prefix`** — najprv musí byť v prostredí workspace (inak „Package not found“):
 
 ```bash
-ros2 launch waverower cmd_vel_hat.launch.py control_mode:=auto
+source /opt/ros/jazzy/setup.bash
+source ~/Desktop/BP/install/setup.bash
+bash "$(ros2 pkg prefix waverower)/share/waverower/scripts/waverower_manual_teleop.sh"
 ```
+
+---
+
+### `manual_bringup.launch.py` – motory + voliteľne senzory
+
+```bash
+# Len motory (manuál, Twist na /teleop_cmd_vel)
+ros2 launch waverower manual_bringup.launch.py
+
+# + teleop z klávesnice na PC (cmd_vel → /teleop_cmd_vel)
+ros2 launch waverower manual_bringup.launch.py use_teleop:=true
+
+# + kamera (waverower_camera), IMU (mpu6050driver), LiDAR (ldlidar_ros2 LD19)
+ros2 launch waverower manual_bringup.launch.py use_camera:=true use_imu:=true use_lidar:=true
+```
+
+IMU: musí byť zbuildený balík `mpu6050driver` v tom istom workspace (`colcon build --packages-select mpu6050driver`).
+
+LiDAR: vyžaduje nainštalovaný balík `ldlidar_ros2` a správny `port_name` v jeho `ld19.launch.py` (predvolené `/dev/ttyUSB0`).
+
+Ak sa ti `/imu` objaví hneď po boot-e bez spustenia launchu, skontroluj systemd: `systemctl list-unit-files | grep -iE 'imu|mpu|ros'` a prípadne `sudo systemctl disable --now <služba>`.
 
 ---
 
@@ -127,9 +150,6 @@ ros2 param set /wasd_motor_hat_node snap_threshold 0.15
 ros2 param list /wasd_motor_hat_node
 ros2 param dump /wasd_motor_hat_node
 
-# Nav2 lifecycle uzly (zapínanie/vypínanie plánovača)
-ros2 lifecycle set /planner_server deactivate
-ros2 lifecycle set /planner_server activate
 ```
 
 ---
@@ -137,25 +157,19 @@ ros2 lifecycle set /planner_server activate
 ## Topicy (prehľad)
 
 ```
-/scan                LaserScan      LD19 → slam_toolbox, Nav2
-/imu                 Imu            waverower_imu → waverower (korekcia)
-/cmd_vel             Twist          Nav2 → waverower (auto)
-/teleop_cmd_vel      Twist          PC teleop → waverower (manual)
-/camera/compressed   CompressedImage  stream na PC
-/detected_objects    String         YOLO výsledky
-/map                 OccupancyGrid  slam_toolbox → Nav2, RViz
+/scan                LaserScan      LD19 (ldlidar_ros2)
+/imu                 Imu            mpu6050driver → waverower (voliteľná korekcia)
+/cmd_vel             Twist          auto režim → waverower
+/teleop_cmd_vel      Twist          manuálny teleop → waverower
+/camera/compressed   CompressedImage  waverower_camera (voliteľne)
+/detected_objects    String         YOLO výsledky (voliteľne)
 ```
 
 ---
 
 ## Kompenzácia driftu bez enkodérov (IMU)
 
-1. **SLAM** (scan matching) – hlavný zdroj lokalizácie namiesto wheel odometrie.
-2. **IMU yaw korekcia** – pri priamej jazde číta gyro Z a upravuje PWM:
+1. **IMU yaw korekcia** – pri priamej jazde číta gyro Z a upravuje PWM:
    `l -= Kp·ω_z`, `r += Kp·ω_z`.
    Ladenie: začni s `imu_yaw_kp=0.10`, príliš vysoká hodnota = oscilácie.
-3. **Pseudo-odom** – statická identita `odom → base_link`; SLAM robí `map → base_link`.
-
----
-
-Pozri tiež: [NAV_AUTONOMY.md](NAV_AUTONOMY.md)
+2. Pre mapovanie / navigáciu môžeš neskôr doplniť externé balíky (napr. slam_toolbox, Nav2) a ponechať `waverower` v `control_mode:=auto` s `/cmd_vel`.

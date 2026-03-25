@@ -2,13 +2,12 @@
 <package format="3">
     <name>waverower</name>
     <version>0.1.0</version>
-    <description>Wave Rover ROS 2 demo – motor HAT, IMU I2C, LiDAR, kamera, SLAM, Nav2</description>
+    <description>Wave Rover – manuálna jazda (Motor HAT I2C), voliteľne kamera, LD LiDAR; IMU cez balík mpu6050driver</description>
     <maintainer email="xbotlo01@stud.fit.vut.cz">Filip Botlo</maintainer>
     <license>Apache-2.0</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>
 
-    <!-- Build závislosit -->
     <build_depend>rclcpp</build_depend>
     <build_depend>geometry_msgs</build_depend>
     <build_depend>sensor_msgs</build_depend>
@@ -17,7 +16,6 @@
     <build_depend>libopencv-dev</build_depend>
     <build_depend>ament_index_cpp</build_depend>
 
-    <!-- Runtime závislosti -->
     <exec_depend>rclcpp</exec_depend>
     <exec_depend>geometry_msgs</exec_depend>
     <exec_depend>sensor_msgs</exec_depend>
@@ -25,18 +23,11 @@
     <exec_depend>cv_bridge</exec_depend>
     <exec_depend>ament_index_cpp</exec_depend>
 
-    <!-- Externé balíky (nainštalované cez apt) -->
-    <exec_depend>slam_toolbox</exec_depend>
     <exec_depend>ldlidar_ros2</exec_depend>
+    <exec_depend>mpu6050driver</exec_depend>
     <exec_depend>tf2_ros</exec_depend>
     <exec_depend>rviz2</exec_depend>
-    <exec_depend>nav2_bringup</exec_depend>
-    <exec_depend>nav2_controller</exec_depend>
-    <exec_depend>nav2_planner</exec_depend>
-    <exec_depend>nav2_behaviors</exec_depend>
-    <exec_depend>nav2_bt_navigator</exec_depend>
-    <exec_depend>nav2_lifecycle_manager</exec_depend>
-    <exec_depend>nav2_velocity_smoother</exec_depend>
+    <exec_depend>teleop_twist_keyboard</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>
