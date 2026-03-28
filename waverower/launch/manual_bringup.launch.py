@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (mpu6050driver), LD19, teleop."""
+"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (Arduino USB fusion), LD19, teleop."""
 
 import os
 
@@ -15,6 +15,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
     use_imu    = LaunchConfiguration("use_imu")
+    use_mpu6050_i2c = LaunchConfiguration("use_mpu6050_i2c")
+    use_imu_kalman = LaunchConfiguration("use_imu_kalman")
     use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
     use_flow   = LaunchConfiguration("use_flow")
@@ -31,9 +33,14 @@ def generate_launch_description():
         condition=IfCondition(use_lidar),
     )
 
+    # I2C MPU len ak výslovne (nie súčasne s use_imu → oba by publikovali /imu).
     imu_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(mpu6050_launch),
-        condition=IfCondition(use_imu),
+        condition=IfCondition(
+            PythonExpression(
+                ['"', use_mpu6050_i2c, '" == "true" and "', use_imu, '" != "true"']
+            )
+        ),
     )
 
     try:
@@ -87,7 +94,25 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_imu",
                 default_value="false",
-                description="Include balík mpu6050driver (publikuje /imu).",
+                description="Arduino USB: imu_serial_fusion_bridge (CSV 15/20 polí) → /imu.",
+            ),
+            DeclareLaunchArgument(
+                "use_mpu6050_i2c",
+                default_value="false",
+                description="mpu6050driver na I2C (len ak use_imu:=false; inak konflikt na /imu).",
+            ),
+            DeclareLaunchArgument("imu_serial_port", default_value="/dev/ttyACM0"),
+            DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
+            DeclareLaunchArgument("imu_frame_id", default_value="imu_link"),
+            DeclareLaunchArgument(
+                "use_imu_kalman",
+                default_value="false",
+                description="imu_kalman_filter: /imu → /imu/filtered (6× 1D Kalman na a, ω).",
+            ),
+            DeclareLaunchArgument(
+                "imu_kalman_output",
+                default_value="/imu/filtered",
+                description="Výstup vyhladeného Imu.",
             ),
             DeclareLaunchArgument(
                 "use_lidar",
@@ -168,6 +193,34 @@ def generate_launch_description():
                 condition=IfCondition(use_teleop),
             ),
             imu_include,
+            Node(
+                package="waverower",
+                executable="imu_serial_fusion_bridge.py",
+                name="imu_serial_fusion_bridge",
+                output="screen",
+                condition=IfCondition(use_imu),
+                parameters=[
+                    {
+                        "serial_port": LaunchConfiguration("imu_serial_port"),
+                        "baud_rate": LaunchConfiguration("imu_baud_rate"),
+                        "frame_id": LaunchConfiguration("imu_frame_id"),
+                        "topic": "/imu",
+                    }
+                ],
+            ),
+            Node(
+                package="waverower",
+                executable="imu_kalman_filter.py",
+                name="imu_kalman_filter",
+                output="screen",
+                condition=IfCondition(use_imu_kalman),
+                parameters=[
+                    {
+                        "input_topic": "/imu",
+                        "output_topic": LaunchConfiguration("imu_kalman_output"),
+                    }
+                ],
+            ),
             lidar_include,
             *camera_stack,
         ]

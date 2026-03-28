@@ -2,7 +2,7 @@
 <package format="3">
     <name>waverower</name>
     <version>0.1.0</version>
-    <description>Wave Rover – manuálna jazda (Motor HAT I2C), voliteľne kamera, LD LiDAR; IMU cez balík mpu6050driver</description>
+    <description>Wave Rover – manuálna jazda (Motor HAT I2C), voliteľne kamera, LD LiDAR; IMU Arduino USB (imu_serial_fusion_bridge) alebo mpu6050driver</description>
     <maintainer email="xbotlo01@stud.fit.vut.cz">Filip Botlo</maintainer>
     <license>Apache-2.0</license>
 
@@ -32,6 +32,7 @@
     <exec_depend>rosbridge_server</exec_depend>
     <exec_depend>rosapi</exec_depend>
     <exec_depend>ament_index_python</exec_depend>
+    <exec_depend>rclpy</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

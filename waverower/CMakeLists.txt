@@ -63,5 +63,7 @@ install(TARGETS
 install(DIRECTORY launch  DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY web_ui  DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/waverower_manual_teleop.sh DESTINATION share/${PROJECT_NAME}/scripts)
+install(PROGRAMS scripts/imu_serial_fusion_bridge.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/imu_kalman_filter.py DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
