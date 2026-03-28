@@ -1,4 +1,4 @@
-#include "nodes/wasd_motor_hat.hpp"
+#include "nodes/motor_hat.hpp"
 
 #include "nodes/motor_hat_i2c.hpp"
 
@@ -22,8 +22,8 @@ std::string lower(std::string s) {
 
 }  // namespace
 
-WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
-    : Node("wasd_motor_hat_node", options) {
+MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
+    : Node("motor_hat_node", options) {
   i2c_bus_ = declare_parameter<int>("i2c_bus", 1);
   i2c_addr_ = declare_parameter<int>("i2c_address", 0x40);
   base_speed_ = declare_parameter<double>("base_speed", 1.0);
@@ -47,11 +47,16 @@ WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("teleop_max_angular_rad_s", 1.2);
   declare_parameter<bool>("teleop_invert_linear", true);
 
-  // IMU yaw korekcia: vyrovnávanie jazdy bez enkodérov
+  // IMU yaw PID korekcia: vyrovnávanie jazdy bez enkodérov
   declare_parameter<bool>("imu_correction", false);
   declare_parameter<double>("imu_yaw_kp", 0.15);
+  declare_parameter<double>("imu_yaw_ki", 0.05);
+  declare_parameter<double>("imu_yaw_kd", 0.01);
   // imu_yaw_deadband: ignoruj gyro Z pod touto hodnotou [rad/s] (potlačenie šumu)
   declare_parameter<double>("imu_yaw_deadband", 0.02);
+  // imu_yaw_integral_limit: anti-windup – max absolútna hodnota integrálu
+  declare_parameter<double>("imu_yaw_integral_limit", 0.3);
+  imu_pid_last_time_ = std::chrono::steady_clock::now();
 
   base_speed_ = std::clamp(base_speed_, 0.2, 1.0);
   turn_scale_ = std::clamp(turn_scale_, 0.1, 1.2);
@@ -66,21 +71,21 @@ WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
 
   sub_cmd_ = create_subscription<geometry_msgs::msg::Twist>(
       cmd_topic, rclcpp::QoS(10),
-      std::bind(&WasdMotorHatNode::cmd_vel_cb, this, std::placeholders::_1));
+      std::bind(&MotorHatNode::cmd_vel_cb, this, std::placeholders::_1));
 
   if (!teleop_topic.empty()) {
     sub_teleop_ = create_subscription<geometry_msgs::msg::Twist>(
         teleop_topic, rclcpp::QoS(10),
-        std::bind(&WasdMotorHatNode::teleop_twist_cb, this, std::placeholders::_1));
+        std::bind(&MotorHatNode::teleop_twist_cb, this, std::placeholders::_1));
   }
 
   // IMU subscription (voliteľná – aktivuje sa parametrom imu_correction:=true)
   sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu", rclcpp::SensorDataQoS(),
-      std::bind(&WasdMotorHatNode::imu_cb, this, std::placeholders::_1));
+      std::bind(&MotorHatNode::imu_cb, this, std::placeholders::_1));
 
   param_cb_ = add_on_set_parameters_callback(
-      std::bind(&WasdMotorHatNode::on_param_change, this, std::placeholders::_1));
+      std::bind(&MotorHatNode::on_param_change, this, std::placeholders::_1));
 
   timer_ = create_wall_timer(std::chrono::milliseconds(10), [this] { timer_cb(); });
 
@@ -93,7 +98,7 @@ WasdMotorHatNode::WasdMotorHatNode(const rclcpp::NodeOptions& options)
               teleop_topic.empty() ? "(off)" : teleop_topic.c_str());
 }
 
-WasdMotorHatNode::~WasdMotorHatNode() {
+MotorHatNode::~MotorHatNode() {
   running_ = false;
   if (input_thread_.joinable()) {
     input_thread_.join();
@@ -107,7 +112,7 @@ WasdMotorHatNode::~WasdMotorHatNode() {
   }
 }
 
-HatControlMode WasdMotorHatNode::parse_control_mode(const std::string& s) {
+HatControlMode MotorHatNode::parse_control_mode(const std::string& s) {
   const std::string k = lower(s);
   if (k == "auto" || k == "autonomous") {
     return HatControlMode::Auto;
@@ -115,7 +120,7 @@ HatControlMode WasdMotorHatNode::parse_control_mode(const std::string& s) {
   return HatControlMode::Manual;
 }
 
-rcl_interfaces::msg::SetParametersResult WasdMotorHatNode::on_param_change(
+rcl_interfaces::msg::SetParametersResult MotorHatNode::on_param_change(
     const std::vector<rclcpp::Parameter>& parameters) {
   rcl_interfaces::msg::SetParametersResult out;
   out.successful = true;
@@ -141,7 +146,7 @@ rcl_interfaces::msg::SetParametersResult WasdMotorHatNode::on_param_change(
   return out;
 }
 
-void WasdMotorHatNode::reset_motion_state() {
+void MotorHatNode::reset_motion_state() {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = 0.0;
   tr_ = 0.0;
@@ -154,7 +159,7 @@ void WasdMotorHatNode::reset_motion_state() {
   smooth_r_ = 0.0;
 }
 
-void WasdMotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
+void MotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
   twist_linear_x_ = msg->linear.x;
   twist_angular_z_ = msg->angular.z;
@@ -162,7 +167,7 @@ void WasdMotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg
   last_cmd_steady_ = std::chrono::steady_clock::now();
 }
 
-void WasdMotorHatNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
+void MotorHatNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   if (control_mode_.load(std::memory_order_relaxed) != HatControlMode::Manual) {
     return;
   }
@@ -180,7 +185,7 @@ void WasdMotorHatNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPt
   last_tr_ = t;
 }
 
-void WasdMotorHatNode::prepare_terminal() {
+void MotorHatNode::prepare_terminal() {
   if (!isatty(STDIN_FILENO)) {
     RCLCPP_WARN(get_logger(), "stdin nie je TTY");
     return;
@@ -198,24 +203,24 @@ void WasdMotorHatNode::prepare_terminal() {
   tty_ok_ = true;
 }
 
-void WasdMotorHatNode::start_input_thread() {
+void MotorHatNode::start_input_thread() {
   running_ = true;
   input_thread_ = std::thread([this] { input_loop(); });
 }
 
-void WasdMotorHatNode::touch_fb(double v) {
+void MotorHatNode::touch_fb(double v) {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = std::clamp(v, -1.0, 1.0);
   last_fb_ = std::chrono::steady_clock::now();
 }
 
-void WasdMotorHatNode::touch_tr(double v) {
+void MotorHatNode::touch_tr(double v) {
   std::lock_guard<std::mutex> lock(mu_);
   tr_ = std::clamp(v, -1.0, 1.0);
   last_tr_ = std::chrono::steady_clock::now();
 }
 
-void WasdMotorHatNode::full_stop_keys() {
+void MotorHatNode::full_stop_keys() {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = 0.0;
   tr_ = 0.0;
@@ -224,7 +229,7 @@ void WasdMotorHatNode::full_stop_keys() {
   smooth_r_ = 0.0;
 }
 
-void WasdMotorHatNode::bump_speed(double delta) {
+void MotorHatNode::bump_speed(double delta) {
   double new_base = 0.0;
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -235,7 +240,7 @@ void WasdMotorHatNode::bump_speed(double delta) {
   RCLCPP_INFO(get_logger(), "base_speed = %.2f", new_base);
 }
 
-void WasdMotorHatNode::input_loop() {
+void MotorHatNode::input_loop() {
   std::array<char, 8> esc_buf{};
   int esc_len = 0;
 
@@ -338,7 +343,7 @@ void WasdMotorHatNode::input_loop() {
   }
 }
 
-void WasdMotorHatNode::timer_cb() {
+void MotorHatNode::timer_cb() {
   using clock = std::chrono::steady_clock;
   const auto now = clock::now();
   const double boost = std::clamp(get_parameter("pwm_boost").as_double(), 1.0, 2.5);
@@ -359,7 +364,7 @@ void WasdMotorHatNode::timer_cb() {
   }
 }
 
-void WasdMotorHatNode::timer_cb_manual(const std::chrono::steady_clock::time_point& now, double boost,
+void MotorHatNode::timer_cb_manual(const std::chrono::steady_clock::time_point& now, double boost,
                                        double snap, double snap_turn, double in_place_boost, double alpha,
                                        double alpha_spin) {
   double fb = 0.0;
@@ -399,7 +404,7 @@ void WasdMotorHatNode::timer_cb_manual(const std::chrono::steady_clock::time_poi
   apply_tank(sl, sr, base, boost, snap, snap_turn, low_forward, in_place_boost);
 }
 
-void WasdMotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, double in_place_boost,
+void MotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, double in_place_boost,
                                      double alpha, double alpha_spin) {
   cmd_vel_timeout_ms_ = get_parameter("cmd_vel_timeout_ms").as_int();
   wheel_separation_m_ = std::max(get_parameter("wheel_separation_m").as_double(), 0.01);
@@ -447,32 +452,54 @@ void WasdMotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn
   apply_tank(sl, sr, base, boost, snap, snap_turn, low_forward, in_place_boost);
 }
 
-void WasdMotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
+void MotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
   imu_yaw_rate_ = msg->angular_velocity.z;
 }
 
-void WasdMotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
+void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
                                   double snap_fwd, double snap_turn, bool low_forward,
                                   double in_place_boost) {
-  // IMU yaw korekcia: keď ideme rovno (nízka rotácia), kompenzujeme drift
-  // bez enkodérov pomocou gyro Z. Ak robot stáča doprava (gyro_z > 0 v ROS = otočenie vľavo),
-  // zrýchlime ľavé koleso a spomalíme pravé.
+  // IMU yaw PID korekcia: keď ideme rovno (nízka rotácia), kompenzujeme drift
+  // bez enkodérov pomocou gyro Z.
+  //   P – okamžitá odchýlka yaw rate od 0
+  //   I – akumulovaný drift (napr. sklonený povrch)
+  //   D – tlmenie kmitania
   double l = l_cmd;
   double r = r_cmd;
   if (get_parameter("imu_correction").as_bool() && !low_forward) {
-    const double kp       = get_parameter("imu_yaw_kp").as_double();
-    const double deadband = get_parameter("imu_yaw_deadband").as_double();
+    const double kp           = get_parameter("imu_yaw_kp").as_double();
+    const double ki           = get_parameter("imu_yaw_ki").as_double();
+    const double kd           = get_parameter("imu_yaw_kd").as_double();
+    const double deadband     = get_parameter("imu_yaw_deadband").as_double();
+    const double windup_limit = get_parameter("imu_yaw_integral_limit").as_double();
+
     double yaw_rate = 0.0;
     {
       std::lock_guard<std::mutex> lock(mu_);
       yaw_rate = imu_yaw_rate_;
     }
-    if (std::abs(yaw_rate) > deadband) {
-      const double corr = kp * yaw_rate;
+
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::chrono::duration<double>(now - imu_pid_last_time_).count();
+    imu_pid_last_time_ = now;
+
+    const double error = (std::abs(yaw_rate) > deadband) ? yaw_rate : 0.0;
+
+    if (dt > 0.001 && dt < 0.5) {
+      imu_yaw_integral_ += error * dt;
+      imu_yaw_integral_ = std::clamp(imu_yaw_integral_, -windup_limit, windup_limit);
+      const double d_error = (error - imu_yaw_prev_error_) / dt;
+      const double corr = kp * error + ki * imu_yaw_integral_ + kd * d_error;
       l = std::clamp(l - corr, -1.0, 1.0);
       r = std::clamp(r + corr, -1.0, 1.0);
     }
+    imu_yaw_prev_error_ = error;
+  } else {
+    // Reset PID stavu keď korekcia nie je aktívna (otáčanie, zastávka, param off)
+    imu_yaw_integral_   = 0.0;
+    imu_yaw_prev_error_ = 0.0;
+    imu_pid_last_time_  = std::chrono::steady_clock::now();
   }
 
   const double snap_eff = low_forward ? snap_turn : snap_fwd;

@@ -9,6 +9,7 @@
 
 # Bez nounset: ROS setup.bash používa nepovinné premenné (napr. AMENT_TRACE_SETUP_FILES).
 set -eo pipefail
+export ROS_DOMAIN_ID=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"

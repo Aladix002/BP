@@ -17,7 +17,7 @@ find_package(cv_bridge REQUIRED)
 add_executable(waverower
     src/main.cpp
     src/nodes/motor_hat_i2c.cpp
-    src/nodes/wasd_motor_hat.cpp
+    src/nodes/motor_hat.cpp
 )
 target_include_directories(waverower PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -61,6 +61,7 @@ install(TARGETS
 )
 
 install(DIRECTORY launch  DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY params  DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY web_ui  DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/waverower_manual_teleop.sh DESTINATION share/${PROJECT_NAME}/scripts)
 install(PROGRAMS scripts/imu_serial_fusion_bridge.py DESTINATION lib/${PROJECT_NAME})

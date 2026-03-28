@@ -23,6 +23,7 @@ rm -f /dev/shm/fastrtps_* 2>/dev/null || true
 
 # Zmensenie FastDDS problemov so shared-memory lockmi.
 export RMW_FASTRTPS_USE_SHM=0
+export ROS_DOMAIN_ID=0
 
 echo "==> Source workspace..."
 # Remove stale overlays from parent workspace shells.

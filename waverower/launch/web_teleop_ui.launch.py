@@ -5,7 +5,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -44,6 +44,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
             DeclareLaunchArgument(
                 "serve_http",
                 default_value="true",

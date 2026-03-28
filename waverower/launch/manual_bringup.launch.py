@@ -5,7 +5,7 @@ import os
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -14,6 +14,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
+    camera_id = LaunchConfiguration("camera_id")
     use_imu    = LaunchConfiguration("use_imu")
     use_mpu6050_i2c = LaunchConfiguration("use_mpu6050_i2c")
     use_imu_kalman = LaunchConfiguration("use_imu_kalman")
@@ -61,6 +62,7 @@ def generate_launch_description():
                 namespace="camera",
                 output="screen",
                 condition=IfCondition(use_camera),
+                parameters=[{"camera": camera_id}],
                 remappings=[
                     ("image_raw", "/camera/image_raw"),
                     ("camera_info", "/camera/camera_info"),
@@ -86,10 +88,16 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
             DeclareLaunchArgument(
                 "use_camera",
                 default_value="false",
-                description="Spusti camera_ros; web UI berie /camera/camera_node/image_raw/compressed.",
+                description="Spusti camera_ros (camera_node v /camera); topic napr. /camera/image_raw.",
+            ),
+            DeclareLaunchArgument(
+                "camera_id",
+                default_value="0",
+                description="Parameter camera pre camera_ros: index 0,1,... alebo napr. /dev/video0 (Záleží od ovládača).",
             ),
             DeclareLaunchArgument(
                 "use_imu",
@@ -144,7 +152,7 @@ def generate_launch_description():
             Node(
                 package="waverower",
                 executable="waverower",
-                name="wasd_motor_hat_node",
+                name="motor_hat_node",
                 output="screen",
                 parameters=[{
                     "control_mode":       LaunchConfiguration("control_mode"),

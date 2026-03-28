@@ -1,5 +1,5 @@
-#ifndef NODES_WASD_MOTOR_HAT_HPP
-#define NODES_WASD_MOTOR_HAT_HPP
+#ifndef NODES_MOTOR_HAT_HPP
+#define NODES_MOTOR_HAT_HPP
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -24,14 +24,10 @@ class MotorHatI2c;
 
 enum class HatControlMode : std::uint8_t { Manual = 0, Auto = 1 };
 
-/**
- * Jeden uzol: Motor HAT (I2C) — manuál (WASD + voliteľný Twist z PC na teleop topicu) alebo auto (cmd_vel).
- * Režim: parameter `control_mode` = manual | auto (meniteľný za behu, napr. ros2 param set).
- */
-class WasdMotorHatNode : public rclcpp::Node {
+class MotorHatNode : public rclcpp::Node {
 public:
-  explicit WasdMotorHatNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
-  ~WasdMotorHatNode() override;
+  explicit MotorHatNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+  ~MotorHatNode() override;
 
   void prepare_terminal();
   void start_input_thread();
@@ -58,8 +54,11 @@ private:
 
   void imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg);
 
-  // IMU yaw korekcia pre jazdu rovne (bez enkodérov)
-  double imu_yaw_rate_{0.0};          // posledná hodnota gyro Z [rad/s]
+  // IMU yaw PID korekcia pre jazdu rovne (bez enkodérov)
+  double imu_yaw_rate_{0.0};
+  double imu_yaw_integral_{0.0};
+  double imu_yaw_prev_error_{0.0};
+  std::chrono::steady_clock::time_point imu_pid_last_time_{};
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
   std::unique_ptr<MotorHatI2c> hat_;
