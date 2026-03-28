@@ -90,7 +90,7 @@ zariadení a modulov.
 
 
 \subsection*{Inerciálny merací systém (IMU)}
-Wave Rover používa špecifický modul IMU, MPU-6050 integruje akcelerometer a gyroskop na jednom čipe. Hoci tento modul poskytuje informácie týkajúce sa pohybu a orientácie robota, je to dôležité pre veľmi presnú navigáciu a riadenie pohybu. Jednotlivé komponenty IMU a ich fungovanie.
+Wave Rover používa špecifický modul IMU, MPU-6050 integruje akcelerometer a gyroskop na jednom čipe; technické parametre rozsahov a rozhrania zodpovedajú dokumentácii čipu a komunite okolo knižníc pre MPU6050~\cite{mpu6050_electroniccats}. Hoci tento modul poskytuje informácie týkajúce sa pohybu a orientácie robota, je to dôležité pre veľmi presnú navigáciu a riadenie pohybu. Jednotlivé komponenty IMU a ich fungovanie.
 
 \subsubsection*{Akcelerometer}
 V module IMU MPU-6050 sa nachádza 3-osový akcelerometer, ktorý meria lineárne zrýchlenie
@@ -210,11 +210,15 @@ Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hl
 
 \subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
 
-V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \texttt{/camera/image\_raw} (alebo príslušný komprimovaný topic). RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom; pri vizualizácii ďalších senzorov (napr. LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr. \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach.
+V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \texttt{/camera/image\_raw} (alebo príslušný komprimovaný topic). RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom; pri vizualizácii ďalších senzorov (napr. LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr. \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach. Pri hardvéri Raspberry Pi Camera ide o CMOS senzor; oficiálna dokumentácia modulu popisuje konštrukciu snímania~\cite{raspberrypi_camera_module}, farebné filtrovanie (Bayerova maska) vysvetľuje napr.\ článok o Bayerovom filtri~\cite{wikipedia_bayer_filter}.
 
 \subsection*{Súvis s implementáciou v tejto práci}
 
-[PLACEHOLDER: Tu doplníte stručný popis toho, aké uzly a témy v našej implementácii využívajú výstup z kamery (napr. ktorý node odoberá ktorý topic, či sa používa compressed alebo raw, a ako sa dáta z kamery spájajú s LIDARom/IMU pre navigáciu alebo teleprezenciu.)]
+Na reálnom robote sa obraz z CSI kamery získava uzlami balíka \texttt{camera\_ros}, ktoré publikujú typicky témy \texttt{/camera/image\_raw} a \texttt{/camera/camera\_info}. Pre zníženie záťaže CPU a siete sa často používa komprimovaný obraz (\texttt{sensor\_msgs/msg/CompressedImage}) na príbuzných témach s príponou \texttt{/compressed}. V projekte je voliteľný uzol \texttt{waverower\_camera} (balík \texttt{waverower}), ktorý vie odoberať surový alebo komprimovaný vstup a poskytovať ďalšie výstupy (napr.\ detekcie); pre webové ovládanie sa obraz čerpá z komprimovaného topicu konfigurovateľného v rozhraní webovej aplikácie.
+
+Uzly \texttt{optical\_flow} a \texttt{optical\_flow\_dense} využívajú knižnicu OpenCV podľa oficiálneho tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}: \textbf{riedky tok} Lucas--Kanade hľadá posun vybraných bodov medzi dvoma snímkami (v implementácii cez pyramídy \texttt{calcOpticalFlowPyrLK}, aby sa zachytil aj väčší posun), \textbf{hustý tok} Farnebäck odhaduje posun pre každý pixel cez polynomiálnu expanziu okolia (\texttt{calcOpticalFlowFarneback}). Vstupom je komprimovaný JPEG snímok; uzol \texttt{optical\_flow} počíta stredný horizontálny posun sledovaných bodov medzi snímkami a z neho odvádza korekciu úhlovej rýchlosti. Tá sa pripočíta k poslednému príkazu \texttt{geometry\_msgs/msg/Twist} z manuálneho teleopu a publikuje sa na výstupný topic (napr.\ \texttt{/teleop\_cmd\_vel\_corrected}), ktorý má následne odoberať motorový uzol. Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v malom deadzone), aby sa neprebíjal úmysel riadenia.
+
+Pre autonómnu navigáciu a SLAM v simulácii aj na hardvéri slúži predovšetkým LiDAR na téme \texttt{/scan}; IMU (\texttt{/imu}) môže byť použitá na doplnkovú stabilizáciu alebo odhad orientácie podľa konfigurácie. Kamera slúži predovšetkým teleprezencii, vizualizácii v RViz a experimentom s počítačovým videním; väzba na mapovanie je v tejto práci typicky cez LiDAR (nie priama vizuálna SLAM vetva).
 
 \section{Komunikačné rozhrania}
 
@@ -260,13 +264,13 @@ Táto časť poskytuje prehľad o ROS2, jeho histórii, vývoji a vylepšeniach 
 
 ROS 2 (Robot Operating System 2) je moderná softvérová platforma tvorená z viacerých knižníc a nástrojov na vývoj v oblasti robotiky. Bola navrhnutá s cieľom prekonať obmedzenia prvej verzie a reagovať na požiadavky súčasných robotických systémov.
 
- ROS 2 umožňuje efektívnu komunikáciu medzi týmito komponentmi vďaka použitiu štandardu DDS (Data Distribution Service), ktorý je osvedčený aj v kritických oblastiach, ako sú vojenské či finančné systémy. DDS prináša aj výhody, ako sú zabudovaná bezpečnosť, podpora pre reálne časové aplikácie a schopnosť pracovať v nestabilných sieťových podmienkach, napríklad pri Wi-Fi alebo satelitnej komunikácii.\cite{ros2}
+ ROS 2 umožňuje efektívnu komunikáciu medzi týmito komponentmi vďaka použitiu štandardu DDS (Data Distribution Service), ktorý je osvedčený aj v kritických oblastiach, ako sú vojenské či finančné systémy. DDS prináša aj výhody, ako sú zabudovaná bezpečnosť, podpora pre reálne časové aplikácie a schopnosť pracovať v nestabilných sieťových podmienkach, napríklad pri Wi-Fi alebo satelitnej komunikácii.\cite{ros2} Štandard DDS a jeho úloha v dátocentrickom modeli sú zhrnuté v materiáloch DDS Foundation~\cite{dds_foundation_what_is_dds}.
 
 \subsection*{Rozdiel medzi ROS 1 a ROS 2}
 
-Jednou z najvýznamnejších zmien je odstránenie závislosti od centrálnej časti systému, tzv. ROS master. V ROS1 uchopenie ROS slúžilo ako jediný faktor zlyhania, čo znamenalo, že ak prestane fungovať, celý systém sa zastaví. ROS2 prešiel do decentralizovanej štruktúry, kde uzly hovoria priamo s každým iným, čo zvyšuje spoľahlivosť celého systému.
+Jednou z najvýznamnejších zmien je odstránenie závislosti od centrálnej časti systému, tzv. ROS master. V ROS1 uchopenie ROS slúžilo ako jediný faktor zlyhania, čo znamenalo, že ak prestane fungovať, celý systém sa zastaví. ROS2 prešiel do decentralizovanej štruktúry, kde uzly hovoria priamo s každým iným, čo zvyšuje spoľahlivosť celého systému; objavovanie uzlov v doméne a nadväzovanie spojení popisuje dokumentácia ROS~2~\cite{ros2_doc_discovery}.
 
-Ďalším vylepšením je sprievodca v reálnom čase. ROS2 rieši tento problém použitím služby DDS (Data Distribution Service), ktorá umožňuje konfiguráciu Quality of Service (QoS) na optimalizáciu komunikácie a pomáha pri deterministickom vykonávaní úloh.
+Ďalším vylepšením je sprievodca v reálnom čase. ROS2 rieši tento problém použitím služby DDS (Data Distribution Service), ktorá umožňuje konfiguráciu Quality of Service (QoS) na optimalizáciu komunikácie a pomáha pri deterministickom vykonávaní úloh~\cite{ros2_doc_qos}.
 
 ROS2 tiež predstavil myšlienku „komponentov“. Vďaka nemu môžu vývojári spustiť niekoľko uzlov v jednom spustiteľnom súbore,čo zvyšuje efektivitu komunikácie medzi uzlami.
 
@@ -281,7 +285,7 @@ Táto sekcia ukazuje jednoduchú prácu s jednotlivymi komponentmi, medzi ktoré
 Uzly sú základnými stavebnými prvkami systému ROS2, pričom každý uzol predstavuje
 samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výstup
 výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
-alebo akcií.
+alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v tutoriáli ROS~2~\cite{ros2_doc_understanding_topics}; zbierky bežných typov správ sú zdokumentované v balíku \emph{common\_msgs}~\cite{wiki_ros_common_msgs}.
 
 V ROS2 uzly bežia iba v prípade potreby, čo zabezpečuje metóda \texttt{spin()}.
 
@@ -441,13 +445,10 @@ Gazebo využíva súbory vo formáte xacro na definovanie robotov, senzorov a pr
 
 
 \subsubsection*{Integrácia s ROS2}
-Gazebo je integrované s ROS2 pomocou balíka \texttt{gazebo\_ros}, ktorý umožňuje spúšťanie simulácií a komunikáciu s ROS2 uzlami.
+Pre ROS~2 Jazzy a novší simulátor \emph{Gazebo Sim} (predtým Ignition) sa používajú balíky \texttt{ros\_gz\_sim}, \texttt{ros\_gz\_bridge} a súvisiace mosty namiesto staršieho balíka \texttt{gazebo\_ros} z prostredia Gazebo Classic. Simulátor načíta SDF svet a model robota; senzory (kamera, laser) publikujú témy v priestore Gazebo, ktoré most prepojí na štandardné ROS~2 správy (\texttt{sensor\_msgs}, \texttt{nav\_msgs}, \texttt{tf2}).
 
 \subsubsection*{Praktický príklad}
-\begin{verbatim}
-ros2 launch itt launch_sim.launch.py world:=./src/prekazky.world 
-\end{verbatim}
-Tento príkaz spustí simulátor Gazebo so zostaveným modelom robota vo vybranom prostredí.
+V rámci vývoja sa simulácia spúšťa z pracovného priestoru s balíkmi \texttt{waver\_sim} / \texttt{waver\_nav}, napr.\ príkazom \texttt{ros2 launch waver\_sim launch\_sim.launch.py} alebo jednotným skriptom \texttt{run\_sim.sh}, ktorý zdrojuje prostredie ROS~2 Jazzy, vyčistí staré procesy a voliteľne spustí teleop v samostatnom termináli. Parametre mosta (mapovanie tém Gazebo $\rightarrow$ ROS) sú v konfiguračnom súbore YAML; obraz z kamery je v ROS často dostupný na \texttt{/camera/image\_raw}.
 
 \section{Integrácia senzorov a akčných členov}
 
@@ -483,24 +484,44 @@ micro-ROS~\cite{microros} je rozšírenie ekosystému ROS~2 pre mikrokontroléry
 micro-ROS beží na embedded zariadení nad real-time operačným systémom (typicky FreeRTOS). Knižnica micro-ROS využíva rovnaké koncepty ako ROS~2 (DDS, témy, typy správ), ale s redukovanou závislosťou a pamäťovou náročnosťou. Komunikácia medzi mikrokontrolérom a zvyškom ROS~2 siete prebieha cez \emph{micro-ROS agenta}, ktorý beží na Linuxe (napr. na Raspberry Pi alebo na vývojovom PC). Agent prijíma dáta z embedded zariadenia cez transport (sériový port UART, WiFi alebo Ethernet) a premostí ich do DDS siete. Uzly bežiace na RPi a uzly bežiace na mikrokontroléri tak vidia navzájom svoje témy v rámci jednej ROS~2 doméne. micro-ROS je kompatibilný s distribúciami ROS~2 Humble a novšími (Iron, Jazzy)~\cite{microros_setup}.
 
 \paragraph{Vzorové uzly pre motor a IMU.}
-V rámci tejto práce boli pripravené vzorové ukážky micro-ROS kódu (adresár \texttt{micro\_ros\_examples} v projekte): (1)~subscriber na topic \texttt{/motor\_cmd} (typ \texttt{std\_msgs/msg/Float64MultiArray}) -- po prijatí hodnôt pre ľavý a pravý motor v rozsahu $-1$ až $1$ môže firmware na ESP32 priamo ovládať PWM alebo H-mosť; (2)~publisher topicu \texttt{/imu} (typ \texttt{sensor\_msgs/msg/Imu}) -- periodické čítanie akcelerometra a gyroskopu (napr. MPU6050 cez I2C) a publikovanie na ROS~2. V takejto architektúre by uzol \texttt{motor\_driver} na RPi nebol potrebný (ESP32 by odoberal \texttt{/motor\_cmd} priamo) a IMU dáta by prichádzali ako štandardný ROS~2 topic namiesto HTTP pollingu. [PLACEHOLDER: Doplniť výsledky testov pripojenia micro-ROS agenta s ESP32 a merania latencie, ak boli vykonané.]
-
-\paragraph{Placeholdery.}
-[PLACEHOLDER: Konkrétna verzia ESP-IDF a micro\_ros\_setup otestovaná s ROS~2 Humble/Jazzy; konfigurácia agenta (sériový port vs. WiFi) pre vašu sieť; rozhodnutie, či ESP32 publikuje/odoberá priamo témy \texttt{/motor\_cmd} a \texttt{/imu}, alebo iné názvy s remapom v launch súbore.]
+Ako alternatíva k HTTP rozhraniu existuje ekosystém micro-ROS: mikrokontrolér môže cez agenta vystupovať priamo v ROS~2 sieti (témy, služby). V rámci tejto práce boli zvážené vzorové ukážky (adresár \texttt{micro\_ros\_examples}): subscriber na príkazy pohonu a publisher IMU. \textbf{V praktickej implementácii použitej v texte nižšie} je však primárne riešenie \emph{HTTP JSON príkazy} medzi Raspberry Pi a firmwareom UGV Base General na ESP32 (pozri kapitolu~\ref{kap:implementacia}), pretože priamo zodpovedá dokumentovanému API výrobcu dosky. Micro-ROS ostáva voľbou do budúcna pri požiadavke na jednotnú DDS doménu bez vlastného HTTP mosta; podrobné merania latencie agenta v tejto práci nie sú uvedené.
 
 
 
 
 \chapter{Implementácia}
+\label{kap:implementacia}
 
-V tejto kapitole je popísaný návrh a priebeh implementácie. Niektoré časti sú označené ako placeholdery a doplnia sa po dokončení implementácie (konkrétne názvy topicov, parametre, launch súbory, obrázky z testov a pod.).
+V tejto kapitole je popísaný návrh a priebeh implementácie vrátane dvoch hardvérových zostáv (ESP32 + HTTP vs.\ Motor Driver HAT + senzory na RPi), simulácie v Gazebo Sim a použitia optického toku z kamery.
 
 \section{Aktuálna architektúra robota (autíčka)}
 
 Aktuálny softvérový systém na platforme Wave Rover je implementovaný ako ROS~2 balík \texttt{waverower} (distribúcia Jazzy) na Raspberry Pi. Sekcia~\ref{sec:waverower-riadenie} popisuje \textbf{skutočnú implementáciu} v zdrojových kódoch (C++ a Python) -- motorový uzol, optický tok, IMU PID, rozdelenie LiDARu pri bludení a launch súbory -- namiesto staršieho konceptu s ESP32 multiplexorom uvedeného nižšie pri iných uzloch.
 
-[PLACEHOLDER: Schéma grafu uzlov (\texttt{rqt\_graph}) a zoznam launch súborov alebo príkazov na spustenie systému na robotovi.]
-[PLACEHOLDER: Popis spúšťania na Raspberry Pi (systemd služba \texttt{waverower.service}, zdrojovanie workspace).]
+\subsection*{Druhá hardvérová zostava: Motor Driver HAT a MPU6050 na Raspberry Pi}
+
+Nezávisle od vyššie uvedenej vetvy s ESP32 sa v projekte používa aj konfigurácia, v ktorej Raspberry Pi priamo ovláda Waveshare \emph{Motor Driver HAT} po zbernici I\textsuperscript{2}C (typicky adresa \texttt{0x40}) uzlami balíka \texttt{waverower}. Uzol \texttt{wasd\_motor\_hat\_node} odoberá \texttt{geometry\_msgs/msg/Twist} na \texttt{/teleop\_cmd\_vel} (manuál) alebo \texttt{/cmd\_vel} (autonómny režim) podľa parametra \texttt{control\_mode}. IMU MPU6050 sa v tejto zostave pripája k RPi cez I\textsuperscript{2}C a publikuje sa samostatným uzlami balíka \texttt{mpu6050driver} na topic \texttt{/imu}; voliteľná je korekcia driftu pri priamej jazde na základe gyroskopu. LiDAR LD19 poskytuje \texttt{/scan} cez balík \texttt{ldlidar\_ros2}. Táto zostava \emph{nepoužíva} HTTP motorové príkazy na ESP32; pohon je výhradne cez HAT na RPi.
+
+\subsection*{Odporúčané spustenie a dokumentácia}
+
+Na robotovi sa systém spúšťa z ROS~2 workspace po príkaze \texttt{colcon build}, následne \texttt{source install/setup.bash}. Pre jednoduché spustenie motorov a voliteľných senzorov slúži napr.\ \texttt{ros2 launch waverower manual\_bringup.launch.py} s parametrami \texttt{use\_camera:=true}, \texttt{use\_imu:=true}, \texttt{use\_lidar:=true} podľa potreby. Pre čisto manuálne ovládanie je k dispozícii aj pomocný skript v koreni workspace alebo \texttt{ros2 run waverower waverower}. Odporúča sa zachytiť graf uzlov nástrojom \texttt{rqt\_graph} a vložiť ho do práce ako obrázok. Ak je nasadená systemd služba (napr.\ vlastná unit súbor pre ROS~2 uzly), patrí do prílohy presný názov súboru a príkaz \texttt{ExecStart}; konfigurácia závisí od inštalácie na konkrétnom robote.
+
+\subsection*{Webové rozhranie pre diaľkové ovládanie (teleprezencia z mobilu)}
+
+Pre ovládanie robota z prehliadača na telefóne alebo druhom PC je v balíku \texttt{waverower} pripravená jednoduchá webová aplikácia v priečinku \texttt{web\_ui}: statické súbory \texttt{index.html}, \texttt{app.js} a \texttt{style.css}. Aplikácia používa knižnicu \emph{roslibjs}~\cite{roslibjs_github}, ktorá cez WebSocket komunikuje s balíkom \emph{rosbridge\_suite}~\cite{rosbridge_suite_github}; launch súbor \texttt{web\_teleop\_ui.launch.py} spúšťa štandardný \texttt{rosbridge\_websocket} (typicky port \texttt{9090}) a súčasne jednoduchý HTTP server (\texttt{python3 -m http.server}) viazaný na \texttt{0.0.0.0:8080}, ktorý obsluhuje spomínané súbory z inštalovaného \texttt{share/waverower/web\_ui}. Používateľ otvorí v sieti stránku \texttt{http://<IP-Raspberry-Pi>:8080}, v rozhraní zadá adresu WebSocketu \texttt{ws://<IP>:9090} a po pripojení klient v JavaScripte vytvorí publisher na topic \texttt{/teleop\_cmd\_vel} (typ \texttt{geometry\_msgs/msg/Twist})---rovnaký kanál ako pri klávesnicovom teleope---a voliteľne odber komprimovaného obrazu z kamery (v kóde predvolený topic pre \texttt{CompressedImage}; pri zmene kamery ho treba zladíť v \texttt{app.js}). Tým sa dosiahne teleprezencia bez natívnej aplikácie: riadenie je v ROS~2, rozhranie je len tenká vrstva v prehliadači.
+
+\subsection*{Zarovnanie jazdy: optický tok z kamery a korekcia z IMU}
+
+Pojem \emph{zarovnanie} v tejto práci znamená \textbf{zníženie nechceného bočného driftu} pri zamýšľanej jazde vpred (robot sa fyzicky neukláňa do strany alebo sa neotáča pomaly pri rovnakom príkaze dopredu). Používajú sa dva nezávislé prístupy; oba sú \emph{doplnkové} voči navigácii Nav2 a nevyžadujú mapu.
+
+\paragraph{Optický tok (kamera, počítačové videnie).}
+Teória a funkcie OpenCV sú prehľadne zhrnuté v~\cite{opencv_optical_flow_tutorial}: riedky Lucas--Kanade predpokladá lokálne konštantný posun v okne okolo bodu a rieši sa iteráčne; pyramídová varianta sleduje veľké posuny. Hustý Farnebäck aproximuje intenzitu polynómom a z neho odvodzuje husté pole posunov. Uzly \texttt{optical\_flow} (Lucas--Kanade, \texttt{calcOpticalFlowPyrLK}) a \texttt{optical\_flow\_dense} (Farnebäck) pracujú s postupnosťou snímkov z komprimovaného obrazu (JPEG). V riedkej vetve sa z vybraných bodov scény (detekcia rohov \texttt{goodFeaturesToTrack}) odhadne stredný \textbf{horizontálny posun} medzi dvoma snímkami: ak sa statická scéna v obraze posúva relatívne doľava, robot sa voči nej pohybuje doprava a naopak. Z toho sa vypočíta malá \textbf{korekcia \texttt{angular.z}} (otáčanie okolo zvislej osi), ktorá sa pripočíta k poslednému príkazu z manuálneho teleopu. Uplatní sa len vtedy, keď robot \textbf{ide dopredu} (dostatočne veľká \texttt{linear.x}) a keď operátor \textbf{aktívne netočí} (\texttt{angular.z} v deadzone), aby sa neprebíjal úmysel riadenia. Výstup sa typicky publikuje na topic \texttt{/teleop\_cmd\_vel\_corrected}; motorový uzol musí odoberať tento topic namiesto pôvodného \texttt{/teleop\_cmd\_vel}, ak má byť korekcia účinná. Ide o \textbf{vizuálnu} spätnú väzbu: závisí od textúry podlahy, osvetlenia a oneskorenia kompresie; nenahrádza presné meranie polohy v metre.
+
+\paragraph{IMU a zarovnanie pri priamej jazde (gyroskop).}
+V zostave s \textbf{Motor Driver HAT} a uzlami \texttt{waverower} môže uzol \texttt{wasd\_motor\_hat\_node} zapnúť parameter \texttt{imu\_correction}. IMU (MPU6050 cez \texttt{mpu6050driver}, topic \texttt{/imu}) vtedy poskytuje \textbf{uhlovú rýchlosť okolo zvislej osi} (\texttt{angular\_velocity.z}, yaw rate). Pri požadovanom pohybe vpred bez zámerného otáčania sa odchýlka od nuly interpretuje ako \emph{neželaná rotácia} podvozku (jedna strana sa prešmykuje viac). Riadiaci uzol pripočíta k rozdielu PWM ľavého a pravého motora korekciu úmernú k $\omega_z$ (proporčný zisk \texttt{imu\_yaw\_kp}, malý deadband \texttt{imu\_yaw\_deadband}), aby sa robot pri \textbf{priamom pohybe} menej otáčal---ide o jednoduchú \emph{proporcionálnu} zložku v zmysle PID regulácie~\cite{wikipedia_pid_controller}. Toto je \textbf{inerciálna} spätná väzba: nezávisí od vzhľadu podlahy v kamere, ale gyroskop driftuje a pri nárazoch do prekážky môže byť signál rušený.
+
+\paragraph{Súvis a obmedzenia.}
+Optický tok a IMU korekcia riešia \textbf{rôzne príčiny} driftu (vizuálny posun scény vs.\ rozdiel pohonu kolies) a môžu byť zapnuté samostatne. Ani jedna metóda sama o sebe nezaručuje jazdu po priamke v súradniciach mapy -- na to slúži globálna navigácia (Nav2) alebo odometria s dobrým modelom pohybu. V simulácii môže byť táto vrstva vypnutá alebo nahradená čisto simulovanou dynamikou.
 
 \section{Riadenie pohybu, optický tok, IMU PID a autonómne bludenie}
 \label{sec:waverower-riadenie}
@@ -567,7 +588,7 @@ Pre režim SLAM (\texttt{slam.launch.py}) sa okrem vyššie uvedených uzlov sp�
 
 \section{Model robota a simulovanie v Gazebo}
 
-Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov - LIDARu a kamerou. Tieto komponenty sú spojené do jedného súboru pomocou príkazu \texttt{xacro:include}, čo uľahčuje organizáciu a správu kódu.
+Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov - LIDARu a kamerou. Podvozok zodpovedá koncepcii diferenciálneho pohonu~\cite{wikipedia_differential_drive}. Tieto komponenty sú spojené do jedného súboru pomocou príkazu \texttt{xacro:include}, čo uľahčuje organizáciu a správu kódu.
 
 
 Hlavný súbor obsahuje odkazy na jednotlivé časti robota, ktoré sú pre prehľadnosť implementované v samostatných súboroch.
@@ -630,9 +651,7 @@ Rovnako ako kamera, aj LIDAR je pripojený k podvozku pomocou pevného kĺbu. Te
 
 \subsection*{Gazebo simulátor}
 
-V simulátore Gazebo som vytvoril jednoduchý svet, ktorý bol navrhnutý tak, aby zahŕňal prekážky pre demonštráciu funkčnosti simulovaných senzorov a manuálneho riadenia robota. \cite{gazebo}
-
-[PLACEHOLDER: Doplníte popis finálneho sveta, použité pluginy a spôsob spúšťania simulácie (príkaz alebo launch súbor).]
+V simulátore Gazebo Sim som v prostredí workspace pripravil model robota Wave Rover v súradniciach URDF/Xacro (podvozok, kolesá, LiDAR, kamera) a svet s prekážkami na demonštráciu senzorov a navigácie. \cite{gazebo} Senzory v simulácii sú napojené cez \texttt{ros\_gz\_bridge}: laser poskytuje dáta vhodné pre SLAM a Nav2, kamera obraz na tému kompatibilnú s vizualizáciou v RViz (napr.\ \texttt{/camera/image\_raw}). Spúšťanie: zdrojovanie ROS~2 Jazzy a workspace (\texttt{source install/setup.bash}), následne \texttt{ros2 launch waver\_sim launch\_sim.launch.py} alebo zjednotený skript \texttt{./run\_sim.sh} z priečinka simulácie, ktorý navyše môže spustiť teleop a plný bringup s Nav2 a \texttt{slam\_toolbox}, ak sú príslušné balíky v workspace zbuildené. RViz používa uloženú konfiguráciu (napr.\ \texttt{main.rviz}) s dispmi pre mapu, laser, plán a obraz z kamery.
 
 \begin{figure}[H] 
     \centering
@@ -683,7 +702,7 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
 
     \item \textbf{SLAM}\cite{slam}
         \begin{itemize}
-            \item [PLACEHOLDER: Tvorba mapy prostredia pomocou kamery a LIDARu; udržiavanie presnej pozície -- doplníte po implementácii.]
+            \item V implementácii sa mapa prostredia buduje najmä z LiDARu (\texttt{sensor\_msgs/msg/LaserScan} na \texttt{/scan}) pomocou balíka \texttt{slam\_toolbox} (asynchrónny alebo synchrónny režim podľa YAML konfigurácie). Odhad polohy robota v mape je súčasťou SLAM procesu; kamera slúži na vizuálnu kontrolu operátorovi a nie je nutná pre základnú 2D LiDAR mapu. Parametre a spúšťanie sú zadelené do launch súborov spolu s Nav2.
         \end{itemize}
 
     \item \textbf{Image Processing}
@@ -833,7 +852,7 @@ Camera Node spracováva obrazové dáta z kamery a detekuje ArUco markery v obra
 
 Camera Node prijíma komprimované obrazové dáta, ktoré dekóduje pomocou OpenCV. Následne aplikuje ArUco detektor, ktorý hľadá ArUco markery v obraze. Keď je marker detekovaný, jeho ID je publikované na topic \texttt{/bpc\_prp\_robot/tag\_detected}.
 
-[PLACEHOLDER: Doplníte zdroj obrazu (topic z camera\_ros alebo republish), kalibrácia kamery a prípadne ďalšie spracovanie obrazu.]
+Zdrojom komprimovaného obrazu v systéme s Raspberry Pi je typicky výstup z \texttt{camera\_ros} (téma s \texttt{/compressed}) alebo uzla \texttt{waverower\_camera}, ktorý vie republikovať alebo spracovať obraz z \texttt{/camera/image\_raw}. Kalibrácia kamery pre presné projekcie by mala byť uložená v \texttt{\textasciitilde/.ros/camera\_info/} v súlade s \texttt{camera\_info} správami; bez kalibračného súboru ArUco detekcia funguje v pixeloch, ale priestorová interpretácia značiek je menej presná.
 
 \subsection*{IMU Node}
 
@@ -945,7 +964,7 @@ Tok dát v systéme:
 
 Táto architektúra umožňuje jednoduchú integráciu nových uzlov bez potreby zmeny komunikácie s hardvérom.
 
-[PLACEHOLDER: Doplníte schému alebo obrázok grafu uzlov (rqt\_graph) a popis spúšťania systému (launch súbory, príkazy).]
+Odporúča sa doplniť obrázok grafu uzlov z nástroja \texttt{rqt\_graph} pri bežiacom systéme a tabuľku použitých príkazov \texttt{ros2 launch \ldots} podľa skutočnej konfigurácie robota.
 
 \subsection*{Button Listener Node}
 

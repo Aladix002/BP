@@ -183,6 +183,13 @@ ros2 param dump /wasd_motor_hat_node
 
 ---
 
+## Optický tok z kamery (OpenCV)
+
+Executable: `optical_flow` (Lucas–Kanade + pyramídy, `calcOpticalFlowPyrLK`) alebo `optical_flow_dense` (Farnebäck, `calcOpticalFlowFarneback`). Teória a API sú zhrnuté v oficiálnom tutoriáli OpenCV: [Optical Flow](https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html).
+
+- Vstup: komprimovaný obraz (topic parametrom, default podľa launchu).
+- Výstup: `Twist` na `/teleop_cmd_vel_corrected` (korigovaný teleop pre jazdu v priamom smere).
+
 ## Kompenzácia driftu bez enkodérov (IMU)
 
 1. **IMU yaw korekcia** – pri priamej jazde číta gyro Z a upravuje PWM:

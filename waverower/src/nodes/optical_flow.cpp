@@ -1,3 +1,6 @@
+// Sparse optical flow: Lucas–Kanade + image pyramids (calcOpticalFlowPyrLK, goodFeaturesToTrack).
+// Theory and API align with the OpenCV tutorial on optical flow:
+// https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
 #include "nodes/optical_flow.hpp"
 #include <algorithm>
 #include <cmath>
