@@ -497,18 +497,73 @@ V tejto kapitole je popísaný návrh a priebeh implementácie. Niektoré časti
 
 \section{Aktuálna architektúra robota (autíčka)}
 
-Aktuálny softvérový systém robota (balík \texttt{waverower}, ROS~2 Jazzy) beží na Raspberry Pi a pozostáva z jedného procesu s viacerými uzlami spravovanými \texttt{MultiThreadedExecutor}. Hlavné uzly a ich úlohy sú nasledujúce.
-
-\textbf{Manuálne ovládanie a prepínanie režimov.} Uzol \texttt{manual\_teleop} odoberá vstup z klávesnice (WASD alebo šípky), publikuje príkazy na topic \texttt{/manual\_motor\_cmd} (správa \texttt{Float64MultiArray} s hodnotami ľavý/pravý motor v rozsahu $-1$ až $1$) a prepína medzi manuálnym a autonómnym režimom stlačením klávesy \texttt{m}. Režim je uložený v zdieľanej premennej \texttt{manual\_mode}.
-
-\textbf{Lidar a front sektor.} Uzol \texttt{lidar\_sectors} odoberá \texttt{/scan} (LaserScan), vyhodnocuje minimálnu vzdialenosť v \emph{frontovom sektore} (uhol $\pm 45°$, teda 90° spolu) a publikuje ju na topic \texttt{/lidar\_sectors} ako jednu hodnotu v metroch (alebo veľké číslo pri absencii dát).
-
-\textbf{Autonómne správanie (BT auto).} Uzol \texttt{bt\_auto} implementuje jednoduché správanie: (1)~ak je detegovaná osoba (topic \texttt{/detected\_people}, počet $> 0$), robot zastaví; (2)~ak je vzdialenosť vpredu (\texttt{/lidar\_sectors}) menšia ako prah \texttt{threshold\_stop\_m}, robot prejde do stavu \emph{turning} -- točí sa na mieste (ľavý/pravý motor s opačnými znamienkami, rovnaká rýchlosť ako pri manuálnom točení) po dobu \texttt{turn\_duration\_sec} sekúnd, potom pokračuje dopredu; (3)~inak ide dopredu. Otočka nevyužíva IMU; trvanie a smer (doľava/doprava) sú nastaviteľné parametrami.
-
-\textbf{Multiplexor príkazov a motor driver.} Uzol \texttt{cmd\_mux} podľa \texttt{manual\_mode} prepína výstup medzi \texttt{/manual\_motor\_cmd} a \texttt{/auto\_motor\_cmd} a publikuje zvolený príkaz na topic \texttt{/motor\_cmd}. Uzol \texttt{motor\_driver} odoberá \texttt{/motor\_cmd} a posiela hodnoty ľavý/pravý motor na ESP32 cez \textbf{HTTP} (GET požiadavka s JSON v query parametri). ESP32 (UGV Base General) následne riadi motory podľa prijatého príkazu. IMU dáta z ESP32 prichádzajú do systému cez uzol \texttt{imu\_http}, ktorý periodicky posiela HTTP požiadavku na ESP32 a publikuje odpoveď ako \texttt{sensor\_msgs/msg/Imu} na topic \texttt{/imu}. Kamera a ďalšie uzly (detekcia ArUco, atď.) sú súčasťou toho istého procesu.
+Aktuálny softvérový systém na platforme Wave Rover je implementovaný ako ROS~2 balík \texttt{waverower} (distribúcia Jazzy) na Raspberry Pi. Sekcia~\ref{sec:waverower-riadenie} popisuje \textbf{skutočnú implementáciu} v zdrojových kódoch (C++ a Python) -- motorový uzol, optický tok, IMU PID, rozdelenie LiDARu pri bludení a launch súbory -- namiesto staršieho konceptu s ESP32 multiplexorom uvedeného nižšie pri iných uzloch.
 
 [PLACEHOLDER: Schéma grafu uzlov (\texttt{rqt\_graph}) a zoznam launch súborov alebo príkazov na spustenie systému na robotovi.]
 [PLACEHOLDER: Popis spúšťania na Raspberry Pi (systemd služba \texttt{waverower.service}, zdrojovanie workspace).]
+
+\section{Riadenie pohybu, optický tok, IMU PID a autonómne bludenie}
+\label{sec:waverower-riadenie}
+
+Táto sekcia zodpovedá implementácii v adresári balíka \texttt{waverower}: uzol motora (\texttt{motor\_hat.cpp}), uzly optického toku (\texttt{optical\_flow.cpp}, \texttt{optical\_flow\_dense.cpp}), skript \texttt{lidar\_wander.py} a launch súbory \texttt{manual\_bringup.launch.py}, \texttt{slam.launch.py}, \texttt{wander.launch.py}.
+
+\subsection*{Uzol motora a diferenciálny podvozok}
+
+Uzol \texttt{MotorHatNode} (spustiteľná položka \texttt{waverower}) riadi motorový HAT cez I2C (PCA9685). Pracuje v dvoch režimoch podľa parametra \texttt{control\_mode}:
+\begin{itemize}
+    \item \textbf{manual} -- vstup z klávesnice (WASD) a zároveň odber \texttt{geometry\_msgs/msg/Twist} z témy teleopu (predvolene \texttt{/teleop\_cmd\_vel}); hodnoty sa mapujú na \emph{tank} riadenie (ľavé a pravé koleso), s časovým dobehom (\emph{decay}) a vyhladením.
+    \item \textbf{auto} -- odber \texttt{geometry\_msgs/msg/Twist} z témy \texttt{/cmd\_vel} (názov sa dá zmeniť parametrom \texttt{cmd\_vel\_topic}); príkaz $v$, $\omega$ sa prepočíta na normované rýchlosti ľavého/pravého kolesa podľa rozchodu kolies a maximálnej lineárnej rýchlosti, s vyhladením a časovým limitom platnosti príkazu.
+\end{itemize}
+Finálne príkazy pre ľavý a pravý motor prechádzajú funkciou \texttt{apply\_tank}, ktorá okrem mapovania na PWM aplikuje voliteľnú \textbf{korekciu podľa IMU} (pozri nižšie).
+
+\subsection*{IMU a PID regulátor na osi yaw (kompenzácia driftu)}
+
+Robot nemá enkodéry kolies; pri jazde rovno sa prejavuje bočný drift. Ak je parameter \texttt{imu\_correction} nastavený na \texttt{true}, uzol motora odoberá \texttt{sensor\_msgs/msg/Imu} z témy \texttt{/imu} a ukladá z nej \textbf{uhlovú rýchlosť okolo osi $z$} (\texttt{angular\_velocity.z}), t.\,j. okamžitú rýchlosť otáčania (yaw rate) z gyroskopu.
+
+Regulátor je PID so zložkami $K_p$, $K_i$, $K_d$ (parametre \texttt{imu\_yaw\_kp}, \texttt{imu\_yaw\_ki}, \texttt{imu\_yaw\_kd}). Definuje sa chyba ako samotná yaw rate (cieľ je jazdiť rovno, t.\,j. nulová otáčka okolo zvislej osi), pričom malé hodnoty pod prahom \texttt{imu\_yaw\_deadband} sa považujú za šum a nulujú. Integrálna zložka má obmedzenie (\texttt{imu\_yaw\_integral\_limit}) kvôli anti-windup. Výstupom regulátora je korekčná hodnota \texttt{corr}, ktorá sa \textbf{odčíta od ľavého a pripočíta k pravému} normovanému príkazu kolesa, čím sa robot pri jazde vpred \emph{dotočí} proti meranej rotácii.
+
+Korekcia sa uplatňuje len vtedy, keď robot \textbf{nemá ``nízku'' doprednú rýchlosť} (v manuálnom režime pod prahom cca $0{,}12$ v normalizovanom vstupe, v automate pod $0{,}02$~m/s) -- pri čistej rotácii na mieste alebo pri zastavení sa PID resetuje, aby neprepínal náhle pri zmene režimu.
+
+Zdrojom \texttt{/imu} v projekte je typicky uzol \texttt{imu\_serial\_fusion\_bridge.py}, ktorý číta CSV z mikrokontroléra (MPU-6050) cez USB a publikuje správy Imu.
+
+\subsection*{Optický tok (korekcia dráhy podľa obrazu)}
+
+Na vyrovnanie jazdy sa používa \textbf{samostatný uzol}, ktorý neimplementuje PID, ale \textbf{priamu úpravu} požadovaného \texttt{angular.z} v správe Twist na základe horizontálneho posunu obrazu (optický tok). Sú dve varianty:
+\begin{itemize}
+    \item \textbf{Riedky Lucas--Kanade} (\texttt{optical\_flow\_node}) -- v predošlom snímku sa nájdu dobré rohové body (\texttt{goodFeaturesToTrack}), medzi susednými snímkami sa sledujú (\texttt{calcOpticalFlowPyrLK}), z úspešných párov sa vypočíta priemer posunu $\Delta x$.
+    \item \textbf>Hustý Farneback} (\texttt{optical\_flow\_dense\_node}) -- na menšom rozlíšení sa vypočíta pole optického toku (\texttt{calcOpticalFlowFarneback}) a použije sa stredná hodnota horizontálnej zložky toku.
+\end{itemize}
+
+V oboch prípadoch sa priemer normalizuje šírkou snímky, znamienko je zvolené tak, že ak sa obraz posúva doprava (scéna sa ``hýbe'' opačne), robot dostane korekciu otáčania, ktorá kompenzuje bočný sklz. Korekcia sa násobí \texttt{correction\_gain} a reže sa na $\pm\texttt{max\_correction}$. Uzol načítava komprimovaný obraz z kamery a posledný teleop Twist; timerom (cca 20~Hz) publikuje výsledok na tému \textbf{\texttt{/teleop\_cmd\_vel\_corrected}}.
+
+Korekcia z optického toku sa \textbf{pridá k} \texttt{angular.z} len ak súčasne platí: $\lvert v_x \rvert > \texttt{forward\_threshold}$ (robot ide dopredu) a $\lvert \omega_z \rvert < \texttt{steer\_deadzone}$ (používateľ aktívne ``nezatáča'') -- aby sa nebojoval s úmyselným zatáčaním.
+
+V súbore \texttt{manual\_bringup.launch.py} parameter \texttt{use\_flow} prepína, či motor v manuálnom režime odoberá \texttt{/teleop\_cmd\_vel} alebo \texttt{/teleop\_cmd\_vel\_corrected}. V \texttt{slam.launch.py} argument \texttt{correction\_mode} určuje, či beží korekcia podľa IMU (PID v motore), podľa optického toku (uzol optical flow + prepojená teleop téma), alebo žiadna.
+
+\subsection*{LiDAR LD19 a rozdelenie na sektory pri bludení}
+
+Driver \texttt{ldlidar\_ros2} publikuje štandardnú správu \texttt{sensor\_msgs/msg/LaserScan} na téme \texttt{/scan} a statickú transformáciu medzi \texttt{base\_link} a rám laseru. Pre \textbf{autonómne bludenie} skript \texttt{lidar\_wander.py} nepracuje s jedným ``front'' kuželom, ale delí priestor v \textbf{ráme robota} na tri významové oblasti po obvode:
+\begin{itemize}
+    \item \textbf{vpred} -- uhly od $-45^\circ$ do $+45^\circ$,
+    \item \textbf{vľavo} -- od $+45^\circ$ do $+135^\circ$,
+    \item \textbf{vpravo} -- od $-135^\circ$ do $-45^\circ$.
+\end{itemize}
+Pre každú oblasť sa z aktuálneho poľa \texttt{ranges} vypočíta \textbf{minimálna} platná vzdialenosť (ignorujú sa neplatné alebo príliš krátke hodnoty). Parameter \texttt{lidar\_rotation\_deg} otočí celý laserový sken voči rámu robota (napr. ak je fyzicky montáž otočená o $180^\circ$), aby ``vpred'' zodpovedalo skutočnému smeru jazdy.
+
+\subsection*{Autonómne bludenie (\texttt{lidar\_wander.py}) a stavový automat}
+
+Uzol \texttt{lidar\_wander\_node} publikuje \texttt{geometry\_msgs/msg/Twist} na \texttt{/cmd\_vel} (názov je parametrizovateľný). Interný automat má stavy \textbf{jazda vpred} a \textbf{otáčanie}:
+\begin{enumerate}
+    \item V predvolenom stave robot žiada konštantnú doprednú rýchlosť \texttt{forward\_speed}, ak je minimálna vzdialenosť vpredu väčšia ako prah \texttt{threshold\_m}.
+    \item Ak je vpredu prekážka bližšie ako prah, uzol porovná voľnosť vľavo a vpravo. Podľa toho spustí otočenie o $90^\circ$ vľavo alebo vpravo; ak sú obe strany voľné, vyberie stranu s väčšou vzdialenosťou; ak sú obe zablokované, otočenie o $180^\circ$.
+    \item Počas otočenia sa uplatňuje konštantná uhlová rýchlosť \texttt{turn\_speed}; \textbf{uhol otočenia} sa sleduje integráciou $\lvert \omega_z \rvert$ z IMU v čase (odber \texttt{/imu}) a porovnaním s cieľovým uhlom; pri prekročení času \texttt{turn\_timeout\_s} sa otočenie ukončí aj bez dosiahnutia presného uhla (záchranný timeout).
+\end{enumerate}
+
+Launch súbor \texttt{wander.launch.py} spúšťa motor v režime \texttt{auto}, zapína IMU most, statický TF \texttt{base\_link} $\rightarrow$ \texttt{imu\_link}, driver LD19 a uzol wander -- t.\,j. kompletný reťazec pre jazdu bez mapy a bez Nav2.
+
+\subsection*{Prepojenie s mapovaním (SLAM)}
+
+Pre režim SLAM (\texttt{slam.launch.py}) sa okrem vyššie uvedených uzlov spúšťa \texttt{slam\_toolbox} s parametrami z \texttt{slam.yaml}; voliteľne \texttt{robot\_localization} (EKF) podľa \texttt{ekf.yaml}. Tu LiDAR slúži na \textbf{celý $360^\circ$ scan} pre výstavbu mapy, zatiaľ čo logika \texttt{lidar\_wander} používa ten istý \texttt{/scan}, ale len agregáciu do troch sektorov pre rozhodovanie o smere -- ide o \textbf{dva rôzne účely} jedného senzorového toku.
 
 \section{Model robota a simulovanie v Gazebo}
 
