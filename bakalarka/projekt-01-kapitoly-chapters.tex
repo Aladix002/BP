@@ -498,9 +498,9 @@ V tejto kapitole je popísaný návrh a priebeh implementácie vrátane dvoch ha
 
 Aktuálny softvérový systém na platforme Wave Rover je implementovaný ako ROS~2 balík \texttt{waverower} (distribúcia Jazzy) na Raspberry Pi. Sekcia~\ref{sec:waverower-riadenie} popisuje \textbf{skutočnú implementáciu} v zdrojových kódoch (C++ a Python) -- motorový uzol, optický tok, IMU PID, rozdelenie LiDARu pri bludení a launch súbory -- namiesto staršieho konceptu s ESP32 multiplexorom uvedeného nižšie pri iných uzloch.
 
-\subsection*{Druhá hardvérová zostava: Motor Driver HAT a MPU6050 na Raspberry Pi}
+\subsection*{Druhá hardvérová zostava: Motor Driver HAT a senzory na Raspberry Pi}
 
-Nezávisle od vyššie uvedenej vetvy s ESP32 sa v projekte používa aj konfigurácia, v ktorej Raspberry Pi priamo ovláda Waveshare \emph{Motor Driver HAT} po zbernici I\textsuperscript{2}C (typicky adresa \texttt{0x40}) uzlami balíka \texttt{waverower}. Uzol \texttt{wasd\_motor\_hat\_node} odoberá \texttt{geometry\_msgs/msg/Twist} na \texttt{/teleop\_cmd\_vel} (manuál) alebo \texttt{/cmd\_vel} (autonómny režim) podľa parametra \texttt{control\_mode}. IMU MPU6050 sa v tejto zostave pripája k RPi cez I\textsuperscript{2}C a publikuje sa samostatným uzlami balíka \texttt{mpu6050driver} na topic \texttt{/imu}; voliteľná je korekcia driftu pri priamej jazde na základe gyroskopu. LiDAR LD19 poskytuje \texttt{/scan} cez balík \texttt{ldlidar\_ros2}. Táto zostava \emph{nepoužíva} HTTP motorové príkazy na ESP32; pohon je výhradne cez HAT na RPi.
+Nezávisle od vyššie uvedenej vetvy s ESP32 sa v projekte používa konfigurácia, v ktorej Raspberry Pi priamo ovláda Waveshare \emph{Motor Driver HAT} po zbernici I\textsuperscript{2}C (typicky adresa \texttt{0x40}) uzlami balíka \texttt{waverower}. Implementačná trieda \texttt{MotorHatNode} (spustiteľná položka \texttt{waverower}) sa v launch súboroch pomenúva podľa kontextu, napr.\ \texttt{motor\_hat\_node} v \texttt{manual\_bringup.launch.py} alebo \texttt{wasd\_motor\_hat\_node} v iných konfiguráciách; odoberá \texttt{geometry\_msgs/msg/Twist} z témy určenej parametrami (teleop vs.\ \texttt{/cmd\_vel}) podľa \texttt{control\_mode}. Topic \texttt{/imu} môže dodávať buď skript \texttt{imu\_serial\_fusion\_bridge.py} (MPU-6050 na mikrokontroléri cez USB), alebo voliteľne balík \texttt{mpu6050driver} cez I\textsuperscript{2}C --- oba zdroje sú v kóde podporované ako alternatívy, nie súčasne na jednom topicu. LiDAR LD19 poskytuje \texttt{/scan} cez balík \texttt{ldlidar\_ros2}. Táto zostava \emph{nepoužíva} HTTP motorové príkazy na ESP32; pohon je výhradne cez HAT na RPi. Podrobný popis PID korekcie, optického toku a bludenia je v sekcii~\ref{sec:waverower-riadenie}.
 
 \subsection*{Odporúčané spustenie a dokumentácia}
 
@@ -510,23 +510,19 @@ Na robotovi sa systém spúšťa z ROS~2 workspace po príkaze \texttt{colcon bu
 
 Pre ovládanie robota z prehliadača na telefóne alebo druhom PC je v balíku \texttt{waverower} pripravená jednoduchá webová aplikácia v priečinku \texttt{web\_ui}: statické súbory \texttt{index.html}, \texttt{app.js} a \texttt{style.css}. Aplikácia používa knižnicu \emph{roslibjs}~\cite{roslibjs_github}, ktorá cez WebSocket komunikuje s balíkom \emph{rosbridge\_suite}~\cite{rosbridge_suite_github}; launch súbor \texttt{web\_teleop\_ui.launch.py} spúšťa štandardný \texttt{rosbridge\_websocket} (typicky port \texttt{9090}) a súčasne jednoduchý HTTP server (\texttt{python3 -m http.server}) viazaný na \texttt{0.0.0.0:8080}, ktorý obsluhuje spomínané súbory z inštalovaného \texttt{share/waverower/web\_ui}. Používateľ otvorí v sieti stránku \texttt{http://<IP-Raspberry-Pi>:8080}, v rozhraní zadá adresu WebSocketu \texttt{ws://<IP>:9090} a po pripojení klient v JavaScripte vytvorí publisher na topic \texttt{/teleop\_cmd\_vel} (typ \texttt{geometry\_msgs/msg/Twist})---rovnaký kanál ako pri klávesnicovom teleope---a voliteľne odber komprimovaného obrazu z kamery (v kóde predvolený topic pre \texttt{CompressedImage}; pri zmene kamery ho treba zladíť v \texttt{app.js}). Tým sa dosiahne teleprezencia bez natívnej aplikácie: riadenie je v ROS~2, rozhranie je len tenká vrstva v prehliadači.
 
-\subsection*{Zarovnanie jazdy: optický tok z kamery a korekcia z IMU}
+\subsection*{Zarovnanie jazdy: optický tok a IMU (stručný prehľad)}
 
-Pojem \emph{zarovnanie} v tejto práci znamená \textbf{zníženie nechceného bočného driftu} pri zamýšľanej jazde vpred (robot sa fyzicky neukláňa do strany alebo sa neotáča pomaly pri rovnakom príkaze dopredu). Používajú sa dva nezávislé prístupy; oba sú \emph{doplnkové} voči navigácii Nav2 a nevyžadujú mapu.
-
-\paragraph{Optický tok (kamera, počítačové videnie).}
-Teória a funkcie OpenCV sú prehľadne zhrnuté v~\cite{opencv_optical_flow_tutorial}: riedky Lucas--Kanade predpokladá lokálne konštantný posun v okne okolo bodu a rieši sa iteráčne; pyramídová varianta sleduje veľké posuny. Hustý Farnebäck aproximuje intenzitu polynómom a z neho odvodzuje husté pole posunov. Uzly \texttt{optical\_flow} (Lucas--Kanade, \texttt{calcOpticalFlowPyrLK}) a \texttt{optical\_flow\_dense} (Farnebäck) pracujú s postupnosťou snímkov z komprimovaného obrazu (JPEG). V riedkej vetve sa z vybraných bodov scény (detekcia rohov \texttt{goodFeaturesToTrack}) odhadne stredný \textbf{horizontálny posun} medzi dvoma snímkami: ak sa statická scéna v obraze posúva relatívne doľava, robot sa voči nej pohybuje doprava a naopak. Z toho sa vypočíta malá \textbf{korekcia \texttt{angular.z}} (otáčanie okolo zvislej osi), ktorá sa pripočíta k poslednému príkazu z manuálneho teleopu. Uplatní sa len vtedy, keď robot \textbf{ide dopredu} (dostatočne veľká \texttt{linear.x}) a keď operátor \textbf{aktívne netočí} (\texttt{angular.z} v deadzone), aby sa neprebíjal úmysel riadenia. Výstup sa typicky publikuje na topic \texttt{/teleop\_cmd\_vel\_corrected}; motorový uzol musí odoberať tento topic namiesto pôvodného \texttt{/teleop\_cmd\_vel}, ak má byť korekcia účinná. Ide o \textbf{vizuálnu} spätnú väzbu: závisí od textúry podlahy, osvetlenia a oneskorenia kompresie; nenahrádza presné meranie polohy v metre.
-
-\paragraph{IMU a zarovnanie pri priamej jazde (gyroskop).}
-V zostave s \textbf{Motor Driver HAT} a uzlami \texttt{waverower} môže uzol \texttt{wasd\_motor\_hat\_node} zapnúť parameter \texttt{imu\_correction}. IMU (MPU6050 cez \texttt{mpu6050driver}, topic \texttt{/imu}) vtedy poskytuje \textbf{uhlovú rýchlosť okolo zvislej osi} (\texttt{angular\_velocity.z}, yaw rate). Pri požadovanom pohybe vpred bez zámerného otáčania sa odchýlka od nuly interpretuje ako \emph{neželaná rotácia} podvozku (jedna strana sa prešmykuje viac). Riadiaci uzol pripočíta k rozdielu PWM ľavého a pravého motora korekciu úmernú k $\omega_z$ (proporčný zisk \texttt{imu\_yaw\_kp}, malý deadband \texttt{imu\_yaw\_deadband}), aby sa robot pri \textbf{priamom pohybe} menej otáčal---ide o jednoduchú \emph{proporcionálnu} zložku v zmysle PID regulácie~\cite{wikipedia_pid_controller}. Toto je \textbf{inerciálna} spätná väzba: nezávisí od vzhľadu podlahy v kamere, ale gyroskop driftuje a pri nárazoch do prekážky môže byť signál rušený.
+Pojem \emph{zarovnanie} tu znamená \textbf{zníženie nechceného bočného driftu} pri jazde vpred. Používajú sa dva nezávislé prístupy (kamera vs.\ gyroskop); teoretický rámec optického toku (OpenCV, Lucas--Kanade, Farnebäck) je v~\cite{opencv_optical_flow_tutorial}, PID v zmysle spätnej väzby v~\cite{wikipedia_pid_controller}. \textbf{Implementačný detail} (presné názvy tém, parametre, podmienky zapnutia, plný PID vrátane integrálu a derivácie, rozdelenie LiDARu pri bludení) je sústredený v sekcii~\ref{sec:waverower-riadenie}, aby sa v tejto podsekcii neopakovali celé odseky.
 
 \paragraph{Súvis a obmedzenia.}
-Optický tok a IMU korekcia riešia \textbf{rôzne príčiny} driftu (vizuálny posun scény vs.\ rozdiel pohonu kolies) a môžu byť zapnuté samostatne. Ani jedna metóda sama o sebe nezaručuje jazdu po priamke v súradniciach mapy -- na to slúži globálna navigácia (Nav2) alebo odometria s dobrým modelom pohybu. V simulácii môže byť táto vrstva vypnutá alebo nahradená čisto simulovanou dynamikou.
+Optický tok a IMU korekcia riešia \textbf{rôzne príčiny} driftu (vizuálny posun scény vs.\ meraná yaw rate) a v launch súboroch sa dajú voliť oddelene (\texttt{use\_flow}, \texttt{correction\_mode}). Nezaručujú jazdu po priamke v mapových súradniciach bez globálnej navigácie alebo kvalitnej odometrie. V simulácii môže byť táto vrstva vypnutá.
 
 \section{Riadenie pohybu, optický tok, IMU PID a autonómne bludenie}
 \label{sec:waverower-riadenie}
 
-Táto sekcia zodpovedá implementácii v adresári balíka \texttt{waverower}: uzol motora (\texttt{motor\_hat.cpp}), uzly optického toku (\texttt{optical\_flow.cpp}, \texttt{optical\_flow\_dense.cpp}), skript \texttt{lidar\_wander.py} a launch súbory \texttt{manual\_bringup.launch.py}, \texttt{slam.launch.py}, \texttt{wander.launch.py}.
+Táto sekcia je hlavným technickým popisom balíka \texttt{waverower} v tejto práci. Zodpovedá súborom \texttt{motor\_hat.cpp}, \texttt{optical\_flow.cpp}, \texttt{optical\_flow\_dense.cpp}, \texttt{lidar\_wander.py} a launch súborom \texttt{manual\_bringup.launch.py}, \texttt{slam.launch.py}, \texttt{wander.launch.py}. Štruktúra: (1)~motor a diferenciál, (2)~IMU PID, (3)~optický tok, (4)~LiDAR sektory, (5)~stavový automat bludenia, (6)~súvis so SLAM.
+
+Teória optického toku (OpenCV) je stručne v citácii v podsekcii vyššie; tu sú len súvislosti s ROS~2 a robotom.
 
 \subsection*{Uzol motora a diferenciálny podvozok}
 
@@ -552,14 +548,14 @@ Zdrojom \texttt{/imu} v projekte je typicky uzol \texttt{imu\_serial\_fusion\_br
 Na vyrovnanie jazdy sa používa \textbf{samostatný uzol}, ktorý neimplementuje PID, ale \textbf{priamu úpravu} požadovaného \texttt{angular.z} v správe Twist na základe horizontálneho posunu obrazu (optický tok). Sú dve varianty:
 \begin{itemize}
     \item \textbf{Riedky Lucas--Kanade} (\texttt{optical\_flow\_node}) -- v predošlom snímku sa nájdu dobré rohové body (\texttt{goodFeaturesToTrack}), medzi susednými snímkami sa sledujú (\texttt{calcOpticalFlowPyrLK}), z úspešných párov sa vypočíta priemer posunu $\Delta x$.
-    \item \textbf>Hustý Farneback} (\texttt{optical\_flow\_dense\_node}) -- na menšom rozlíšení sa vypočíta pole optického toku (\texttt{calcOpticalFlowFarneback}) a použije sa stredná hodnota horizontálnej zložky toku.
+    \item \textbf{Hustý Farneback} (\texttt{optical\_flow\_dense\_node}) -- na menšom rozlíšení sa vypočíta pole optického toku (\texttt{calcOpticalFlowFarneback}) a použije sa stredná hodnota horizontálnej zložky toku.
 \end{itemize}
 
-V oboch prípadoch sa priemer normalizuje šírkou snímky, znamienko je zvolené tak, že ak sa obraz posúva doprava (scéna sa ``hýbe'' opačne), robot dostane korekciu otáčania, ktorá kompenzuje bočný sklz. Korekcia sa násobí \texttt{correction\_gain} a reže sa na $\pm\texttt{max\_correction}$. Uzol načítava komprimovaný obraz z kamery a posledný teleop Twist; timerom (cca 20~Hz) publikuje výsledok na tému \textbf{\texttt{/teleop\_cmd\_vel\_corrected}}.
+V oboch prípadoch sa priemer normalizuje šírkou snímky. V kóde platí: ak sa scéna v obraze posúva \textbf{doľava} (\texttt{mean\_dx} záporné), robot v skutočnosti driftuje \textbf{doprava} --- korekcia pridá kladné \texttt{angular.z} (otočenie doľava), aby sa drift kompenzoval. Výstup sa násobí \texttt{correction\_gain} a obmedzuje na $\pm\texttt{max\_correction}$. Uzol načítava komprimovaný obraz z kamery a posledný teleop Twist; timerom (cca 20~Hz) publikuje výsledok na tému \textbf{\texttt{/teleop\_cmd\_vel\_corrected}}.
 
 Korekcia z optického toku sa \textbf{pridá k} \texttt{angular.z} len ak súčasne platí: $\lvert v_x \rvert > \texttt{forward\_threshold}$ (robot ide dopredu) a $\lvert \omega_z \rvert < \texttt{steer\_deadzone}$ (používateľ aktívne ``nezatáča'') -- aby sa nebojoval s úmyselným zatáčaním.
 
-V súbore \texttt{manual\_bringup.launch.py} parameter \texttt{use\_flow} prepína, či motor v manuálnom režime odoberá \texttt{/teleop\_cmd\_vel} alebo \texttt{/teleop\_cmd\_vel\_corrected}. V \texttt{slam.launch.py} argument \texttt{correction\_mode} určuje, či beží korekcia podľa IMU (PID v motore), podľa optického toku (uzol optical flow + prepojená teleop téma), alebo žiadna.
+V súbore \texttt{manual\_bringup.launch.py} parameter \texttt{use\_flow} zapína uzol optického toku a parameter \texttt{flow\_algo} volí medzi algoritmom \texttt{lk} a \texttt{farneback} (hustý). Motor v manuálnom režime odoberá buď \texttt{/teleop\_cmd\_vel}, alebo \texttt{/teleop\_cmd\_vel\_corrected}, podľa toho, či je \texttt{use\_flow} zapnutý. V \texttt{slam.launch.py} argument \texttt{correction\_mode} určuje tri režimy: \texttt{imu} (PID v motore cez \texttt{imu\_correction}), \texttt{optical\_flow} (spustí sa uzol \texttt{optical\_flow} -- v tejto konfigurácii len Lucas--Kanade; Farneback je dostupný v \texttt{manual\_bringup}), alebo \texttt{none}.
 
 \subsection*{LiDAR LD19 a rozdelenie na sektory pri bludení}
 
@@ -734,6 +730,9 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
 \end{itemize}
 
 \section{Implementácia uzlov a komunikácia s UGV Base General}
+\label{sec:ugv-esp32-alternativa}
+
+\textbf{Poznámka:} Táto sekcia popisuje \emph{alternatívnu} softvérovú vetvu (projekt s uzlami \texttt{/bpc\_prp\_robot/...}, ESP32, HTTP), ktorá \textbf{nie je} totožná s nasadeným balíkom \texttt{waverower} na Wave Roveri z väčšej časti kapitoly. Je zachovaná ako dokumentácia súvisiacich experimentov alebo šablóny; hlavná implementácia robota je v sekcii~\ref{sec:waverower-riadenie} a v podsekciách o Motor HAT vyššie.
 
 Táto sekcia popisuje detailnú implementáciu jednotlivých uzlov, ich ROS 2 topics, HTTP requesty a komunikáciu s UGV Base General systémom. UGV Base General je hardvérová platforma založená na ESP32, ktorá poskytuje HTTP API pre riadenie motorov, získavanie IMU dát a iné funkcie. Názvy topicov, parametre a detaily rozhrania môžu byť v závislosti od konfigurácie upravené; miesta na doplnenie po dokončení implementácie sú označené placeholdermi.
 
@@ -1074,7 +1073,7 @@ PID Node používa Motor Controller Node pre odosielanie príkazov motorom. Vypo
 \section*{Placeholdery na doplnenie po implementácii}
 
 \begin{itemize}
-    \item \textbf{Launch súbory:} zoznam a popis launch súborov na spúšťanie uzlov (na robotovi, na PC), prípadne parametre príkazového riadka.
+    \item \textbf{Launch súbory:} čiastočne pokryté v sekciách~\ref{sec:waverower-riadenie} a~\ref{kap:implementacia}; doplniť prípadne tabuľku všetkých \texttt{ros2 launch waverower ...} príkazov a parametrov pre obhajobu.
     \item \textbf{Testovanie a merania:} výsledky testov (latencia, frekvencia topicov, správanie pri vyhýbaní sa prekážkam), prípadne screenshoty z RViz alebo \texttt{rqt\_graph}.
     \item \textbf{Dynamická rekonfigurácia:} ako sa v systéme prepína medzi manuálnym a autonómnym režimom (tlačidlá, topic alebo služba).
     \item \textbf{Distribuovaný beh:} ktoré uzly bežia na RPi a ktoré na stacionárnom PC, konfigurácia \texttt{ROS\_DOMAIN\_ID} alebo multicast.
