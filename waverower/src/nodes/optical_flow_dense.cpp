@@ -1,3 +1,5 @@
+// Dense optical flow: Farnebäck (calcOpticalFlowFarneback). See OpenCV tutorial:
+// https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
 #include "nodes/optical_flow_dense.hpp"
 #include <algorithm>
 #include <cmath>
