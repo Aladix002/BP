@@ -16,7 +16,6 @@ def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
     camera_id = LaunchConfiguration("camera_id")
     use_imu    = LaunchConfiguration("use_imu")
-    use_mpu6050_i2c = LaunchConfiguration("use_mpu6050_i2c")
     use_imu_kalman = LaunchConfiguration("use_imu_kalman")
     use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
@@ -26,22 +25,9 @@ def generate_launch_description():
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
-    mpu6050_share = get_package_share_directory("mpu6050driver")
-    mpu6050_launch = os.path.join(mpu6050_share, "launch", "mpu6050driver_launch.py")
-
     lidar_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(ld19_launch),
         condition=IfCondition(use_lidar),
-    )
-
-    # I2C MPU len ak výslovne (nie súčasne s use_imu → oba by publikovali /imu).
-    imu_include = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(mpu6050_launch),
-        condition=IfCondition(
-            PythonExpression(
-                ['"', use_mpu6050_i2c, '" == "true" and "', use_imu, '" != "true"']
-            )
-        ),
     )
 
     try:
@@ -104,12 +90,7 @@ def generate_launch_description():
                 default_value="false",
                 description="Arduino USB: imu_serial_fusion_bridge (CSV 15/20 polí) → /imu.",
             ),
-            DeclareLaunchArgument(
-                "use_mpu6050_i2c",
-                default_value="false",
-                description="mpu6050driver na I2C (len ak use_imu:=false; inak konflikt na /imu).",
-            ),
-            DeclareLaunchArgument("imu_serial_port", default_value="/dev/ttyACM0"),
+            DeclareLaunchArgument("imu_serial_port", default_value="/dev/serial/by-id/usb-Arduino_Nano_R4_3501110A36313236694133344B573230-if00"),
             DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
             DeclareLaunchArgument("imu_frame_id", default_value="imu_link"),
             DeclareLaunchArgument(
@@ -200,7 +181,6 @@ def generate_launch_description():
                 remappings=[("cmd_vel", "/teleop_cmd_vel")],
                 condition=IfCondition(use_teleop),
             ),
-            imu_include,
             Node(
                 package="waverower",
                 executable="imu_serial_fusion_bridge.py",

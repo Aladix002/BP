@@ -50,16 +50,13 @@ Kľúčové parametre:
 
 ---
 
-### IMU – balík `mpu6050driver` (MPU-6050 cez I2C)
+### IMU – Arduino USB (`imu_serial_fusion_bridge.py`)
 
-Vlastný IMU node v `waverower` bol odstránený. Použi komunitný driver (v workspace `src/ros2_mpu6050_driver`):
+IMU dáta sa čítajú z Arduina cez `/dev/ttyACM0` a publikujú na `/imu`:
 
 ```bash
-ros2 launch mpu6050driver mpu6050driver_launch.py
+ros2 run waverower imu_serial_fusion_bridge.py
 ```
-
-- Uzol: `mpu6050driver_node`
-- Výstup: `sensor_msgs/Imu` na `/imu` (parametre v `mpu6050driver/share/mpu6050driver/params/mpu6050.yaml`)
 
 ---
 
@@ -120,11 +117,9 @@ ros2 launch waverower manual_bringup.launch.py
 # + teleop z klávesnice na PC (cmd_vel → /teleop_cmd_vel)
 ros2 launch waverower manual_bringup.launch.py use_teleop:=true
 
-# + kamera (waverower_camera), IMU (mpu6050driver), LiDAR (ldlidar_ros2 LD19)
+# + kamera (waverower_camera), IMU (Arduino USB bridge), LiDAR (ldlidar_ros2 LD19)
 ros2 launch waverower manual_bringup.launch.py use_camera:=true use_imu:=true use_lidar:=true
 ```
-
-IMU: musí byť zbuildený balík `mpu6050driver` v tom istom workspace (`colcon build --packages-select mpu6050driver`).
 
 LiDAR: vyžaduje nainštalovaný balík `ldlidar_ros2` a správny `port_name` v jeho `ld19.launch.py` (predvolené `/dev/ttyUSB0`).
 
@@ -174,7 +169,7 @@ ros2 param dump /wasd_motor_hat_node
 
 ```
 /scan                LaserScan      LD19 (ldlidar_ros2)
-/imu                 Imu            mpu6050driver → waverower (voliteľná korekcia)
+/imu                 Imu            imu_serial_fusion_bridge → waverower (voliteľná korekcia)
 /cmd_vel             Twist          auto režim → waverower
 /teleop_cmd_vel      Twist          manuálny teleop → waverower
 /camera/compressed   CompressedImage  waverower_camera (voliteľne)

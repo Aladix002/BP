@@ -44,7 +44,7 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   const std::string cmd_topic = declare_parameter<std::string>("cmd_vel_topic", "cmd_vel");
   const std::string teleop_topic = declare_parameter<std::string>("manual_twist_topic", "teleop_cmd_vel");
   declare_parameter<double>("teleop_max_linear_m_s", 0.5);
-  declare_parameter<double>("teleop_max_angular_rad_s", 1.2);
+  declare_parameter<double>("teleop_max_angular_rad_s", 1.8);
   declare_parameter<bool>("teleop_invert_linear", true);
 
   // IMU yaw PID korekcia: vyrovnávanie jazdy bez enkodérov
@@ -59,7 +59,7 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   imu_pid_last_time_ = std::chrono::steady_clock::now();
 
   base_speed_ = std::clamp(base_speed_, 0.2, 1.0);
-  turn_scale_ = std::clamp(turn_scale_, 0.1, 1.2);
+  turn_scale_ = std::clamp(turn_scale_, 0.1, 2.0);
   pwm_freq_hz_ = std::clamp(pwm_freq_hz_, 50.0, 1000.0);
   wheel_separation_m_ = std::max(wheel_separation_m_, 0.01);
   max_wheel_linear_m_s_ = std::max(max_wheel_linear_m_s_, 0.05);

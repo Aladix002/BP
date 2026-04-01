@@ -19,7 +19,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, SetEnvironmentVariable, TimerAction
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -153,12 +153,13 @@ def generate_launch_description():
         ),
 
         # ── Statické TF ────────────────────────────────────────────────────────
-        # odom → base_link (identita – bez enkodérov, slam_toolbox koriguje map→odom)
+        # odom → base_link (identita – len ak EKF nie je aktívny, inak EKF publishes tuto TF)
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             name="odom_to_base_link",
             arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
+            condition=UnlessCondition(LaunchConfiguration("use_ekf")),
         ),
         # base_link → imu_link
         Node(

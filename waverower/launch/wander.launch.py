@@ -50,12 +50,12 @@ def generate_launch_description():
             description="Rýchlosť priamej jazdy [m/s].",
         ),
         DeclareLaunchArgument(
-            "turn_speed", default_value="1.00",
+            "turn_speed", default_value="1.80",
             description="Uhlová rýchlosť otáčania [rad/s].",
         ),
         DeclareLaunchArgument(
-            "lidar_rotation_deg", default_value="180.0",
-            description="Fyzická rotácia LiDARu voči robotu [°]. 180 = kábel dopredu.",
+            "lidar_rotation_deg", default_value="90.0",
+            description="Fyzická rotácia LiDARu voči robotu [°]. 90 = keď je predok detegovaný ako ľavý sektor.",
         ),
 
         # ── Motor node – AUTO mód (počúva /cmd_vel z wander uzla) ────────────

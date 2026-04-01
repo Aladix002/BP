@@ -11,11 +11,13 @@
 """
 
 import math
+import os
 import queue
 import subprocess
 import sys
 import termios
 import threading
+from glob import glob
 from typing import BinaryIO, List, Optional
 
 import rclpy
@@ -55,6 +57,33 @@ def _quaternion_from_rpy_deg(roll_deg: float, pitch_deg: float, yaw_deg: float) 
     return (x, yq, z, w)
 
 
+def _resolve_serial_port(requested_port: str) -> str:
+    """
+    Resolve serial device path robustly.
+    - If requested exists, use it.
+    - If requested is missing (/dev/ttyACM0), try Arduino by-id first, then ttyACM*.
+    """
+    if requested_port and os.path.exists(requested_port):
+        return requested_port
+
+    by_id_candidates = sorted(
+        p for p in glob("/dev/serial/by-id/*") if "arduino" in os.path.basename(p).lower()
+    )
+    for path in by_id_candidates:
+        if os.path.exists(path):
+            return path
+
+    acm_candidates = sorted(glob("/dev/ttyACM*"))
+    if acm_candidates:
+        return acm_candidates[0]
+
+    usb_candidates = sorted(glob("/dev/ttyUSB*"))
+    if usb_candidates:
+        return usb_candidates[0]
+
+    return requested_port
+
+
 class ImuSerialFusionBridge(Node):
     def __init__(self) -> None:
         super().__init__("imu_serial_fusion_bridge")
@@ -68,8 +97,10 @@ class ImuSerialFusionBridge(Node):
         self.declare_parameter("publish_extra_fields", True)
         self.declare_parameter("extra_topic", "/imu/arduino_extra")
         self.declare_parameter("fill_orientation_from_fusion", True)
+        self.declare_parameter("zero_yaw_on_start", True)
 
-        port = self.get_parameter("serial_port").get_parameter_value().string_value
+        requested_port = self.get_parameter("serial_port").get_parameter_value().string_value
+        port = _resolve_serial_port(requested_port)
         baud = _baud_from_param(self)
         self._frame_id = self.get_parameter("frame_id").get_parameter_value().string_value
         topic = self.get_parameter("topic").get_parameter_value().string_value
@@ -78,6 +109,13 @@ class ImuSerialFusionBridge(Node):
         self._pub_extra = self.get_parameter("publish_extra_fields").get_parameter_value().bool_value
         extra_topic = self.get_parameter("extra_topic").get_parameter_value().string_value
         self._fill_ori = self.get_parameter("fill_orientation_from_fusion").get_parameter_value().bool_value
+        self._zero_yaw = self.get_parameter("zero_yaw_on_start").get_parameter_value().bool_value
+        self._yaw_offset: Optional[float] = None  # nastavené pri prvom platnom meraní
+
+        if port != requested_port:
+            self.get_logger().warn(
+                f"Požadovaný port {requested_port} nie je dostupný, používam {port}"
+            )
 
         if run_stty:
             subprocess.run(
@@ -163,10 +201,19 @@ class ImuSerialFusionBridge(Node):
                 except queue.Full:
                     pass
 
+    def _apply_yaw_offset(self, yaw_deg: float) -> float:
+        """Vynuluje yaw pri prvom meraní – počiatočná orientácia = 0°."""
+        if not self._zero_yaw:
+            return yaw_deg
+        if self._yaw_offset is None:
+            self._yaw_offset = yaw_deg
+            self.get_logger().info(f"Yaw vynulovaný – počiatočná hodnota: {yaw_deg:.2f}°")
+        return yaw_deg - self._yaw_offset
+
     def _parse_line(self, line: str) -> Optional[tuple]:
         parts = [p.strip() for p in line.split(",")]
         n = len(parts)
-        if n not in (15, 20):
+        if n not in (15, 16, 20):
             if len(parts) > 0 and parts[0].isalpha():
                 return None
             return None
@@ -197,6 +244,7 @@ class ImuSerialFusionBridge(Node):
         if n == 20 and self._fill_ori:
             # Zodpovedá hlavičke: roll_f, pitch_f, yaw_gyro (nie roll_acc/pitch_acc z 15–16)
             roll_deg, pitch_deg, yaw_deg = f[17], f[18], f[19]
+            yaw_deg = self._apply_yaw_offset(yaw_deg)
             qx, qy, qz, qw = _quaternion_from_rpy_deg(roll_deg, pitch_deg, yaw_deg)
             out.orientation.x = qx
             out.orientation.y = qy
@@ -207,6 +255,16 @@ class ImuSerialFusionBridge(Node):
             if self._pub_extra:
                 extra_msg = Float64MultiArray()
                 extra_msg.data = [float(f[15]), float(f[16])]
+        elif n == 16 and self._fill_ori:
+            # 16 polí: 15 štandardných + yaw_gyro [deg] ako posledné pole
+            yaw_deg = self._apply_yaw_offset(f[15])
+            qx, qy, qz, qw = _quaternion_from_rpy_deg(0.0, 0.0, yaw_deg)
+            out.orientation.x = qx
+            out.orientation.y = qy
+            out.orientation.z = qz
+            out.orientation.w = qw
+            for i in range(9):
+                out.orientation_covariance[i] = 0.05  # vyššia neistota – len yaw, bez roll/pitch fúzie
         else:
             out.orientation_covariance[0] = -1.0
 
