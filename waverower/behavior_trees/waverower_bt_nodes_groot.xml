@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Popis uzla FollowBall pre Groot / BT editor -->
+<root BTCPP_format="4">
+  <TreeNodesModel>
+    <Action ID="FollowBall">
+      <input_port name="ball_color" default="">white|yellow|orange alebo prázdne</input_port>
+      <input_port name="max_duration_sec" default="0.0">0 = bez limitu (s)</input_port>
+      <input_port name="server_name">Voliteľný remap action servera</input_port>
+      <input_port name="server_timeout">Timeout na server (ms)</input_port>
+    </Action>
+  </TreeNodesModel>
+</root>

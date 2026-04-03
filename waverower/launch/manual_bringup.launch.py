@@ -111,7 +111,11 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_teleop",
                 default_value="false",
-                description="teleop_twist_keyboard → /teleop_cmd_vel (potrebuje balík teleop_twist_keyboard).",
+                description=(
+                    "teleop_twist_keyboard → /teleop_cmd_vel. Vyžaduje TTY; v launch je emulate_tty. "
+                    "Ak stále padá (Cursor/SSH), spusti teleop v druhom termináli: "
+                    "ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/teleop_cmd_vel"
+                ),
             ),
             DeclareLaunchArgument(
                 "use_flow",
@@ -132,7 +136,7 @@ def generate_launch_description():
             ),
             Node(
                 package="waverower",
-                executable="waverower",
+                executable="waverower_motor",
                 name="motor_hat_node",
                 output="screen",
                 parameters=[{
@@ -178,6 +182,7 @@ def generate_launch_description():
                 executable="teleop_twist_keyboard",
                 name="teleop_twist_keyboard",
                 output="screen",
+                emulate_tty=True,
                 remappings=[("cmd_vel", "/teleop_cmd_vel")],
                 condition=IfCondition(use_teleop),
             ),

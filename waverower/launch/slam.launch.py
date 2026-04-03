@@ -89,7 +89,7 @@ def generate_launch_description():
         # ── Motor node ─────────────────────────────────────────────────────────
         Node(
             package="waverower",
-            executable="waverower",
+            executable="waverower_motor",
             name="motor_hat_node",
             output="screen",
             parameters=[{

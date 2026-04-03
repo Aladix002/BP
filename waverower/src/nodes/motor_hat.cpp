@@ -46,6 +46,9 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("teleop_max_linear_m_s", 0.5);
   declare_parameter<double>("teleop_max_angular_rad_s", 1.8);
   declare_parameter<bool>("teleop_invert_linear", true);
+  // /cmd_vel: voliteľné znamienko (v launch pre ball_follower často true/true kvôli teleop vs. ROS)
+  declare_parameter<bool>("cmd_vel_invert_linear", false);
+  declare_parameter<bool>("cmd_vel_invert_angular", false);
 
   // IMU yaw PID korekcia: vyrovnávanie jazdy bez enkodérov
   declare_parameter<bool>("imu_correction", false);
@@ -161,8 +164,10 @@ void MotorHatNode::reset_motion_state() {
 
 void MotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
-  twist_linear_x_ = msg->linear.x;
-  twist_angular_z_ = msg->angular.z;
+  const bool inv_l = get_parameter("cmd_vel_invert_linear").as_bool();
+  const bool inv_w = get_parameter("cmd_vel_invert_angular").as_bool();
+  twist_linear_x_ = inv_l ? -msg->linear.x : msg->linear.x;
+  twist_angular_z_ = inv_w ? -msg->angular.z : msg->angular.z;
   have_cmd_vel_ = true;
   last_cmd_steady_ = std::chrono::steady_clock::now();
 }
