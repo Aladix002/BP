@@ -3,7 +3,8 @@
 # SLAM (scan matching) koriguje polohu cez map→odom transform.
 ekf_filter_node:
     ros__parameters:
-        frequency: 50.0
+        # 50 Hz na slabšom HW často nevyjde; znižuje „Failed to meet update rate!“
+        frequency: 25.0
         sensor_timeout: 0.1
         two_d_mode: true
 

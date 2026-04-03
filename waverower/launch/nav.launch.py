@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Autonómna navigácia: Nav2 + SLAM Toolbox + EKF odometria + LD19 LiDAR + IMU.
+"""Autonómna navigácia: Nav2 + SLAM Toolbox + odometria z /cmd_vel + LD19 LiDAR + IMU.
 
 Módy:
   Bez mapy  (default) – SLAM mapuje + naviguje súčasne
@@ -25,16 +25,16 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     pkg         = get_package_share_directory("waverower")
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
+    urdf_xacro  = "/home/aladix/Desktop/BP/gazebo/waver_sim/description/robot.urdf.xacro"
 
     nav2_params  = os.path.join(pkg, "params", "nav2.yaml")
-    ekf_params   = os.path.join(pkg, "params", "ekf.yaml")
     slam_params  = os.path.join(pkg, "params", "slam.yaml")
     ld19_launch  = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
@@ -109,12 +109,7 @@ def generate_launch_description():
         ),
 
         # ── Statické TF ────────────────────────────────────────────────────────
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="odom_to_base_link",
-            arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
-        ),
+        # odom→base_link: uzol cmd_vel_odometry (integrácia /cmd_vel), nie EKF-only IMU.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -122,19 +117,31 @@ def generate_launch_description():
             arguments=["0", "0", "0.05", "0", "0", "0", "base_link", "imu_link"],
         ),
 
+        # ── Robot model (URDF → robot_state_publisher → RobotModel v RViz) ──────
+        Node(
+            package="robot_state_publisher",
+            executable="robot_state_publisher",
+            name="robot_state_publisher",
+            output="screen",
+            parameters=[{
+                "robot_description": Command(["xacro ", urdf_xacro]),
+                "use_sim_time": False,
+            }],
+        ),
+
         # ── LiDAR LD19 ────────────────────────────────────────────────────────
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ld19_launch),
         ),
 
-        # ── EKF: IMU yaw rate → /odom topic + odom TF ────────────────────────
+        # ── Odometria bez enkodérov: integrácia /cmd_vel → /odom + TF odom→base_link
+        # (EKF len s gyro nedáva x/y → Nav2 „Failed to make progress“.)
         Node(
-            package="robot_localization",
-            executable="ekf_node",
-            name="ekf_filter_node",
+            package="waverower",
+            executable="cmd_vel_odometry.py",
+            name="cmd_vel_odometry",
             output="screen",
-            parameters=[ekf_params],
-            remappings=[("odometry/filtered", "/odom")],
+            parameters=[{"publish_rate": 50.0, "cmd_vel_timeout_sec": 0.5}],
         ),
 
         # ── SLAM Toolbox: mapping mód (bez mapy) ──────────────────────────────
@@ -146,17 +153,28 @@ def generate_launch_description():
             condition=UnlessCondition(use_map),
             parameters=[slam_params],
         ),
-        TimerAction(period=2.0, actions=[
-            ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
-                output="screen",
-            )
+        # SLAM lifecycle len v mapping móde (async_slam). Inak by ros2 lifecycle mieril na localization uzol.
+        TimerAction(period=10.0, actions=[
+            GroupAction(
+                actions=[
+                    ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
+                        output="screen",
+                    ),
+                ],
+                condition=UnlessCondition(use_map),
+            ),
         ]),
-        TimerAction(period=4.0, actions=[
-            ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
-                output="screen",
-            )
+        TimerAction(period=15.0, actions=[
+            GroupAction(
+                actions=[
+                    ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                        output="screen",
+                    ),
+                ],
+                condition=UnlessCondition(use_map),
+            ),
         ]),
 
         # ── SLAM Toolbox: lokalizačný mód (so mapou) ──────────────────────────
@@ -169,72 +187,74 @@ def generate_launch_description():
             parameters=[slam_params, {"map_file_name": map_yaml, "mode": "localization"}],
         ),
 
-        # ── Nav2 nodes ─────────────────────────────────────────────────────────
-        Node(
-            package="nav2_controller",
-            executable="controller_server",
-            output="screen",
-            parameters=[nav2_params],
-            remappings=[("cmd_vel", "/cmd_vel")],
-        ),
-        Node(
-            package="nav2_planner",
-            executable="planner_server",
-            name="planner_server",
-            output="screen",
-            parameters=[nav2_params],
-        ),
-        Node(
-            package="nav2_behaviors",
-            executable="behavior_server",
-            name="behavior_server",
-            output="screen",
-            parameters=[nav2_params],
-        ),
-        Node(
-            package="nav2_smoother",
-            executable="smoother_server",
-            name="smoother_server",
-            output="screen",
-            parameters=[nav2_params],
-        ),
-        Node(
-            package="nav2_bt_navigator",
-            executable="bt_navigator",
-            name="bt_navigator",
-            output="screen",
-            parameters=[nav2_params],
-        ),
-        Node(
-            package="nav2_waypoint_follower",
-            executable="waypoint_follower",
-            name="waypoint_follower",
-            output="screen",
-            parameters=[nav2_params],
-        ),
-        Node(
-            package="nav2_velocity_smoother",
-            executable="velocity_smoother",
-            name="velocity_smoother",
-            output="screen",
-            parameters=[nav2_params],
-            remappings=[
-                ("cmd_vel", "cmd_vel_nav"),
-                ("cmd_vel_smoothed", "/cmd_vel"),
-            ],
-        ),
-
-        # ── Nav2 Lifecycle Manager ─────────────────────────────────────────────
-        Node(
-            package="nav2_lifecycle_manager",
-            executable="lifecycle_manager",
-            name="lifecycle_manager_navigation",
-            output="screen",
-            parameters=[{
-                "autostart": True,
-                "node_names": nav2_lifecycle_nodes,
-            }],
-        ),
+        # ── Nav2 (oneskorenie ~20 s: kým SLAM configure+activate prebehne a začne publikovať map TF)
+        TimerAction(period=20.0, actions=[
+            GroupAction([
+                Node(
+                    package="nav2_controller",
+                    executable="controller_server",
+                    output="screen",
+                    parameters=[nav2_params],
+                    remappings=[("cmd_vel", "/cmd_vel")],
+                ),
+                Node(
+                    package="nav2_planner",
+                    executable="planner_server",
+                    name="planner_server",
+                    output="screen",
+                    parameters=[nav2_params],
+                ),
+                Node(
+                    package="nav2_behaviors",
+                    executable="behavior_server",
+                    name="behavior_server",
+                    output="screen",
+                    parameters=[nav2_params],
+                ),
+                Node(
+                    package="nav2_smoother",
+                    executable="smoother_server",
+                    name="smoother_server",
+                    output="screen",
+                    parameters=[nav2_params],
+                ),
+                Node(
+                    package="nav2_bt_navigator",
+                    executable="bt_navigator",
+                    name="bt_navigator",
+                    output="screen",
+                    parameters=[nav2_params],
+                ),
+                Node(
+                    package="nav2_waypoint_follower",
+                    executable="waypoint_follower",
+                    name="waypoint_follower",
+                    output="screen",
+                    parameters=[nav2_params],
+                ),
+                Node(
+                    package="nav2_velocity_smoother",
+                    executable="velocity_smoother",
+                    name="velocity_smoother",
+                    output="screen",
+                    parameters=[nav2_params],
+                    remappings=[
+                        ("cmd_vel", "cmd_vel_nav"),
+                        ("cmd_vel_smoothed", "/cmd_vel"),
+                    ],
+                ),
+                Node(
+                    package="nav2_lifecycle_manager",
+                    executable="lifecycle_manager",
+                    name="lifecycle_manager_navigation",
+                    output="screen",
+                    parameters=[{
+                        "autostart": True,
+                        "node_names": nav2_lifecycle_nodes,
+                    }],
+                ),
+            ]),
+        ]),
 
         # ── RViz2 s Nav2 pluginmi (voliteľný) ─────────────────────────────────
         Node(

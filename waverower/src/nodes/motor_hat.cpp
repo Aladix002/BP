@@ -454,7 +454,9 @@ void MotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, do
 
 void MotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
-  imu_yaw_rate_ = msg->angular_velocity.z;
+  // EMA filter – potláča šum gyra (alpha=0.25: pomalší, hladší signál pre PID)
+  constexpr double kAlpha = 0.25;
+  imu_yaw_rate_ += kAlpha * (msg->angular_velocity.z - imu_yaw_rate_);
 }
 
 void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
@@ -465,8 +467,9 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
   //   P – okamžitá odchýlka yaw rate od 0
   //   I – akumulovaný drift (napr. sklonený povrch)
   //   D – tlmenie kmitania
-  double l = l_cmd;
-  double r = r_cmd;
+  // Korekcia sa aplikuje na PWM úrovni (po snap), nie na normalizovanom príkaze –
+  // tým sa zamedzí ostrým skokom keď jeden motor preskočí snap_threshold.
+  double corr = 0.0;
   if (get_parameter("imu_correction").as_bool() && !low_forward) {
     const double kp           = get_parameter("imu_yaw_kp").as_double();
     const double ki           = get_parameter("imu_yaw_ki").as_double();
@@ -484,15 +487,19 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     const double dt = std::chrono::duration<double>(now - imu_pid_last_time_).count();
     imu_pid_last_time_ = now;
 
-    const double error = (std::abs(yaw_rate) > deadband) ? yaw_rate : 0.0;
+    // Mäkký deadband: lineárna rampová funkcia (žiadny ostrý skok pri prechode prahu)
+    double error;
+    if (std::abs(yaw_rate) <= deadband) {
+      error = 0.0;
+    } else {
+      error = yaw_rate > 0.0 ? yaw_rate - deadband : yaw_rate + deadband;
+    }
 
     if (dt > 0.001 && dt < 0.5) {
       imu_yaw_integral_ += error * dt;
       imu_yaw_integral_ = std::clamp(imu_yaw_integral_, -windup_limit, windup_limit);
       const double d_error = (error - imu_yaw_prev_error_) / dt;
-      const double corr = kp * error + ki * imu_yaw_integral_ + kd * d_error;
-      l = std::clamp(l - corr, -1.0, 1.0);
-      r = std::clamp(r + corr, -1.0, 1.0);
+      corr = kp * error + ki * imu_yaw_integral_ + kd * d_error;
     }
     imu_yaw_prev_error_ = error;
   } else {
@@ -513,14 +520,22 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     return std::min(100, static_cast<int>(std::lround(raw)));
   };
 
-  const int pl = to_pct(l);
-  const int pr = to_pct(r);
+  // Snap aplikujeme na pôvodné príkazy (bez korekcie), potom pridáme korekciu na PWM úrovni.
+  // Tak sa vyhneme situácii, keď korekcia prehodí motor cez snap_threshold a spôsobí skok 50+ %.
+  int pl = to_pct(l_cmd);
+  int pr = to_pct(r_cmd);
+  if (corr != 0.0) {
+    const int corr_pct = static_cast<int>(std::lround(corr * boost * 100.0));
+    pl = std::clamp(pl - corr_pct, 0, 100);
+    pr = std::clamp(pr + corr_pct, 0, 100);
+  }
+
   if (pl <= 0 && pr <= 0) {
     hat_->motor_stop(0);
     hat_->motor_stop(1);
     return;
   }
-  hat_->apply_drive(pl, l > 0.0, pr, r > 0.0);
+  hat_->apply_drive(pl, l_cmd > 0.0, pr, r_cmd > 0.0);
 }
 
 }  // namespace nodes
