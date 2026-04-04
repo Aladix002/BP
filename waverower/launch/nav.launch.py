@@ -20,7 +20,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
-    DeclareLaunchArgument, GroupAction,
+    DeclareLaunchArgument, ExecuteProcess, GroupAction,
     IncludeLaunchDescription, SetEnvironmentVariable, TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
@@ -136,15 +136,35 @@ def generate_launch_description():
         ),
 
         # ── SLAM Toolbox: mapping mód (bez mapy) ──────────────────────────────
-        # use_lifecycle_manager: false v slam.yaml → uzol sa aktivuje sám
+        # async_slam_toolbox_node = lifecycle node, vyžaduje externé configure+activate
         Node(
             package="slam_toolbox",
-            executable="sync_slam_toolbox_node",
+            executable="async_slam_toolbox_node",
             name="slam_toolbox",
             output="screen",
             condition=UnlessCondition(use_map),
             parameters=[slam_params],
         ),
+        # SLAM lifecycle: configure po 15 s (uzol musí byť plne inicializovaný)
+        TimerAction(period=15.0, actions=[
+            GroupAction(
+                condition=UnlessCondition(use_map),
+                actions=[ExecuteProcess(
+                    cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
+                    output="screen",
+                )],
+            ),
+        ]),
+        # SLAM lifecycle: activate po 20 s
+        TimerAction(period=20.0, actions=[
+            GroupAction(
+                condition=UnlessCondition(use_map),
+                actions=[ExecuteProcess(
+                    cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                    output="screen",
+                )],
+            ),
+        ]),
 
         # ── SLAM Toolbox: lokalizačný mód (so mapou) ──────────────────────────
         Node(
@@ -156,8 +176,8 @@ def generate_launch_description():
             parameters=[slam_params, {"map_file_name": map_yaml, "mode": "localization"}],
         ),
 
-        # ── Nav2 (oneskorenie 10 s: kým SLAM začne publikovať map→odom TF) ─────
-        TimerAction(period=10.0, actions=[
+        # ── Nav2 (oneskorenie 30 s: kým SLAM activate prebehne a začne map TF) ─
+        TimerAction(period=30.0, actions=[
             GroupAction([
                 Node(
                     package="nav2_controller",

@@ -69,8 +69,13 @@
       <button type="button" id="btnApplyPid" class="secondary full-width">Aplikovať IMU PID na robota</button>
     </details>
     <details>
-      <summary>Optical flow (ak beží optical_flow_node)</summary>
-      <p class="settings-hint">Uplatní sa len ak je spustený uzol optical flow.</p>
+      <summary>Optical flow</summary>
+      <p class="settings-hint">
+        Platí len keď beží uzol <code>optical_flow_node</code> alebo <code>optical_flow_dense_node</code>.
+        Pri <code>correction_mode:=imu</code> sa optical flow nespúšťa – buď reštartuj s
+        <code>correction_mode:=optical_flow use_camera:=true</code>, alebo nastav parametre cez
+        <code>ros2 param set</code>.
+      </p>
       <div class="settings-grid">
         <label for="flowGain">correction_gain</label>
         <input type="number" id="flowGain" step="0.1" min="0" max="5" value="1.5" />
@@ -102,6 +107,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
