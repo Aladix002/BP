@@ -3,15 +3,16 @@
 
 Zarovnanie pri jazde rovno (predvolene IMU):
   correction_mode:=imu | optical_flow | none
+  Optical flow: correction_mode:=optical_flow use_camera:=true
 
 Prepínanie počas behu (služby):
   ros2 service call /waverower/switch_to_wander std_srvs/srv/Trigger
   ros2 service call /waverower/switch_to_manual std_srvs/srv/Trigger
 
 Spustenie:
-  ros2 launch waverower runtime_stack.launch.py stack_mode:=manual use_web:=true use_camera:=true
+  ros2 launch waverower runtime_stack.launch.py
   ros2 launch waverower runtime_stack.launch.py stack_mode:=wander use_lidar:=true
-  ros2 launch waverower runtime_stack.launch.py correction_mode:=optical_flow use_camera:=true
+  ros2 launch waverower runtime_stack.launch.py correction_mode:=imu use_camera:=false
 """
 
 import os
