@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Autonómna navigácia: Nav2 + SLAM Toolbox + odometria z /cmd_vel + LD19 LiDAR + IMU.
+"""Autonómna navigácia: Nav2 + SLAM Toolbox + odometria z /cmd_vel+IMU + LD19 LiDAR.
 
-Módy:
-  Bez mapy  (default) – SLAM mapuje + naviguje súčasne
-  So mapou            – slam_toolbox v lokalizačnom móde (uložená mapa .yaml)
+RViz beží na PC (nie tu). Na PC spusti:
+  source /opt/ros/jazzy/setup.bash
+  export ROS_DOMAIN_ID=0
+  rviz2 -d /home/aladix/Desktop/BP/waverower/params/slam.rviz
 
 Príklady:
   ros2 launch waverower nav.launch.py
-  ros2 launch waverower nav.launch.py map_yaml:=/home/aladix/mapa.yaml
-  ros2 launch waverower nav.launch.py use_rviz:=true
+  ros2 launch waverower nav_launch.py map_yaml:=/home/aladix/mapa.yaml
 
-Cieľ poslať cez ROS2 Action (po spustení):
+Cieľ poslať cez:
   ros2 run waverower send_goal.py -- 1.5 0.0 0.0
-  alebo v RViz: tlačidlo "2D Nav Goal"
+  alebo v RViz: tlačidlo "2D Goal Pose"
 """
 
 import os
@@ -20,7 +20,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
-    DeclareLaunchArgument, ExecuteProcess, GroupAction,
+    DeclareLaunchArgument, GroupAction,
     IncludeLaunchDescription, SetEnvironmentVariable, TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
@@ -30,22 +30,20 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    pkg         = get_package_share_directory("waverower")
+    pkg           = get_package_share_directory("waverower")
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
-    urdf_xacro  = "/home/aladix/Desktop/BP/gazebo/waver_sim/description/robot.urdf.xacro"
+    urdf_xacro    = "/home/aladix/Desktop/BP/gazebo/waver_sim/description/robot.urdf.xacro"
 
-    nav2_params  = os.path.join(pkg, "params", "nav2.yaml")
-    slam_params  = os.path.join(pkg, "params", "slam.yaml")
-    ld19_launch  = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
+    nav2_params = os.path.join(pkg, "params", "nav2.yaml")
+    slam_params = os.path.join(pkg, "params", "slam.yaml")
+    ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
-    map_yaml   = LaunchConfiguration("map_yaml")
-    use_rviz   = LaunchConfiguration("use_rviz")
-    imu_port   = LaunchConfiguration("imu_serial_port")
-    imu_baud   = LaunchConfiguration("imu_baud_rate")
+    map_yaml = LaunchConfiguration("map_yaml")
+    imu_port = LaunchConfiguration("imu_serial_port")
+    imu_baud = LaunchConfiguration("imu_baud_rate")
 
     use_map = PythonExpression(['"', map_yaml, '" != ""'])
 
-    # Nav2 lifecycle nodes – spravuje lifecycle_manager
     nav2_lifecycle_nodes = [
         "controller_server",
         "planner_server",
@@ -65,11 +63,6 @@ def generate_launch_description():
             default_value="",
             description="Cesta k uloženej mape .yaml. Prázdne = SLAM mapping mode.",
         ),
-        DeclareLaunchArgument(
-            "use_rviz",
-            default_value="false",
-            description="Spusti RViz2 s Nav2 pluginmi.",
-        ),
         DeclareLaunchArgument("imu_serial_port", default_value="/dev/ttyACM0"),
         DeclareLaunchArgument("imu_baud_rate",   default_value="115200"),
         DeclareLaunchArgument("i2c_bus",         default_value="1"),
@@ -82,14 +75,14 @@ def generate_launch_description():
             name="motor_hat_node",
             output="screen",
             parameters=[{
-                "control_mode":    "auto",
-                "i2c_bus":         LaunchConfiguration("i2c_bus"),
-                "i2c_address":     LaunchConfiguration("i2c_address"),
-                "imu_correction":  True,
-                "imu_yaw_kp":      0.15,
-                "imu_yaw_ki":      0.05,
-                "imu_yaw_kd":      0.01,
-                "imu_yaw_deadband": 0.02,
+                "control_mode":           "auto",
+                "i2c_bus":                LaunchConfiguration("i2c_bus"),
+                "i2c_address":            LaunchConfiguration("i2c_address"),
+                "imu_correction":         True,
+                "imu_yaw_kp":             0.15,
+                "imu_yaw_ki":             0.05,
+                "imu_yaw_kd":             0.01,
+                "imu_yaw_deadband":       0.02,
                 "imu_yaw_integral_limit": 0.3,
             }],
         ),
@@ -109,7 +102,6 @@ def generate_launch_description():
         ),
 
         # ── Statické TF ────────────────────────────────────────────────────────
-        # odom→base_link: uzol cmd_vel_odometry (integrácia /cmd_vel), nie EKF-only IMU.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -117,7 +109,7 @@ def generate_launch_description():
             arguments=["0", "0", "0.05", "0", "0", "0", "base_link", "imu_link"],
         ),
 
-        # ── Robot model (URDF → robot_state_publisher → RobotModel v RViz) ──────
+        # ── Robot model (URDF → robot_state_publisher) ─────────────────────────
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",
@@ -129,13 +121,12 @@ def generate_launch_description():
             }],
         ),
 
-        # ── LiDAR LD19 ────────────────────────────────────────────────────────
+        # ── LiDAR LD19 ─────────────────────────────────────────────────────────
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ld19_launch),
         ),
 
-        # ── Odometria bez enkodérov: integrácia /cmd_vel → /odom + TF odom→base_link
-        # (EKF len s gyro nedáva x/y → Nav2 „Failed to make progress“.)
+        # ── Odometria: /cmd_vel + IMU gyro → /odom + TF odom→base_link ─────────
         Node(
             package="waverower",
             executable="cmd_vel_odometry.py",
@@ -145,37 +136,15 @@ def generate_launch_description():
         ),
 
         # ── SLAM Toolbox: mapping mód (bez mapy) ──────────────────────────────
+        # use_lifecycle_manager: false v slam.yaml → uzol sa aktivuje sám
         Node(
             package="slam_toolbox",
-            executable="async_slam_toolbox_node",
+            executable="sync_slam_toolbox_node",
             name="slam_toolbox",
             output="screen",
             condition=UnlessCondition(use_map),
             parameters=[slam_params],
         ),
-        # SLAM lifecycle len v mapping móde (async_slam). Inak by ros2 lifecycle mieril na localization uzol.
-        TimerAction(period=10.0, actions=[
-            GroupAction(
-                actions=[
-                    ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
-                        output="screen",
-                    ),
-                ],
-                condition=UnlessCondition(use_map),
-            ),
-        ]),
-        TimerAction(period=15.0, actions=[
-            GroupAction(
-                actions=[
-                    ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
-                        output="screen",
-                    ),
-                ],
-                condition=UnlessCondition(use_map),
-            ),
-        ]),
 
         # ── SLAM Toolbox: lokalizačný mód (so mapou) ──────────────────────────
         Node(
@@ -187,8 +156,8 @@ def generate_launch_description():
             parameters=[slam_params, {"map_file_name": map_yaml, "mode": "localization"}],
         ),
 
-        # ── Nav2 (oneskorenie ~20 s: kým SLAM configure+activate prebehne a začne publikovať map TF)
-        TimerAction(period=20.0, actions=[
+        # ── Nav2 (oneskorenie 10 s: kým SLAM začne publikovať map→odom TF) ─────
+        TimerAction(period=10.0, actions=[
             GroupAction([
                 Node(
                     package="nav2_controller",
@@ -239,7 +208,7 @@ def generate_launch_description():
                     output="screen",
                     parameters=[nav2_params],
                     remappings=[
-                        ("cmd_vel", "cmd_vel_nav"),
+                        ("cmd_vel",          "cmd_vel_nav"),
                         ("cmd_vel_smoothed", "/cmd_vel"),
                     ],
                 ),
@@ -249,19 +218,10 @@ def generate_launch_description():
                     name="lifecycle_manager_navigation",
                     output="screen",
                     parameters=[{
-                        "autostart": True,
-                        "node_names": nav2_lifecycle_nodes,
+                        "autostart":   True,
+                        "node_names":  nav2_lifecycle_nodes,
                     }],
                 ),
             ]),
         ]),
-
-        # ── RViz2 s Nav2 pluginmi (voliteľný) ─────────────────────────────────
-        Node(
-            package="rviz2",
-            executable="rviz2",
-            name="rviz2",
-            output="screen",
-            condition=IfCondition(use_rviz),
-        ),
     ])

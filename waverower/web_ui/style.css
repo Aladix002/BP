@@ -198,3 +198,93 @@ footer code {
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
 }
+
+.settings-panel details {
+  margin-bottom: 0.65rem;
+  border: 1px solid #2d3a4f;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  background: #141c28;
+}
+
+.settings-panel summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  list-style-position: outside;
+}
+
+.settings-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0.5rem;
+  line-height: 1.35;
+}
+
+.settings-hint code {
+  font-size: 0.68rem;
+  background: var(--panel);
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr auto 3.2rem;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.settings-row label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-row input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-val {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-align: right;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 0.65rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.settings-grid label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+}
+
+input[type="number"] {
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #2d3a4f;
+  background: #0f1419;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+button.full-width {
+  flex: none;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.55rem;
+  font-size: 0.85rem;
+}

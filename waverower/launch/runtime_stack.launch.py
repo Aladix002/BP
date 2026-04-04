@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Jeden stack: motor + LiDAR wander + IMU + voliteľne kamera; manuál (web/teleop) alebo wander.
 
+Zarovnanie pri jazde rovno (predvolene IMU):
+  correction_mode:=imu | optical_flow | none
+
 Prepínanie počas behu (služby):
   ros2 service call /waverower/switch_to_wander std_srvs/srv/Trigger
   ros2 service call /waverower/switch_to_manual std_srvs/srv/Trigger
@@ -8,6 +11,7 @@ Prepínanie počas behu (služby):
 Spustenie:
   ros2 launch waverower runtime_stack.launch.py stack_mode:=manual use_web:=true use_camera:=true
   ros2 launch waverower runtime_stack.launch.py stack_mode:=wander use_lidar:=true
+  ros2 launch waverower runtime_stack.launch.py correction_mode:=optical_flow use_camera:=true
 """
 
 import os
@@ -27,7 +31,13 @@ def _opaque(context, *args, **kwargs):
 
     ctrl = "auto" if mode == "wander" else "manual"
     wand_en = mode == "wander"
-    imu_corr = wand_en
+
+    correction_mode = LaunchConfiguration("correction_mode").perform(context)
+    if correction_mode not in ("imu", "optical_flow", "none"):
+        raise RuntimeError("correction_mode musí byť imu, optical_flow alebo none")
+
+    use_imu_corr = correction_mode == "imu"
+    use_flow = correction_mode == "optical_flow"
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -36,7 +46,6 @@ def _opaque(context, *args, **kwargs):
     use_imu = LaunchConfiguration("use_imu").perform(context) == "true"
     use_camera = LaunchConfiguration("use_camera").perform(context) == "true"
     use_web = LaunchConfiguration("use_web").perform(context) == "true"
-    use_flow = LaunchConfiguration("use_flow").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
     use_ball = LaunchConfiguration("use_ball_follow").perform(context) == "true"
     flow_algo = LaunchConfiguration("flow_algo").perform(context)
@@ -54,6 +63,9 @@ def _opaque(context, *args, **kwargs):
         "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
     )
 
+    # Wander + optical flow: wander → /cmd_vel_raw → optical_flow → /cmd_vel → motor
+    wander_cmd_topic = "/cmd_vel_raw" if (wand_en and use_flow) else "/cmd_vel"
+
     invert_ang = mode == "manual"
 
     motor_params = {
@@ -63,7 +75,7 @@ def _opaque(context, *args, **kwargs):
         "manual_twist_topic": motor_twist_topic,
         "cmd_vel_invert_linear": False,
         "cmd_vel_invert_angular": invert_ang,
-        "imu_correction": imu_corr,
+        "imu_correction": use_imu_corr,
         "imu_yaw_kp": 0.15,
         "imu_yaw_ki": 0.05,
         "imu_yaw_kd": 0.01,
@@ -96,7 +108,7 @@ def _opaque(context, *args, **kwargs):
                 "forward_speed": float(LaunchConfiguration("forward_speed").perform(context)),
                 "turn_speed": float(LaunchConfiguration("turn_speed").perform(context)),
                 "lidar_rotation_deg": float(LaunchConfiguration("lidar_rotation_deg").perform(context)),
-                "cmd_topic": "/cmd_vel",
+                "cmd_topic": wander_cmd_topic,
             }],
         ),
         Node(
@@ -153,34 +165,42 @@ def _opaque(context, *args, **kwargs):
         actions.append(LogInfo(msg="use_camera:=true vyžaduje balík camera_ros."))
 
     if use_flow_lk:
+        flow_params_lk = {
+            "correction_gain": 1.5,
+            "max_correction": 0.3,
+            "forward_threshold": 0.05,
+            "steer_deadzone": 0.12,
+            "min_features": 15,
+        }
+        if wand_en:
+            flow_params_lk["teleop_topic"] = "/cmd_vel_raw"
+            flow_params_lk["output_topic"] = "/cmd_vel"
         actions.append(
             Node(
                 package="waverower",
                 executable="optical_flow",
                 name="optical_flow_node",
                 output="screen",
-                parameters=[{
-                    "correction_gain": 1.5,
-                    "max_correction": 0.3,
-                    "forward_threshold": 0.05,
-                    "steer_deadzone": 0.12,
-                    "min_features": 15,
-                }],
+                parameters=[flow_params_lk],
             )
         )
     if use_flow_fb:
+        flow_params_fb = {
+            "correction_gain": 1.5,
+            "max_correction": 0.3,
+            "forward_threshold": 0.05,
+            "steer_deadzone": 0.12,
+        }
+        if wand_en:
+            flow_params_fb["teleop_topic"] = "/cmd_vel_raw"
+            flow_params_fb["output_topic"] = "/cmd_vel"
         actions.append(
             Node(
                 package="waverower",
                 executable="optical_flow_dense",
                 name="optical_flow_node",
                 output="screen",
-                parameters=[{
-                    "correction_gain": 1.5,
-                    "max_correction": 0.3,
-                    "forward_threshold": 0.05,
-                    "steer_deadzone": 0.12,
-                }],
+                parameters=[flow_params_fb],
             )
         )
     if use_teleop:
@@ -231,7 +251,11 @@ def generate_launch_description():
         DeclareLaunchArgument("use_camera", default_value="true"),
         DeclareLaunchArgument("camera_id", default_value="0"),
         DeclareLaunchArgument("use_web", default_value="true", description="rosbridge + HTTP :8080"),
-        DeclareLaunchArgument("use_flow", default_value="false"),
+        DeclareLaunchArgument(
+            "correction_mode",
+            default_value="imu",
+            description="Zarovnanie: imu | optical_flow | none (predvolene imu).",
+        ),
         DeclareLaunchArgument("flow_algo", default_value="lk"),
         DeclareLaunchArgument("use_teleop", default_value="false"),
         DeclareLaunchArgument("use_ball_follow", default_value="false"),

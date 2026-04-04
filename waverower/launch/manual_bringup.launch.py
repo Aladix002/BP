@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (Arduino USB fusion), LD19, teleop."""
+"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (Arduino USB fusion), LD19, teleop.
+
+Zarovnanie pri jazde rovno (predvolene IMU):
+  correction_mode:=imu           – gyro PID v motore (predvolené)
+  correction_mode:=optical_flow  – Lucas-Kanade / Farnebäck z kamery (vypne IMU PID)
+  correction_mode:=none          – bez korekcie
+
+Optical flow vyžaduje use_camera:=true a komprimovaný obraz z camera_ros.
+"""
 
 import os
 
@@ -19,7 +27,7 @@ def generate_launch_description():
     use_imu_kalman = LaunchConfiguration("use_imu_kalman")
     use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
-    use_flow   = LaunchConfiguration("use_flow")
+    correction_mode = LaunchConfiguration("correction_mode")
     flow_algo  = LaunchConfiguration("flow_algo")
     use_ball_follow = LaunchConfiguration("use_ball_follow")
 
@@ -67,10 +75,12 @@ def generate_launch_description():
             )
         ]
 
-    # Keď use_flow:=true, motor node číta z /teleop_cmd_vel_corrected (výstup optical_flow_node).
-    # Inak číta priamo z /teleop_cmd_vel.
+    use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
+
+    # optical_flow → /teleop_cmd_vel_corrected; imu | none → /teleop_cmd_vel
     motor_twist_topic = PythonExpression([
-        '"/teleop_cmd_vel_corrected" if "', use_flow, '" == "true" else "/teleop_cmd_vel"'
+        '"/teleop_cmd_vel_corrected" if "', correction_mode, '" == "optical_flow"',
+        ' else "/teleop_cmd_vel"',
     ])
 
     return LaunchDescription(
@@ -119,9 +129,9 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
-                "use_flow",
-                default_value="false",
-                description="Optical flow korekcia jazdy podľa kamery.",
+                "correction_mode",
+                default_value="imu",
+                description="Zarovnanie jazdy rovno: imu | optical_flow | none (predvolene imu).",
             ),
             DeclareLaunchArgument(
                 "flow_algo",
@@ -150,6 +160,12 @@ def generate_launch_description():
                     "i2c_bus":            LaunchConfiguration("i2c_bus"),
                     "i2c_address":        LaunchConfiguration("i2c_address"),
                     "manual_twist_topic": motor_twist_topic,
+                    "imu_correction":     use_imu_correction,
+                    "imu_yaw_kp":         0.15,
+                    "imu_yaw_ki":         0.05,
+                    "imu_yaw_kd":         0.01,
+                    "imu_yaw_deadband":   0.02,
+                    "imu_yaw_integral_limit": 0.3,
                 }],
             ),
             Node(
@@ -170,7 +186,9 @@ def generate_launch_description():
                 name="optical_flow_node",
                 output="screen",
                 condition=IfCondition(
-                    PythonExpression(['"', use_flow, '" == "true" and "', flow_algo, '" != "farneback"'])
+                    PythonExpression([
+                        '"', correction_mode, '" == "optical_flow" and "', flow_algo, '" != "farneback"',
+                    ])
                 ),
                 parameters=[{
                     "correction_gain":   1.5,
@@ -186,7 +204,9 @@ def generate_launch_description():
                 name="optical_flow_node",
                 output="screen",
                 condition=IfCondition(
-                    PythonExpression(['"', use_flow, '" == "true" and "', flow_algo, '" == "farneback"'])
+                    PythonExpression([
+                        '"', correction_mode, '" == "optical_flow" and "', flow_algo, '" == "farneback"',
+                    ])
                 ),
                 parameters=[{
                     "correction_gain":   1.5,
