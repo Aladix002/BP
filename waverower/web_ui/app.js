@@ -17,6 +17,9 @@
     cam: document.getElementById("cam"),
     camPlaceholder: document.getElementById("camPlaceholder"),
     btnStop: document.getElementById("btnStop"),
+    btnManual: document.getElementById("btnManual"),
+    btnWander: document.getElementById("btnWander"),
+    modeStatus: document.getElementById("modeStatus"),
   };
 
   let ros = null;
@@ -151,6 +154,51 @@
     el.camPlaceholder.classList.remove("hidden");
     setStatus("Odpojené", false);
   }
+
+  function callModeService(serviceName, activeBtn, inactiveBtn, modeLabel) {
+    if (!ros || !ros.isConnected) {
+      el.modeStatus.textContent = "Najprv sa pripoj k rosbridge";
+      return;
+    }
+    el.modeStatus.textContent = "Prepínam…";
+    activeBtn.disabled = true;
+    inactiveBtn.disabled = true;
+    const svc = new ROSLIB.Service({
+      ros: ros,
+      name: serviceName,
+      serviceType: "std_srvs/srv/Trigger",
+    });
+    svc.callService(new ROSLIB.ServiceRequest({}), function (result) {
+      activeBtn.disabled = false;
+      inactiveBtn.disabled = false;
+      if (result && result.success) {
+        activeBtn.classList.add("active");
+        inactiveBtn.classList.remove("active");
+        el.modeStatus.textContent = "Režim: " + modeLabel;
+      } else {
+        el.modeStatus.textContent = "Chyba: " + (result ? result.message : "no response");
+      }
+    }, function (err) {
+      activeBtn.disabled = false;
+      inactiveBtn.disabled = false;
+      el.modeStatus.textContent = "Chyba služby: " + err;
+    });
+  }
+
+  function addTapListener(btn, handler) {
+    btn.addEventListener("click", handler);
+    btn.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      handler();
+    });
+  }
+
+  addTapListener(el.btnManual, function () {
+    callModeService("/waverower/switch_to_manual", el.btnManual, el.btnWander, "Manual");
+  });
+  addTapListener(el.btnWander, function () {
+    callModeService("/waverower/switch_to_wander", el.btnWander, el.btnManual, "Wander");
+  });
 
   el.btnConnect.addEventListener("click", connect);
   el.btnDisconnect.addEventListener("click", disconnect);

@@ -21,6 +21,7 @@ def generate_launch_description():
     use_teleop = LaunchConfiguration("use_teleop")
     use_flow   = LaunchConfiguration("use_flow")
     flow_algo  = LaunchConfiguration("flow_algo")
+    use_ball_follow = LaunchConfiguration("use_ball_follow")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -134,6 +135,11 @@ def generate_launch_description():
                 default_value="manual",
                 description="manual | auto",
             ),
+            DeclareLaunchArgument(
+                "use_ball_follow",
+                default_value="false",
+                description="Spusti ball_follower (vyžaduje use_camera:=true).",
+            ),
             Node(
                 package="waverower",
                 executable="waverower_motor",
@@ -144,6 +150,18 @@ def generate_launch_description():
                     "i2c_bus":            LaunchConfiguration("i2c_bus"),
                     "i2c_address":        LaunchConfiguration("i2c_address"),
                     "manual_twist_topic": motor_twist_topic,
+                }],
+            ),
+            Node(
+                package="waverower",
+                executable="ball_follower_action.py",
+                name="ball_follower",
+                output="screen",
+                condition=IfCondition(use_ball_follow),
+                parameters=[{
+                    "image_topic":    "/camera/image_raw",
+                    "cmd_topic":      "/cmd_vel",
+                    "invert_angular": True,
                 }],
             ),
             Node(

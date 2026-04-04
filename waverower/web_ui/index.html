@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Wave Rover – teleop</title>
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <header>
@@ -28,6 +28,15 @@
   </section>
 
   <section class="panel">
+    <label>Režim robota</label>
+    <div class="row">
+      <button type="button" id="btnManual" class="mode-btn active">Manual</button>
+      <button type="button" id="btnWander" class="mode-btn">Wander</button>
+    </div>
+    <p id="modeStatus" class="mode-status">—</p>
+  </section>
+
+  <section class="panel">
     <label>Ovládanie <span class="hint">(drž tlačidlo)</span></label>
     <div class="dpad">
       <div></div>
@@ -47,6 +56,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

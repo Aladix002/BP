@@ -95,6 +95,7 @@ install(PROGRAMS scripts/imu_serial_fusion_bridge.py DESTINATION lib/${PROJECT_N
 install(PROGRAMS scripts/imu_kalman_filter.py        DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/send_goal.py                DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/lidar_wander.py             DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/robot_mode_switch.py         DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/ball_follower.py            DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/ball_follower_action.py     DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/ball_follow_bt_runner.py    DESTINATION lib/${PROJECT_NAME})

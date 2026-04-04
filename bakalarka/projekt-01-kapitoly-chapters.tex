@@ -662,6 +662,84 @@ Uzol \texttt{lidar\_wander\_node} publikuje \texttt{geometry\_msgs/msg/Twist} na
 
 Launch súbor \texttt{wander.launch.py} spúšťa motor v režime \texttt{auto}, zapína IMU most, statický TF \texttt{base\_link} $\rightarrow$ \texttt{imu\_link}, driver LD19 a uzol wander -- t.\,j. kompletný reťazec pre jazdu bez mapy a bez Nav2.
 
+\subsection*{Prepínanie prevádzkových režimov za behu (\texttt{robot\_mode\_switch.py})}
+\label{sec:mode-switch}
+
+Systém podporuje prepínanie medzi manuálnym a autonómnym režimom bez reštartu akéhokoľvek uzla. Prepínač je implementovaný ako samostatný ROS~2 uzol \texttt{robot\_mode\_switch} (súbor \texttt{waverower/scripts/robot\_mode\_switch.py}), ktorý po spustení poskytuje dve služby typu \texttt{std\_srvs/srv/Trigger}:
+
+\begin{itemize}
+    \item \texttt{/waverower/switch\_to\_manual} -- prepne do manuálneho režimu,
+    \item \texttt{/waverower/switch\_to\_wander} -- prepne do autonómneho bludenia.
+\end{itemize}
+
+\paragraph{Mechanizmus prepnutia.}
+Prepínanie sa opiera o vzdialenú dynamickú rekonfiguráciu parametrov prostredníctvom rozhrania \texttt{AsyncParameterClient} (trieda dostupná v distribúcii ROS~2 Jazzy; pre Humble existuje alias \texttt{AsyncParametersClient}). Tento klient umožňuje asynchrónne zavolať štandardnú ROS~2 parametrovú službu \texttt{set\_parameters} na ľubovoľnom bežiacom uzle bez priameho prepojenia v zdrojovom kóde.
+
+Pri prepnutí do \textbf{manuálneho režimu} sa sekvenčne nastavia dva parametre:
+\begin{enumerate}
+    \item \texttt{motor\_hat\_node}: \texttt{control\_mode} $\leftarrow$ \texttt{"manual"} -- motorový uzol prestane sledovať \texttt{/cmd\_vel} (autonómny zdroj) a začne reagovať výhradne na príkazy z \texttt{/teleop\_cmd\_vel}.
+    \item \texttt{lidar\_wander\_node}: \texttt{enabled} $\leftarrow$ \texttt{False} -- riadiaci cyklus bludenia sa okamžite zastaví; uzol publikuje nulový \texttt{Twist}, čím sa robot bezpečne zastaví.
+\end{enumerate}
+
+Pri prepnutí do \textbf{autonómneho režimu} sa postupuje opačne: motorový uzol dostane \texttt{control\_mode} $\leftarrow$ \texttt{"auto"} a uzlu bludenia sa nastaví \texttt{enabled} $\leftarrow$ \texttt{True}, čím sa aktivuje jeho riadiaci cyklus.
+
+\paragraph{Problém súbežnosti a riešenie deadlocku.}
+Callbacks ROS~2 služieb bežia predvolene v \texttt{MutuallyExclusiveCallbackGroup}, ktorý zakazuje súbežné vykonávanie viacerých callbackov toho istého uzla. Keby servisný callback čakal na výsledok \texttt{set\_parameters} (volanie inej služby) v tomto nastavení, vznikol by deadlock: odpoveď parametrovej služby by nemohla byť doručená, pretože executor by čakal na uvoľnenie zámku, ktorý sám drží.
+
+Riešením je kombinácia \texttt{ReentrantCallbackGroup} a \texttt{MultiThreadedExecutor} so štyrmi vláknami. \texttt{ReentrantCallbackGroup} dovoľuje vstup do callbacku aj vtedy, keď iná inštancia toho istého callbacku ešte beží; viac vlákien executora zabezpečí, že odpoveď vzdialenej parametrovej služby bude doručená, aj keď hlavný servisný callback čaká. Aktívne čakanie na výsledok \texttt{Future} je implementované pomocnou metódou \texttt{\_wait\_future}, ktorá vo slučke 5\,ms kontroluje stav s celkovým limitom 10\,s -- po uplynutí limitu sa volanie považuje za neúspešné a service vráti \texttt{success = False}.
+
+Po dokončení oboch vzdialených volaní uzol overí výsledky cez pole \texttt{results} každého \texttt{Future}; ak niektoré nastavenie zlyhalo (\texttt{successful = False}), vráti chybovú odpoveď. V prípade úspechu vráti \texttt{success = True} a reťazec s názvom aktívneho režimu.
+
+\paragraph{Integrácia v launch súboroch.}
+Uzol \texttt{robot\_mode\_switch} je súčasťou komplexného launch súboru \texttt{runtime\_stack.launch.py}, ktorý pri štarte celého systému spúšťa motorový uzol, uzol bludenia aj prepínač v jednom procese. Počiatočný režim je určený argumentom \texttt{stack\_mode} (\texttt{manual} alebo \texttt{wander}); zodpovedajúce parametre sa odvodia priamo v launch súbore a uzly štartujú v správnom stave bez toho, aby bolo nutné volať prepínacie služby ihneď po štarte.
+
+\subsection*{Webové ovládacie rozhranie -- implementačné detaily}
+\label{sec:web-ui-detail}
+
+Webové rozhranie (\texttt{waverower/web\_ui/}) je jednostránková aplikácia tvorená súbormi \texttt{index.html}, \texttt{app.js} a \texttt{style.css}. Súbory sú servírované HTTP serverom spusteným v launch súbore \texttt{web\_teleop\_ui.launch.py} na porte 8080; pre prístup z telefónu stačí otvoriť \texttt{http://<IP Raspberry Pi>:8080} v prehliadači v rovnakej sieti.
+
+\paragraph{Komunikačná vrstva.}
+JavaScript využíva knižnicu \emph{roslibjs}, ktorá nadväzuje WebSocket spojenie s \texttt{rosbridge\_websocket} bežiacim na porte 9090. Po úspešnom pripojení aplikácia vytvorí publisher na topic \texttt{/teleop\_cmd\_vel} (typ \texttt{geometry\_msgs/msg/Twist}) a spustí časovač s frekvenciou 20\,Hz. Správy sa publikujú pravidelne bez ohľadu na zmenu vstupov, čím sa predchádza situácii, keď motorový uzol nevie, či operátor drží tlačidlo alebo spojenie vypadlo. Paralelne sa aktivuje subscriber na \texttt{/camera/camera\_node/image\_raw/compressed}; prichádzajúce Base64-enkódované JPEG snímky sa dekódujú a vkladajú do elementu \texttt{<img>} s obmedzením frekvencie na $\approx$12 snímok za sekundu (filter 80\,ms).
+
+\paragraph{Pohybové príkazy a dotykové ovládanie.}
+Každé smerové tlačidlo D-padu nesie HTML atribúty \texttt{data-lx} a \texttt{data-az} s normalizovanými hodnotami lineárnej a uhlovej rýchlosti. Tieto hodnoty sú škálované konštantami \texttt{MAX\_LINEAR = 0,45\,m/s} a \texttt{MAX\_ANGULAR = 1,0\,rad/s}. Na mobilných zariadeniach sú registrované udalosti \texttt{touchstart} (okamžité nastavenie rýchlosti, \texttt{preventDefault} zabraňuje emulovanému \texttt{click}) a \texttt{touchend} (nulová rýchlosť); pre stolné počítače sú použité ekvivalentné udalosti myši \texttt{mousedown}, \texttt{mouseup} a \texttt{mouseleave}.
+
+\paragraph{Prepínanie režimov z rozhrania.}
+Tlačidlá \emph{Manual} a \emph{Wander} volajú ROS~2 služby \texttt{/waverower/switch\_to\_manual} a \texttt{/waverower/switch\_to\_wander} (popísané v sekcii~\ref{sec:mode-switch}) prostredníctvom objektu \texttt{ROSLIB.Service}. Volanie je asynchrónne: tlačidlá sa počas čakania na odpoveď deaktivujú atribútom \texttt{disabled}, aby sa zabránilo opakovaným požiadavkám. Po prijatí odpovede sa vizuálny stav tlačidiel aktualizuje podľa výsledku -- aktívny režim je zvýraznený zelenou farbou (CSS trieda \texttt{active}). Na mobilných prehliadačoch môže byť udalosť \texttt{click} potlačená v dôsledku \texttt{preventDefault} na iných dotykových elementoch; problém je vyriešený registráciou udalosti \texttt{touchend} priamo na každom tlačidle prepínača s vlastným \texttt{preventDefault}, čím sa zaručí okamžitá odozva aj na dotykovom zariadení.
+
+\paragraph{Vizuálny dizajn.}
+Rozhranie používa tmavú farebnú schému optimalizovanú pre čitateľnosť v exteriérových podmienkach. Meta tag \texttt{viewport} s parametrami \texttt{maximum-scale=1, user-scalable=no} zabraňuje neúmyselnému priblíženiu pri dotyku a eliminuje 300\,ms oneskorenie kliknutia prítomné v starších mobilných prehliadačoch. Tlačidlám je nastavená CSS vlastnosť \texttt{touch-action: manipulation}, ktorá ďalej skracuje dotykovú latenciu.
+
+\subsection*{Automatické spúšťanie a ochrana procesov (systemd)}
+\label{sec:systemd}
+
+Pre spoľahlivý provoz robota bez manuálneho zásahu sú kritické uzly registrované ako systemd jednotky, čo zaručuje ich automatické spustenie po nabootovaní Raspberry Pi a automatické reštartovanie pri páde.
+
+Balík \texttt{waverower} obsahuje v adresári \texttt{systemd/} dve unit súbory:
+
+\begin{itemize}
+    \item \textbf{\texttt{ld19-lidar.service}} -- spúšťa driver LiDARu LD19 cez launch súbor \texttt{ldlidar\_ros2 ld19.launch.py}; publikuje topic \texttt{/scan}.
+    \item \textbf{\texttt{waverower.service}} -- spúšťa motorový uzol \texttt{waverower\_motor} priamo cez \texttt{ros2 run}; závisí od \texttt{ld19-lidar.service} a voliteľne od \texttt{camera-ros.service}.
+\end{itemize}
+
+Obidva unit súbory zdieľajú rovnakú štruktúru:
+
+\begin{enumerate}
+    \item \textbf{Závislosť na sieťovom rozhraní} (\texttt{After=network.target}, \texttt{Wants=network-online.target}) -- zaistí, že ROS~2 DDS multicast je k dispozícii pred štartom uzlov.
+    \item \textbf{Sourcing prostredia} -- direktíva \texttt{ExecStart} spúšťa \texttt{bash~-c} s explicitným \texttt{source /opt/ros/jazzy/setup.bash \&\& source \$\{WS\}/install/setup.bash}, pretože systemd nezdedí používateľský shell environment a ROS~2 príkazy by neboli dostupné bez toho.
+    \item \textbf{Automatický reštart} (\texttt{Restart=always}, \texttt{RestartSec=5}) -- ak uzol skončí z akéhokoľvek dôvodu (výnimka v Pythone, odpojenie I\textsuperscript{2}C zbernice, zabitie procesom OOM killer), systemd ho po 5 sekundách znova spustí bez nutnosti zásahu operátora.
+    \item \textbf{Logovanie} (\texttt{StandardOutput=journal}, \texttt{StandardError=journal}) -- výstup všetkých uzlov je dostupný cez \texttt{journalctl -u waverower.service -f}, čo uľahčuje ladenie aj pri behu na pozadí bez terminálu.
+\end{enumerate}
+
+Nasadenie unit súborov na robot sa vykonáva skopírovaním do \texttt{/etc/systemd/system/} a príkazmi:
+\begin{verbatim}
+sudo systemctl daemon-reload
+sudo systemctl enable ld19-lidar.service waverower.service
+sudo systemctl start  ld19-lidar.service waverower.service
+\end{verbatim}
+
+Okrem systemd ochrany obsahuje aj spúšťací skript \texttt{waverower\_manual\_teleop.sh} vlastnú obranu pred neporiadnym stavom prostredia. Na začiatku skript ukončí všetky prípadne bežiace inštancie uzlov rovnakých mien (\texttt{pkill -f}) -- zamedzí tak situácii, keď predchádzajúce spustenie ostalo viset v pamäti. Pre bezpečné čistenie pri ukončení je zaregistrovaná Bash trap na signály \texttt{EXIT}, \texttt{INT} a \texttt{TERM}: \texttt{cleanup()} zabije \texttt{teleop\_twist\_keyboard} aj motorový uzol (uložené PID v premennej \texttt{WAVER\_PID}) a počká na ich ukončenie -- robot tak nezostane nekontrolovateľne pohybovať sa po prerušení SSH spojenia alebo Ctrl+C.
+
 \subsection*{Prepojenie s mapovaním (SLAM)}
 
 Pre režim SLAM (\texttt{slam.launch.py}) sa okrem vyššie uvedených uzlov spúšťa \texttt{slam\_toolbox} s parametrami z \texttt{slam.yaml}; voliteľne \texttt{robot\_localization} (EKF) podľa \texttt{ekf.yaml}. Tu LiDAR slúži na \textbf{celý $360^\circ$ scan} pre výstavbu mapy, zatiaľ čo logika \texttt{lidar\_wander} používa ten istý \texttt{/scan}, ale len agregáciu do troch sektorov pre rozhodovanie o smere -- ide o \textbf{dva rôzne účely} jedného senzorového toku.
@@ -1154,6 +1232,6 @@ PID Node používa Motor Controller Node pre odosielanie príkazov motorom. Vypo
 \begin{itemize}
     \item \textbf{Launch súbory:} čiastočne pokryté v sekciách~\ref{sec:waverower-riadenie} a~\ref{kap:implementacia}; doplniť prípadne tabuľku všetkých \texttt{ros2 launch waverower ...} príkazov a parametrov pre obhajobu.
     \item \textbf{Testovanie a merania:} výsledky testov (latencia, frekvencia topicov, správanie pri vyhýbaní sa prekážkam), prípadne screenshoty z RViz alebo \texttt{rqt\_graph}.
-    \item \textbf{Dynamická rekonfigurácia:} ako sa v systéme prepína medzi manuálnym a autonómnym režimom (tlačidlá, topic alebo služba).
+    \item \textbf{Dynamická rekonfigurácia:} pokryté v sekcii~\ref{sec:mode-switch} (\texttt{robot\_mode\_switch.py}, ROS~2 parametrové služby, \texttt{ReentrantCallbackGroup}) a v sekcii~\ref{sec:web-ui-detail} (webové rozhranie, \texttt{roslibjs}, dotykové udalosti) a sekcii~\ref{sec:systemd} (systemd unit súbory, automatický reštart).
     \item \textbf{Distribuovaný beh:} ktoré uzly bežia na RPi a ktoré na stacionárnom PC, konfigurácia \texttt{ROS\_DOMAIN\_ID} alebo multicast.
 \end{itemize}

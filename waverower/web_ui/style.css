@@ -168,6 +168,23 @@ button:active {
   font-size: 1rem;
 }
 
+.mode-btn {
+  background: #2d3a4f;
+  color: var(--muted);
+}
+
+.mode-btn.active {
+  background: var(--ok);
+  color: #fff;
+}
+
+.mode-status {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 footer {
   text-align: center;
   font-size: 0.75rem;

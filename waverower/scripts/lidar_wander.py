@@ -34,7 +34,7 @@ class LidarWanderNode(Node):
         self.declare_parameter("forward_speed",       0.10)
         self.declare_parameter("turn_speed",          1.80)
         self.declare_parameter("turn_timeout_s",       6.0)
-        self.declare_parameter("lidar_rotation_deg", 90.0)
+        self.declare_parameter("lidar_rotation_deg", -90.0)
         self.declare_parameter("cmd_topic",       "/cmd_vel")
 
         cmd_topic = self.get_parameter("cmd_topic").get_parameter_value().string_value
