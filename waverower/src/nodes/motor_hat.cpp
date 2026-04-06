@@ -46,18 +46,18 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("teleop_max_linear_m_s", 0.5);
   declare_parameter<double>("teleop_max_angular_rad_s", 1.8);
   declare_parameter<bool>("teleop_invert_linear", true);
-  // /cmd_vel: voliteľné znamienko (v launch pre ball_follower často true/true kvôli teleop vs. ROS)
+  // /cmd_vel: volitelne znamienko (ball_follower launch)
   declare_parameter<bool>("cmd_vel_invert_linear", false);
   declare_parameter<bool>("cmd_vel_invert_angular", false);
 
-  // IMU yaw PID korekcia: vyrovnávanie jazdy bez enkodérov
+  // IMU yaw PID (bez enkoderov)
   declare_parameter<bool>("imu_correction", false);
   declare_parameter<double>("imu_yaw_kp", 0.15);
   declare_parameter<double>("imu_yaw_ki", 0.05);
   declare_parameter<double>("imu_yaw_kd", 0.01);
-  // imu_yaw_deadband: ignoruj gyro Z pod touto hodnotou [rad/s] (potlačenie šumu)
+  // imu_yaw_deadband [rad/s], potlacenie sumu
   declare_parameter<double>("imu_yaw_deadband", 0.02);
-  // imu_yaw_integral_limit: anti-windup – max absolútna hodnota integrálu
+  // imu_yaw_integral_limit anti-windup
   declare_parameter<double>("imu_yaw_integral_limit", 0.3);
   imu_pid_last_time_ = std::chrono::steady_clock::now();
 
@@ -82,7 +82,7 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
         std::bind(&MotorHatNode::teleop_twist_cb, this, std::placeholders::_1));
   }
 
-  // IMU subscription (voliteľná – aktivuje sa parametrom imu_correction:=true)
+  // IMU subscription (imu_correction:=true)
   sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu", rclcpp::SensorDataQoS(),
       std::bind(&MotorHatNode::imu_cb, this, std::placeholders::_1));
@@ -95,7 +95,7 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   last_cmd_steady_ = std::chrono::steady_clock::now();
 
   RCLCPP_INFO(get_logger(),
-              "Motor HAT  mode=%s  i2c-%d 0x%02x  %.0fHz  cmd_vel=%s  teleop=%s  [M] prepne manual/auto",
+              "Motor HAT  mode=%s  i2c-%d 0x%02x  %.0fHz  cmd_vel=%s  teleop=%s  [M] prepina manual/auto",
               control_mode_ == HatControlMode::Auto ? "auto" : "manual", i2c_bus_, i2c_addr_,
               pwm_freq_hz_, cmd_topic.c_str(),
               teleop_topic.empty() ? "(off)" : teleop_topic.c_str());
@@ -459,7 +459,7 @@ void MotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, do
 
 void MotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
-  // EMA filter – potláča šum gyra (alpha=0.25: pomalší, hladší signál pre PID)
+  // EMA filter gyro (alpha=0.25)
   constexpr double kAlpha = 0.25;
   imu_yaw_rate_ += kAlpha * (msg->angular_velocity.z - imu_yaw_rate_);
 }
@@ -467,13 +467,7 @@ void MotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
 void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
                                   double snap_fwd, double snap_turn, bool low_forward,
                                   double in_place_boost) {
-  // IMU yaw PID korekcia: keď ideme rovno (nízka rotácia), kompenzujeme drift
-  // bez enkodérov pomocou gyro Z.
-  //   P – okamžitá odchýlka yaw rate od 0
-  //   I – akumulovaný drift (napr. sklonený povrch)
-  //   D – tlmenie kmitania
-  // Korekcia sa aplikuje na PWM úrovni (po snap), nie na normalizovanom príkaze –
-  // tým sa zamedzí ostrým skokom keď jeden motor preskočí snap_threshold.
+  // IMU yaw PID pri jazde rovno; korekcia na PWM po snap (bez skokov)
   double corr = 0.0;
   if (get_parameter("imu_correction").as_bool() && !low_forward) {
     const double kp           = get_parameter("imu_yaw_kp").as_double();
@@ -492,7 +486,7 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     const double dt = std::chrono::duration<double>(now - imu_pid_last_time_).count();
     imu_pid_last_time_ = now;
 
-    // Mäkký deadband: lineárna rampová funkcia (žiadny ostrý skok pri prechode prahu)
+    // makky deadband
     double error;
     if (std::abs(yaw_rate) <= deadband) {
       error = 0.0;
@@ -508,7 +502,7 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     }
     imu_yaw_prev_error_ = error;
   } else {
-    // Reset PID stavu keď korekcia nie je aktívna (otáčanie, zastávka, param off)
+    // reset PID ak korekcia vypnuta
     imu_yaw_integral_   = 0.0;
     imu_yaw_prev_error_ = 0.0;
     imu_pid_last_time_  = std::chrono::steady_clock::now();
@@ -525,8 +519,7 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     return std::min(100, static_cast<int>(std::lround(raw)));
   };
 
-  // Snap aplikujeme na pôvodné príkazy (bez korekcie), potom pridáme korekciu na PWM úrovni.
-  // Tak sa vyhneme situácii, keď korekcia prehodí motor cez snap_threshold a spôsobí skok 50+ %.
+  // snap na povodnych prikazoch, potom IMU korekcia na PWM
   int pl = to_pct(l_cmd);
   int pr = to_pct(r_cmd);
   if (corr != 0.0) {

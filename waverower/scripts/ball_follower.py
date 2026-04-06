@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sledovanie lopty (priamy režim): vždy aktívne bez action servera."""
+"""Sledovanie lopty (priamy rezim), bez action servera."""
 
 import rclpy
 
@@ -7,7 +7,7 @@ from ball_follower_base import BallFollowerBase
 
 
 class BallFollower(BallFollowerBase):
-    """Štandardný režim: sledovanie stále zapnuté."""
+    """Sledovanie stale zapnute."""
 
     pass
 

@@ -54,7 +54,7 @@ private:
 
   void imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg);
 
-  // IMU yaw PID korekcia pre jazdu rovne (bez enkodérov)
+  // IMU yaw PID (bez enkoderov)
   double imu_yaw_rate_{0.0};
   double imu_yaw_integral_{0.0};
   double imu_yaw_prev_error_{0.0};

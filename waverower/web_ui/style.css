@@ -223,6 +223,85 @@ h1 {
   }
 }
 
+.strip-imu {
+  padding: 0.55rem 0.7rem 0.65rem;
+  margin-bottom: 0.55rem;
+}
+
+.strip-imu .imu-title {
+  display: block;
+  margin-bottom: 0.45rem;
+}
+
+.imu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.35rem 0.5rem;
+  align-items: end;
+}
+
+@media (max-width: 400px) {
+  .imu-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .imu-cell:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.imu-cell {
+  background: var(--panel-deep);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.45rem;
+}
+
+.imu-k {
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.imu-k sub {
+  font-size: 0.85em;
+}
+
+.imu-val {
+  font-family: "Source Sans 3", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.imu-unit {
+  font-size: 0.62rem;
+  color: var(--muted);
+  margin-left: 0.15rem;
+}
+
+.imu-stale {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.imu-stale.ok {
+  color: var(--ok);
+}
+
+.imu-stale.warn {
+  color: #e0b080;
+}
+
+.imu-stale.bad,
+.imu-stale.unknown {
+  color: var(--muted);
+}
+
 .cam-drive {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -236,12 +315,60 @@ h1 {
   max-width: 100%;
 }
 
+.cam-panel {
+  background: linear-gradient(165deg, var(--panel) 0%, var(--panel-deep) 100%);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.65rem 0.65rem;
+  box-shadow: var(--shadow), var(--shadow-soft);
+  overflow: hidden;
+}
+
+.cam-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.cam-panel-title {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.cam-live-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: var(--panel-deep);
+  border: 1px solid var(--stroke-strong);
+  color: var(--muted);
+}
+
+.cam-live-badge.live {
+  color: var(--ok);
+  border-color: rgba(79, 212, 154, 0.35);
+  background: rgba(79, 212, 154, 0.1);
+  box-shadow: 0 0 12px rgba(79, 212, 154, 0.12);
+}
+
 .drive-col {
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
+}
+
+.drive-col > .cam-label {
+  margin-bottom: 0.3rem;
 }
 
 @media (max-width: 280px) {
@@ -260,43 +387,75 @@ h1 {
   margin-bottom: 0.3rem;
 }
 
-.hint-inline {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-  opacity: 0.85;
+.cam-frame {
+  position: relative;
+  border-radius: calc(var(--radius-sm) + 2px);
+  padding: 3px;
+  background: linear-gradient(
+    135deg,
+    rgba(94, 176, 255, 0.22) 0%,
+    rgba(22, 28, 38, 0.95) 40%,
+    rgba(79, 212, 154, 0.12) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.cam-frame {
-  background: var(--panel-deep);
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
+.cam-frame-inner {
+  position: relative;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  min-height: clamp(160px, 32vw, 340px);
+  background: radial-gradient(ellipse 80% 70% at 50% 30%, #1a2332 0%, #050608 100%);
+  aspect-ratio: 4 / 3;
+  max-height: min(52vh, 480px);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-soft);
 }
 
-.cam {
+.cam-frame-inner .cam-canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-height: min(58vh, 520px);
-  object-fit: contain;
+  height: 100%;
   display: block;
-  background: #000;
+  background: #030508;
+  z-index: 1;
+  /* canvas scale CSS, kreslenie contain v JS */
 }
 
-.cam.hidden {
-  display: none;
+.cam-canvas.hidden {
+  display: none !important;
 }
 
 .cam-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  text-align: center;
   color: var(--muted);
   font-size: 0.82rem;
-  text-align: center;
-  padding: 1.5rem 0.5rem;
-  line-height: 1.4;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.cam-ph-icon {
+  font-size: 1.75rem;
+  opacity: 0.35;
+  line-height: 1;
+}
+
+.cam-ph-text {
+  max-width: 12rem;
+  font-size: 0.78rem;
+}
+
+.cam-placeholder.hidden {
+  display: none !important;
 }
 
 .dpad-compact {
@@ -386,6 +545,10 @@ h1 {
   color: var(--accent);
   min-width: 2.6rem;
   text-align: right;
+}
+.speed-val-derived {
+  opacity: 0.55;
+  font-weight: 400;
 }
 
 label {

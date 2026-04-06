@@ -1,7 +1,0 @@
-<?xml version="1.0"?>
-<!-- Príklad pre bt_navigator: načítaj plugin waverower_bt_nodes (plugin_lib_names). -->
-<root BTCPP_format="4" main_tree_to_execute="FollowBallTree">
-  <BehaviorTree ID="FollowBallTree">
-    <FollowBall ball_color="" max_duration_sec="120.0"/>
-  </BehaviorTree>
-</root>

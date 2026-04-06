@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""1D Kalman vyhladenie Imu (vstup /imu → výstup /imu/filtered)."""
+"""1D Kalman vyhladenie Imu (/imu -> /imu/filtered)."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepinanie manual <-> wander cez parametre motor_hat_node a lidar_wander_node."""
+"""Prepinanie manual <-> wander (parametre motor_hat_node, lidar_wander_node)."""
 
 import time
 
@@ -21,11 +21,10 @@ class RobotModeSwitch(Node):
     def __init__(self) -> None:
         super().__init__("robot_mode_switch")
 
-        # ReentrantCallbackGroup: service callback moze cakat na parameter response
-        # bez deadlocku -- MutuallyExclusiveCallbackGroup (default) by blokoval response.
+        # ReentrantCallbackGroup: service callback moze cakat na parameter response bez deadlocku
         self._cb_group = ReentrantCallbackGroup()
 
-        # Absolutne FQN uzlov
+        # FQN uzlov
         self._motor = _RemoteParamClient(self, "/motor_hat_node", callback_group=self._cb_group)
         self._wander = _RemoteParamClient(self, "/lidar_wander_node", callback_group=self._cb_group)
 
@@ -56,7 +55,7 @@ class RobotModeSwitch(Node):
         return ok_m and ok_w
 
     def _wait_future(self, future, timeout_sec: float = 10.0) -> bool:
-        """Busy-wait bez spin_until_future_complete -- volane z ReentrantCallbackGroup."""
+        """Busy-wait (volane z ReentrantCallbackGroup)."""
         t0 = time.monotonic()
         while not future.done() and (time.monotonic() - t0) < timeout_sec:
             time.sleep(0.005)
@@ -122,7 +121,7 @@ class RobotModeSwitch(Node):
 def main() -> None:
     rclpy.init()
     node = RobotModeSwitch()
-    # Viac vlakien: sluzba moze cakat na vysledok set_parameters bez deadlocku.
+    # MultiThreadedExecutor kvoli set_parameters z service callbacku
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(node)
     try:

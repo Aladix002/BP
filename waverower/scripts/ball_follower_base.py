@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Sledovanie lopty: OpenCV HSV + riadenie cez časovač (inšp. joshnewans/follow_ball).
+"""Sledovanie lopty - stavovy automat (TRACK / SEARCH_*).
 
-Callback len počíta polohu lopty; Twist sa posiela fixnou frekvenciou s vyhladením.
+Parametre: image_topic, cmd_topic, ball_color, forward_speed, angular_speed,
+stop_radius_px, min_radius_px, max_radius_px, min_circularity,
+max_contour_area_ratio, gaussian_blur_ksize, mask_erode_iters, mask_dilate_iters,
+max_bbox_aspect_ratio, min_solidity, subscribe_compressed, image_use_best_effort_qos,
+detection_max_center_jump_frac (0=vypnuté; zahodí skok stredu medzi snímkami), jump_reset_lost_sec.
 
-Parametre: image_topic, cmd_topic, ball_color, subscribe_compressed, image_use_best_effort_qos,
-  control_rate_hz, filter_alpha, rcv_timeout_secs (bez detekcie = hľadanie),
-  max_radius_px (zahodiť príliš veľké biele plochy), angular_kp, linear_kp, ...
+Maska inspirovana Shawn Hymel blob_tracker.
 """
 
-import math
 import time
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -21,324 +21,297 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image
 
-
-def _image_qos_reliable():
-    return QoSProfile(
-        reliability=ReliabilityPolicy.RELIABLE,
-        durability=DurabilityPolicy.VOLATILE,
-        history=HistoryPolicy.KEEP_LAST,
-        depth=10,
-    )
-
-
-# feedback state (FollowBall.action feedback.state)
-ST_IDLE, ST_SEARCH, ST_TRACK, ST_STOP = 0, 1, 2, 3
+_TRACK, _SEARCH_DIRECTED, _SEARCH_RANDOM = "TRACK", "SEARCH_DIRECTED", "SEARCH_RANDOM"
 
 
 class BallFollowerBase(Node):
-    """Jadro sledovania; BallFollower = vždy aktívne, Action variant = len počas goal."""
     def __init__(self) -> None:
         super().__init__("ball_follower")
 
         self.declare_parameter("image_topic", "/camera/camera_node/image_raw")
         self.declare_parameter("cmd_topic", "/cmd_vel")
-        self.declare_parameter("angular_kp", 0.55)
-        self.declare_parameter("linear_kp", 0.35)
-        self.declare_parameter("target_radius_px", 80.0)
-        self.declare_parameter("min_radius_px", 15.0)
-        # Kontúry s väčším obkolesujúcim kruhom ako táto hodnota nie sú typická lopta v zábere (sedák, skrinka…)
-        self.declare_parameter("max_radius_px", 100.0)
-        self.declare_parameter("linear_max", 0.15)
-        self.declare_parameter("angular_max", 1.0)
-        self.declare_parameter("stop_if_lost", True)
-        self.declare_parameter("search_speed", 0.55)
-        self.declare_parameter("min_contour_area", 80)
         self.declare_parameter("ball_color", "white")
+        self.declare_parameter("forward_speed", 0.20)
+        self.declare_parameter("angular_speed", 0.65)
+        self.declare_parameter("stop_radius_px", 100.0)
+        self.declare_parameter("min_radius_px", 15.0)
+        self.declare_parameter("max_radius_px", 110.0)
+        self.declare_parameter("min_circularity", 0.68)
+        self.declare_parameter("max_contour_area_ratio", 0.18)
+        self.declare_parameter("gaussian_blur_ksize", 11)
+        self.declare_parameter("mask_erode_iters", 2)
+        self.declare_parameter("mask_dilate_iters", 2)
+        self.declare_parameter("max_bbox_aspect_ratio", 1.42)
+        self.declare_parameter("min_solidity", 0.82)
         self.declare_parameter("subscribe_compressed", False)
         self.declare_parameter("image_use_best_effort_qos", True)
-
-        # follow_ball štýl: výstup oddelený od FPS kamery
-        self.declare_parameter("control_rate_hz", 25.0)
-        # filtered = alpha*old + (1-alpha)*new; vyššie alpha = viac vyhladenia, väčšie oneskorenie
-        self.declare_parameter("filter_alpha", 0.45)
-        # Ak počas tohto času neprišla platná detekcia → režim hľadania (s)
-        self.declare_parameter("rcv_timeout_secs", 0.22)
-        # Normalizovaný „polomer" (r / (šírka/2)): pod týmto prahom považuj loptu za dosť veľkú → menej vpred
-        self.declare_parameter("max_approach_radius_norm", 0.22)
-        # Základ prahu zastavenia (px); skutočný prah = stop_radius_px * stop_radius_scale
-        self.declare_parameter("stop_radius_px", 72.0)
-        # Koeficient (napr. 1.5 = lopta musí byť v zábere ~1,5× väčšia než samotný stop_radius_px)
-        self.declare_parameter("stop_radius_scale", 1.5)
-        # Ak robot pri korekcii smeru točí opačne ako očakávaš, nastav True
-        self.declare_parameter("invert_angular", False)
-        # Zrkadliť obrázok vodorovne (opačná „ľavá/pravá" ak je kamera otočená / mirror)
-        self.declare_parameter("mirror_camera_x", False)
-        # Normalizovaný x_err prah: kým |x_err| > center_tol, len otáčame; potom aj vpred
-        self.declare_parameter("center_tol", 0.12)
+        self.declare_parameter("control_rate_hz", 20.0)
+        self.declare_parameter("search_burst_speed", 1.2)
+        self.declare_parameter("burst_on_sec", 0.18)
+        self.declare_parameter("burst_off_sec", 0.30)
+        self.declare_parameter("detection_max_center_jump_frac", 0.28)
+        self.declare_parameter("jump_reset_lost_sec", 0.45)
 
         image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
-        cmd_topic = self.get_parameter("cmd_topic").get_parameter_value().string_value
+        cmd_topic   = self.get_parameter("cmd_topic").get_parameter_value().string_value
+
+        self.declare_parameter("debug_image", True)
 
         self._bridge = CvBridge()
         self._pub = self.create_publisher(Twist, cmd_topic, 10)
-        self._search_dir = 1.0
-        self._frame_count = 0
-        self._warned_no_frames = False
+        self._debug_pub = self.create_publisher(Image, "/ball_follower/debug_image", 1)
 
-        # Merania; pri zlyhaní snímku držíme posledné hodnoty až do rcv_timeout (krátke výpadky)
         self._last_det_time = 0.0
-        self._raw_x_err = 0.0
-        self._raw_radius_px = 0.0
-        self._img_w = 640
-        self._img_h = 480
+        self._last_x_err = 0.0
+        self._last_radius = 0.0
+        self._prev_radius = 0.0
+        self._ever_seen = False
+        self._search_dir = 1.0  # +1 vlavo, -1 vpravo pri hlade
+        self._last_accept_cx: float | None = None  # px, naposledy akceptovaný stred X (pre filter skokov)
 
-        # Vyhladené stavy (aktualizuje časovač)
-        self._filt_x_err = 0.0
-        self._filt_radius_norm = 0.0
-
+        self._frame_count      = 0
         self._following_active = True
-        self._goal_stopped_close = False
-        self._goal_color_override: Optional[str] = None
-        self._last_fb_state = ST_IDLE
-        self._last_fb_x_err = 0.0
-        self._last_fb_radius_px = 0.0
+        self._burst_phase_start = time.monotonic()
+        self._burst_spinning = True
 
         use_be = self.get_parameter("image_use_best_effort_qos").get_parameter_value().bool_value
-        qos = rclpy.qos.qos_profile_sensor_data if use_be else _image_qos_reliable()
-        qos_label = "BestEffort" if use_be else "Reliable/10"
+        qos = rclpy.qos.qos_profile_sensor_data if use_be else QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
         use_comp = self.get_parameter("subscribe_compressed").get_parameter_value().bool_value
-
         if "compressed" in image_topic or use_comp:
             t = image_topic if "compressed" in image_topic else image_topic.rstrip("/") + "/compressed"
             self.create_subscription(CompressedImage, t, self._compressed_cb, qos)
-            comp_l = "compressed "
         else:
             self.create_subscription(Image, image_topic, self._image_cb, qos)
-            comp_l = ""
 
-        rate = float(self.get_parameter("control_rate_hz").get_parameter_value().double_value)
-        period = 1.0 / max(rate, 1.0)
-        self.create_timer(period, self._control_tick)
+        rate   = max(self.get_parameter("control_rate_hz").get_parameter_value().double_value, 1.0)
+        self.create_timer(1.0 / rate, self._tick)
+        self.create_timer(4.0, self._warn_no_frames)
 
         self.get_logger().info(
-            f"BallFollower: {comp_l}{image_topic}, QoS={qos_label}, "
-            f"control={rate:.0f}Hz, farba={self.get_parameter('ball_color').get_parameter_value().string_value}, "
-            f"→ {cmd_topic}"
-        )
-        self.create_timer(4.0, self._warn_if_no_images)
-
-    def _ball_color_effective(self) -> str:
-        if self._goal_color_override:
-            return self._goal_color_override
-        return self.get_parameter("ball_color").get_parameter_value().string_value
-
-    def _warn_if_no_images(self) -> None:
-        if self._warned_no_frames or self._frame_count > 0:
-            return
-        self._warned_no_frames = True
-        be = self.get_parameter("image_use_best_effort_qos").get_parameter_value().bool_value
-        self.get_logger().warn(
-            "Za 4 s neprišiel žiadny obrázok. Skús: "
-            f"ros2 param set /ball_follower image_use_best_effort_qos {'false' if be else 'true'} "
-            f"alebo skontroluj topic."
+            f"BallFollower ready: topic={image_topic} color={self.get_parameter('ball_color').get_parameter_value().string_value}"
         )
 
     def _compressed_cb(self, msg: CompressedImage) -> None:
-        arr = np.frombuffer(msg.data, dtype=np.uint8)
+        arr   = np.frombuffer(msg.data, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if frame is None:
-            return
-        if self.get_parameter("mirror_camera_x").get_parameter_value().bool_value:
-            frame = cv2.flip(frame, 1)
-        self._frame_count += 1
-        if self._frame_count == 1:
-            self.get_logger().info(f"Prvý obrázok (compressed): {frame.shape[1]}x{frame.shape[0]} px")
-        self._vision_update(frame)
+        if frame is not None:
+            self._frame_count += 1
+            self._process(frame)
 
     def _image_cb(self, msg: Image) -> None:
         try:
             frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception:
-            try:
-                frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
-                if frame.ndim == 3 and frame.shape[2] == 4:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            except Exception as e:
-                self.get_logger().warn(f"cv_bridge: {e}")
-                return
-        if self.get_parameter("mirror_camera_x").get_parameter_value().bool_value:
-            frame = cv2.flip(frame, 1)
+        except Exception as e:
+            self.get_logger().warn(f"cv_bridge: {e}", throttle_duration_sec=5.0)
+            return
         self._frame_count += 1
-        if self._frame_count == 1:
-            self.get_logger().info(f"Prvý obrázok: {frame.shape[1]}x{frame.shape[0]} px")
-        self._vision_update(frame)
+        self._process(frame)
+
+    def _warn_no_frames(self) -> None:
+        if self._frame_count == 0:
+            self.get_logger().warn("Za 4s ziadny obrazok - skontroluj image_topic a QoS.")
 
     def _hsv_mask(self, hsv: np.ndarray, color: str) -> np.ndarray:
-        c = (color or "yellow").strip().lower()
+        c = (color or "white").strip().lower()
+        if c == "pink":
+            # pink: uzsi H, vyssie min S/V - menej falsov
+            return cv2.inRange(hsv,
+                               np.array([130, 70, 60],  dtype=np.uint8),
+                               np.array([175, 255, 255], dtype=np.uint8))
         if c == "white":
-            lower = np.array([0, 0, 120], dtype=np.uint8)
-            upper = np.array([180, 80, 255], dtype=np.uint8)
-            return cv2.inRange(hsv, lower, upper)
+            return cv2.inRange(hsv, np.array([0, 0, 120], dtype=np.uint8),
+                               np.array([180, 80, 255], dtype=np.uint8))
         if c == "orange":
-            lower = np.array([5, 100, 100], dtype=np.uint8)
-            upper = np.array([25, 255, 255], dtype=np.uint8)
-            return cv2.inRange(hsv, lower, upper)
+            return cv2.inRange(hsv, np.array([5, 100, 100], dtype=np.uint8),
+                               np.array([25, 255, 255], dtype=np.uint8))
+        # yellow (default)
         m1 = cv2.inRange(hsv, np.array([15, 40, 80], dtype=np.uint8), np.array([45, 255, 255], dtype=np.uint8))
-        m2 = cv2.inRange(hsv, np.array([0, 40, 80], dtype=np.uint8), np.array([15, 255, 255], dtype=np.uint8))
+        m2 = cv2.inRange(hsv, np.array([0, 40, 80],  dtype=np.uint8), np.array([15, 255, 255], dtype=np.uint8))
         return cv2.bitwise_or(m1, m2)
 
-    def _detect_ball(self, frame: np.ndarray):
+    def _binary_mask(self, frame: np.ndarray) -> tuple[np.ndarray, int, int]:
+        """Polovicne rozlisenie: blur, HSV, morfologia (blob_tracker styl)."""
         h, w = frame.shape[:2]
-        scale = 0.5
-        small = cv2.resize(frame, (int(w * scale), int(h * scale)))
+        small = cv2.resize(frame, (w // 2, h // 2))
+        kv = int(self.get_parameter("gaussian_blur_ksize").get_parameter_value().integer_value)
+        if kv >= 3 and kv % 2 == 1:
+            small = cv2.GaussianBlur(small, (kv, kv), 0)
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-        color = self._ball_color_effective()
+        color = self.get_parameter("ball_color").get_parameter_value().string_value
         mask = self._hsv_mask(hsv, color)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
+        ei = max(0, int(self.get_parameter("mask_erode_iters").get_parameter_value().integer_value))
+        di = max(0, int(self.get_parameter("mask_dilate_iters").get_parameter_value().integer_value))
+        if ei > 0:
+            mask = cv2.erode(mask, None, iterations=ei)
+        if di > 0:
+            mask = cv2.dilate(mask, None, iterations=di)
+        return mask, w, h
+
+    def _detect(self, frame: np.ndarray):
+        """Vrati (x_err, radius_px) alebo None."""
+        h, w = frame.shape[:2]
+        mask, _, _ = self._binary_mask(frame)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return None
 
-        min_area = int(self.get_parameter("min_contour_area").get_parameter_value().integer_value)
-        max_r = float(self.get_parameter("max_radius_px").get_parameter_value().double_value)
-        tgt_r = float(self.get_parameter("target_radius_px").get_parameter_value().double_value)
-
-        candidates: list[tuple[float, float, float, float]] = []
+        min_r = self.get_parameter("min_radius_px").get_parameter_value().double_value
+        max_r = self.get_parameter("max_radius_px").get_parameter_value().double_value
+        circ_thr = float(
+            np.clip(self.get_parameter("min_circularity").get_parameter_value().double_value, 0.2, 0.99)
+        )
+        max_area_r = self.get_parameter("max_contour_area_ratio").get_parameter_value().double_value
+        max_ar = self.get_parameter("max_bbox_aspect_ratio").get_parameter_value().double_value
+        min_sol = self.get_parameter("min_solidity").get_parameter_value().double_value
+        sh, sw = mask.shape[:2]
+        mask_area = float(sw * sh)
+        best = None
         for c in contours:
             area = cv2.contourArea(c)
-            if area < min_area:
+            if area < 50:
                 continue
-            perimeter = cv2.arcLength(c, True)
-            if perimeter == 0:
+            if max_area_r > 0.0 and (area / mask_area) > max_area_r:
                 continue
-            circularity = 4 * math.pi * area / (perimeter * perimeter)
-            if circularity < 0.35:
+            _bx, _by, bbw, bbh = cv2.boundingRect(c)
+            if bbw > 0 and bbh > 0 and max_ar > 0.0:
+                aspect = max(bbw, bbh) / float(min(bbw, bbh))
+                if aspect > max_ar:
+                    continue
+            if min_sol > 0.0:
+                hull = cv2.convexHull(c)
+                ha = cv2.contourArea(hull)
+                if ha <= 0.0 or (area / ha) < min_sol:
+                    continue
+            peri = cv2.arcLength(c, True)
+            if peri == 0:
                 continue
-            (cx, cy), radius = cv2.minEnclosingCircle(c)
-            r_full = float(radius / scale)
-            if r_full > max_r:
+            circularity = 4.0 * np.pi * area / (peri * peri)
+            if circularity < circ_thr:
                 continue
-            # Najbližšia veľkosť k očakávanej lopte — nie „najväčšia biela plocha" (sedák, podlaha)
-            score = abs(r_full - tgt_r)
-            candidates.append((score, circularity, cx / scale, cy / scale, r_full))
+            (cx, _cy), r = cv2.minEnclosingCircle(c)
+            r_full = r * 2.0
+            if r_full < min_r:
+                continue
+            if max_r > 0.0 and r_full > max_r:
+                continue
+            if best is None or r_full > best[1]:
+                best = (cx * 2.0, r_full)
 
-        if not candidates:
+        if best is None:
             return None
-        # Primárne najmenšia odchýlka od target_radius; pri remíze vyššia kruhovitosť
-        candidates.sort(key=lambda t: (t[0], -t[1]))
-        _, _, cx, cy, r_full = candidates[0]
-        return (cx, cy, r_full)
 
-    def _vision_update(self, frame: np.ndarray) -> None:
-        """Len detekcia + uloženie meraní — žiadny publish."""
+        cx_full, r_full = best
+        x_err = (cx_full - w / 2.0) / (w / 2.0)
+        return x_err, r_full
+
+    def _process(self, frame: np.ndarray) -> None:
         h, w = frame.shape[:2]
-        self._img_w, self._img_h = w, h
-        result = self._detect_ball(frame)
-        min_r = self.get_parameter("min_radius_px").get_parameter_value().double_value
+        now = time.monotonic()
+        result = self._detect(frame)
 
-        if result is None or result[2] < min_r:
+        if result is not None:
+            x_err_try, _r = result
+            cx_full = (x_err_try + 1.0) * w / 2.0
+            jump_lim = self.get_parameter("detection_max_center_jump_frac").get_parameter_value().double_value
+            if jump_lim > 0.0 and self._last_accept_cx is not None:
+                if abs(cx_full - self._last_accept_cx) > jump_lim * float(w):
+                    result = None
+
+        if result is None:
+            lost_sec = self.get_parameter("jump_reset_lost_sec").get_parameter_value().double_value
+            if (
+                self._last_accept_cx is not None
+                and self._last_det_time > 0.0
+                and (now - self._last_det_time) > max(lost_sec, 0.05)
+            ):
+                self._last_accept_cx = None
+
+        if self.get_parameter("debug_image").get_parameter_value().bool_value:
+            dbg = frame.copy()
+            mask, _, _ = self._binary_mask(frame)
+            mask_full = cv2.resize(mask, (w, h))
+            dbg[mask_full > 0] = (dbg[mask_full > 0] * 0.5 + np.array([0, 255, 0]) * 0.5).astype(np.uint8)
+            if result is not None:
+                cx = int((result[0] + 1.0) * w / 2.0)
+                r  = int(result[1])
+                cv2.circle(dbg, (cx, h // 2), r, (0, 0, 255), 2)
+                cv2.circle(dbg, (cx, h // 2), 4, (0, 0, 255), -1)
+            cv2.line(dbg, (w // 2, 0), (w // 2, h), (255, 255, 0), 1)
+            cv2.putText(dbg, f"r={self._last_radius:.0f}px  x={self._last_x_err:+.2f}",
+                        (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            try:
+                self._debug_pub.publish(self._bridge.cv2_to_imgmsg(dbg, encoding="bgr8"))
+            except Exception:
+                pass
+
+        if result is None:
             return
-
-        cx, cy, radius = result
-        x_err = (cx - w / 2.0) / (w / 2.0)
-        if abs(x_err) > 0.08:
+        x_err, radius = result
+        self._last_accept_cx = (x_err + 1.0) * w / 2.0
+        self._last_x_err    = x_err
+        self._last_radius   = radius
+        self._last_det_time = now
+        self._ever_seen     = True
+        if abs(x_err) > 0.05:
             self._search_dir = -1.0 if x_err > 0 else 1.0
 
-        self._raw_x_err = float(x_err)
-        self._raw_radius_px = float(radius)
-        self._last_det_time = time.monotonic()
-
-    def _control_tick(self) -> None:
+    def _tick(self) -> None:
         if not self._following_active:
             self._pub.publish(Twist())
-            self._last_fb_state = ST_IDLE
             return
 
-        now = time.monotonic()
-        timeout = float(self.get_parameter("rcv_timeout_secs").get_parameter_value().double_value)
-        alpha = float(self.get_parameter("filter_alpha").get_parameter_value().double_value)
-        alpha = float(np.clip(alpha, 0.0, 0.98))
+        fwd_spd = self.get_parameter("forward_speed").get_parameter_value().double_value
+        ang_spd = self.get_parameter("angular_speed").get_parameter_value().double_value
+        stop_r  = self.get_parameter("stop_radius_px").get_parameter_value().double_value
 
-        tgt_r = self.get_parameter("target_radius_px").get_parameter_value().double_value
-        kp_ang = self.get_parameter("angular_kp").get_parameter_value().double_value
-        kp_lin = self.get_parameter("linear_kp").get_parameter_value().double_value
-        max_lin = self.get_parameter("linear_max").get_parameter_value().double_value
-        max_ang = self.get_parameter("angular_max").get_parameter_value().double_value
-        search_spd = self.get_parameter("search_speed").get_parameter_value().double_value
-        max_rn = self.get_parameter("max_approach_radius_norm").get_parameter_value().double_value
-        stop_r = float(self.get_parameter("stop_radius_px").get_parameter_value().double_value)
-        stop_scale = float(self.get_parameter("stop_radius_scale").get_parameter_value().double_value)
-        stop_scale = max(stop_scale, 0.01)
-        effective_stop_r = (stop_r * stop_scale) if stop_r > 0.0 else 0.0
-        invert_a = self.get_parameter("invert_angular").get_parameter_value().bool_value
-        w = max(self._img_w, 1)
+        now   = time.monotonic()
+        fresh = self._last_det_time > 0.0 and (now - self._last_det_time < 0.3)
+
         cmd = Twist()
 
-        fresh = self._last_det_time > 0.0 and (now - self._last_det_time <= timeout)
-
-        if not fresh:
-            # Stratili sme loptu (alebo ešte žiadna detekcia)
-            self._last_fb_state = ST_SEARCH
-            self._last_fb_x_err = float(self._filt_x_err)
-            self._last_fb_radius_px = float(self._raw_radius_px)
-            cmd.angular.z = self._search_dir * search_spd
-            if invert_a:
-                cmd.angular.z *= -1.0
-            self._pub.publish(cmd)
-            self.get_logger().info(
-                "Hľadám loptu…",
-                throttle_duration_sec=2.0,
-            )
-            return
-
-        # Normalizovaná veľkosť v obraze (0…~0.5)
-        r_norm = self._raw_radius_px / (w / 2.0)
-
-        self._filt_x_err = alpha * self._filt_x_err + (1.0 - alpha) * self._raw_x_err
-        self._filt_radius_norm = alpha * self._filt_radius_norm + (1.0 - alpha) * r_norm
-
-        x_e = self._filt_x_err
-        r_px_smooth = float(self._filt_radius_norm * (w / 2.0))
-        if effective_stop_r > 0.0 and r_px_smooth >= effective_stop_r:
-            self._goal_stopped_close = True
-            self._last_fb_state = ST_STOP
-            self._last_fb_x_err = float(x_e)
-            self._last_fb_radius_px = float(self._raw_radius_px)
-            self._pub.publish(cmd)
-            self.get_logger().info(
-                f"Zastavené – lopta veľká v zábere (r≈{r_px_smooth:.0f}px ≥ {effective_stop_r:.0f}px "
-                f"= {stop_r:.0f}×{stop_scale:.2f})",
-                throttle_duration_sec=0.8,
-            )
-            return
-
-        r_err = tgt_r - self._raw_radius_px
-        center_tol = float(self.get_parameter("center_tol").get_parameter_value().double_value)
-        sgn = -1.0 if not invert_a else 1.0
-        cmd.angular.z = float(np.clip(sgn * kp_ang * x_e, -max_ang, max_ang))
-
-        if abs(x_e) > center_tol:
-            # Lopta nie je vycentrovaná — iba otáčame, nepôjdeme vpred
-            cmd.linear.x = 0.0
-            phase = "centrujem"
-        else:
-            # Vycentrovaná — ideme za loptou (ak nie je príliš blízko)
-            if self._filt_radius_norm < max_rn:
-                cmd.linear.x = float(np.clip(kp_lin * r_err / tgt_r, -max_lin, max_lin))
+        if fresh:
+            if stop_r > 0 and self._last_radius >= stop_r:
+                state = "STOP"
             else:
-                cmd.linear.x = 0.0
-            phase = "sledujem"
+                shrinking = self._last_radius < self._prev_radius - 1.0
+                cmd.linear.x  = fwd_spd * 1.5 if shrinking else fwd_spd
+                cmd.angular.z = float(np.clip(-ang_spd * self._last_x_err, -ang_spd, ang_spd))
+                state = "CHASE" if shrinking else "TRACK"
+            self._prev_radius = self._last_radius
+        else:
+            burst_spd = self.get_parameter("search_burst_speed").get_parameter_value().double_value
+            on_sec    = self.get_parameter("burst_on_sec").get_parameter_value().double_value
+            off_sec   = self.get_parameter("burst_off_sec").get_parameter_value().double_value
+            direction = self._search_dir if self._ever_seen else 1.0
 
-        self._last_fb_state = ST_TRACK
-        self._last_fb_x_err = float(x_e)
-        self._last_fb_radius_px = float(self._raw_radius_px)
+            elapsed = now - self._burst_phase_start
+            if self._burst_spinning:
+                if elapsed >= on_sec:
+                    self._burst_spinning    = False
+                    self._burst_phase_start = now
+                    elapsed = 0.0
+            else:
+                if elapsed >= off_sec:
+                    self._burst_spinning    = True
+                    self._burst_phase_start = now
+                    elapsed = 0.0
+
+            if self._burst_spinning:
+                cmd.angular.z = direction * burst_spd
+            state = f"{'SEARCH_D' if self._ever_seen else 'SEARCH_R'} {'ON' if self._burst_spinning else 'off'}"
 
         self._pub.publish(cmd)
         self.get_logger().info(
-            f"[{phase}]  x_err={x_e:+.2f}  r={self._raw_radius_px:.0f}px  "
-            f"cmd lin={cmd.linear.x:+.3f} ang={cmd.angular.z:+.3f}",
-            throttle_duration_sec=0.4,
+            f"[{state}]  r={self._last_radius:.0f}px  x_err={self._last_x_err:+.2f}"
+            f"  lin={cmd.linear.x:+.2f} ang={cmd.angular.z:+.2f}",
+            throttle_duration_sec=0.5,
         )

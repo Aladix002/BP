@@ -1,6 +1,4 @@
-// Sparse optical flow: Lucas–Kanade + image pyramids (calcOpticalFlowPyrLK, goodFeaturesToTrack).
-// Theory and API align with the OpenCV tutorial on optical flow:
-// https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
+// Optical flow LK + pyramidy - OpenCV tutorial optical flow
 #include "nodes/optical_flow.hpp"
 #include <algorithm>
 #include <cmath>
@@ -36,7 +34,7 @@ OpticalFlowNode::OpticalFlowNode() : Node("optical_flow_node") {
 
     pub_cmd_ = create_publisher<geometry_msgs::msg::Twist>(out_topic, rclcpp::QoS(10));
 
-    // publikuj na 20 Hz
+    // 20 Hz
     timer_ = create_wall_timer(std::chrono::milliseconds(50),
                                std::bind(&OpticalFlowNode::timer_cb, this));
 
@@ -47,11 +45,11 @@ OpticalFlowNode::OpticalFlowNode() : Node("optical_flow_node") {
 }
 
 void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPtr msg) {
-    // dekóduj JPEG
+    // JPEG decode
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_GRAYSCALE);
     if (frame.empty()) return;
 
-    // zmenši na max 320px šírku kvôli výkonu na RPi
+    // max sirka 320 px (RPi)
     if (frame.cols > 320) {
         cv::resize(frame, frame, cv::Size(320, frame.rows * 320 / frame.cols));
     }
@@ -63,7 +61,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
         return;
     }
 
-    // detekcia rohových bodov v predchádzajúcom snímku
+    // goodFeaturesToTrack na predchadzajuciom snimku
     std::vector<cv::Point2f> prev_pts;
     cv::goodFeaturesToTrack(prev_gray_, prev_pts, 100, 0.01, 10);
 
@@ -78,7 +76,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
     std::vector<float> err;
     cv::calcOpticalFlowPyrLK(prev_gray_, frame, prev_pts, curr_pts, status, err);
 
-    // priemer horizontálneho pohybu (dx) len úspešne sledovaných bodov
+    // priemer dx z uspesnych trackov
     double sum_dx = 0.0;
     int count = 0;
     for (size_t i = 0; i < status.size(); ++i) {
@@ -89,10 +87,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
     }
 
     if (count >= min_features_) {
-        // normalizuj šírkou snímku → [-0.5, 0.5] zhruba
         const double mean_dx_norm = (sum_dx / count) / frame.cols;
-        // scéna sa posunula doľava (mean_dx < 0) → robot driftuje doprava
-        // koriguj: otočiť doľava = kladné angular.z
         const double raw = -mean_dx_norm * correction_gain_;
         flow_correction_ = std::clamp(raw, -max_correction_, max_correction_);
     } else {
@@ -117,7 +112,7 @@ void OpticalFlowNode::timer_cb() {
         correction = flow_correction_;
     }
 
-    // korekcia len keď robot ide dopredu a užívateľ aktívne nestočuje
+    // korekcia len pri jazde vpred, bez aktivneho zatacania
     const bool moving_forward  = std::abs(out.linear.x) > forward_threshold_;
     const bool user_steering   = std::abs(out.angular.z) > steer_deadzone_;
 

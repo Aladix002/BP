@@ -9,8 +9,7 @@ int main(int argc, char* argv[])
   rclcpp::init(argc, argv);
 
   rclcpp::NodeOptions node_options;
-  // Len hodnoty ktoré nie sú nastavované cez launch súbory.
-  // control_mode sa nastavuje v launch súbore (manual/auto).
+  // default parametre; control_mode z launchu (manual/auto)
   node_options.parameter_overrides({
       rclcpp::Parameter("pwm_boost", 2.35),
       rclcpp::Parameter("snap_threshold", 0.22),

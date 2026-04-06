@@ -1,6 +1,6 @@
 # Sledovanie lopty — goal/result/feedback pre ActionServer + BT (Nav2 BtActionNode)
-# ball_color: "" = použiť parameter uzla follow_ball_action
-# max_duration_sec: 0 = bez časového limitu
+# ball_color: "" = parameter uzla follow_ball_action
+# max_duration_sec: 0 = bez casoveho limitu
 string ball_color
 float64 max_duration_sec
 ---

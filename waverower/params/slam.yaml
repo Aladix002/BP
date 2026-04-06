@@ -24,11 +24,11 @@ slam_toolbox:
     transform_timeout: 0.5
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000
-    enable_interactive_mode: false # šetrí CPU na RPi
+    enable_interactive_mode: false  # setri CPU na RPi
 
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.2   # [m] – menší robot, menšia miestnosť
+    minimum_travel_distance: 0.2   # [m] maly robot / miestnost
     minimum_travel_heading: 0.2    # [rad]
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0

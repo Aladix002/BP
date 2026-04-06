@@ -4,111 +4,88 @@
   const TWIST_TYPE = "geometry_msgs/msg/Twist";
   const CAMERA_TOPIC = "/camera/camera_node/image_raw/compressed";
   const CAMERA_TYPE = "sensor_msgs/msg/CompressedImage";
-  const MOTOR_NODE = "/motor_hat_node";
-  const RCL_DOUBLE = 3;
+  const IMU_TOPIC = "/imu";
+  const IMU_TYPE = "sensor_msgs/msg/Imu";
   const PUBLISH_HZ = 20;
-  const WEB_TELEOP_SCALE_DIVISOR = 1.0;
   const LS_MAX_LIN = "waverower_web_max_lin";
-  const LS_MAX_ANG = "waverower_web_max_ang";
+
+  // linearne slidery; musi sediet s runtime_stack motor_hat teleop_max
+  const SLIDER_LIN = { min: 0.01, max: 0.08, step: 0.01 };
+  const LAUNCH_TELEOP_MAX_LIN = 0.5;
+  const LAUNCH_TELEOP_MAX_ANG = 1.0;
+  /** motor_hat: PWM cca m * 100 * pwm_boost */
+  const LAUNCH_PWM_BOOST = 2.35;
 
   const DEFAULTS = {
-    teleop_max_linear_m_s: 0.5,
-    teleop_max_angular_rad_s: 1.8,
+    teleop_max_linear_m_s: 0.04,
   };
+
+  function clamp(n, lo, hi) {
+    return Math.min(hi, Math.max(lo, n));
+  }
+
+  function snapStep(n, step) {
+    return Math.round(n / step) * step;
+  }
 
   const el = {
     status: document.getElementById("status"),
     wsUrl: document.getElementById("wsUrl"),
     btnConnect: document.getElementById("btnConnect"),
     btnDisconnect: document.getElementById("btnDisconnect"),
-    cam: document.getElementById("cam"),
+    camCanvas: document.getElementById("camCanvas"),
     camPlaceholder: document.getElementById("camPlaceholder"),
     btnStop: document.getElementById("btnStop"),
     btnManual: document.getElementById("btnManual"),
     btnWander: document.getElementById("btnWander"),
     modeStatus: document.getElementById("modeStatus"),
     maxLin: document.getElementById("maxLin"),
-    maxAng: document.getElementById("maxAng"),
     maxLinVal: document.getElementById("maxLinVal"),
     maxAngVal: document.getElementById("maxAngVal"),
+    camLive: document.getElementById("camLive"),
+    imuWz: document.getElementById("imuWz"),
+    imuWabs: document.getElementById("imuWabs"),
+    imuStale: document.getElementById("imuStale"),
   };
 
   let ros = null;
   let cmdVel = null;
   let camSub = null;
   let pubTimer = null;
+  /** pri disconnect zvysit - zahodit stare snimky */
+  let camFeedGen = 0;
+  let imuSub = null;
+  let imuUiTimer = null;
+  let lastImuMs = 0;
   let currentTwist = { linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 } };
-  let liveMaxLin =
-    parseFloat(localStorage.getItem(LS_MAX_LIN), 10) ||
-    parseFloat(el.maxLin.value, 10) ||
-    DEFAULTS.teleop_max_linear_m_s;
+  let liveMaxLin = parseFloat(localStorage.getItem(LS_MAX_LIN), 10);
+  if (!Number.isFinite(liveMaxLin)) {
+    liveMaxLin =
+      parseFloat(el.maxLin && el.maxLin.value, 10) ||
+      DEFAULTS.teleop_max_linear_m_s;
+  }
+  liveMaxLin = snapStep(clamp(liveMaxLin, SLIDER_LIN.min, SLIDER_LIN.max), SLIDER_LIN.step);
+
+  /** 0..1 podla slidera */
+  function teleopIntensity() {
+    return liveMaxLin / SLIDER_LIN.max;
+  }
+
   let liveMaxAng =
-    parseFloat(localStorage.getItem(LS_MAX_ANG), 10) ||
-    parseFloat(el.maxAng.value, 10) ||
-    DEFAULTS.teleop_max_angular_rad_s;
+    teleopIntensity() * (LAUNCH_TELEOP_MAX_ANG / LAUNCH_PWM_BOOST);
+
   if (el.maxLin) el.maxLin.value = String(liveMaxLin);
-  if (el.maxAng) el.maxAng.value = String(liveMaxAng);
-
-  function makeDoubleParam(name, v) {
-    const x = Number(v);
-    return {
-      name: name,
-      value: { type: RCL_DOUBLE, double_value: x },
-    };
-  }
-
-  function callSetParameters(nodeName, params, onOk, onErr) {
-    if (!ros || !ros.isConnected) {
-      onErr && onErr();
-      return;
-    }
-    const svc = new ROSLIB.Service({
-      ros: ros,
-      name: nodeName + "/set_parameters",
-      serviceType: "rcl_interfaces/srv/SetParameters",
-    });
-    const req = new ROSLIB.ServiceRequest({ parameters: params });
-    svc.callService(
-      req,
-      function (res) {
-        const results = res && res.results ? res.results : [];
-        const ok =
-          results.length === params.length &&
-          results.every(function (r) {
-            return r && (r.successful === true || r.successful === 1);
-          });
-        if (ok) {
-          onOk && onOk(res);
-        } else {
-          const reason = results[0] && results[0].reason ? results[0].reason : "unknown";
-          onErr && onErr(reason);
-        }
-      },
-      function (err) {
-        onErr && onErr(err);
-      }
-    );
-  }
-
-  function applyWebTeleopDivisorToMotor() {
-    if (!ros || !ros.isConnected) return;
-    const params = [
-      makeDoubleParam("teleop_max_linear_m_s", WEB_TELEOP_SCALE_DIVISOR),
-      makeDoubleParam("teleop_max_angular_rad_s", WEB_TELEOP_SCALE_DIVISOR),
-    ];
-    callSetParameters(MOTOR_NODE, params, function () {}, function () {});
-  }
 
   function onMaxLinInput() {
-    liveMaxLin = parseFloat(el.maxLin.value, 10);
+    liveMaxLin = snapStep(
+      clamp(parseFloat(el.maxLin.value, 10), SLIDER_LIN.min, SLIDER_LIN.max),
+      SLIDER_LIN.step
+    );
+    liveMaxAng = teleopIntensity() * (LAUNCH_TELEOP_MAX_ANG / LAUNCH_PWM_BOOST);
+    el.maxLin.value = String(liveMaxLin);
     el.maxLinVal.textContent = liveMaxLin.toFixed(2);
+    if (el.maxAngVal) el.maxAngVal.textContent = liveMaxAng.toFixed(2);
     localStorage.setItem(LS_MAX_LIN, String(liveMaxLin));
-  }
-
-  function onMaxAngInput() {
-    liveMaxAng = parseFloat(el.maxAng.value, 10);
-    el.maxAngVal.textContent = liveMaxAng.toFixed(2);
-    localStorage.setItem(LS_MAX_ANG, String(liveMaxAng));
   }
 
   function defaultWsUrl() {
@@ -122,6 +99,90 @@
   el.wsUrl.placeholder = defaultWsUrl();
   el.wsUrl.value = localStorage.getItem("waverower_ws_url") || defaultWsUrl();
 
+  function compressedMessageToImageUrl(m) {
+    if (typeof m.data === "string") {
+      return { url: "data:image/jpeg;base64," + m.data, revoke: null };
+    }
+    const blob = new Blob([new Uint8Array(m.data)], { type: "image/jpeg" });
+    const url = URL.createObjectURL(blob);
+    return { url: url, revoke: url };
+  }
+
+  function drawCamFrame(img) {
+    const canvas = el.camCanvas;
+    const ctx = canvas.getContext("2d");
+    const par = canvas.parentElement;
+    const w = Math.max(1, Math.floor(par.clientWidth));
+    const h = Math.max(1, Math.floor(par.clientHeight));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    if (!iw || !ih) return;
+    const s = Math.min(w / iw, h / ih);
+    const dw = iw * s;
+    const dh = ih * s;
+    const x = (w - dw) * 0.5;
+    const y = (h - dh) * 0.5;
+    ctx.fillStyle = "#030508";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, x, y, dw, dh);
+  }
+
+  function resetImuDisplay() {
+    lastImuMs = 0;
+    if (el.imuWz) el.imuWz.textContent = "—";
+    if (el.imuWabs) el.imuWabs.textContent = "—";
+    if (el.imuStale) {
+      el.imuStale.textContent = "disconnected";
+      el.imuStale.className = "imu-stale unknown";
+    }
+  }
+
+  function tickImuUi() {
+    if (!ros || !ros.isConnected) {
+      resetImuDisplay();
+      return;
+    }
+    const now = Date.now();
+    const age = lastImuMs ? now - lastImuMs : 999999;
+    if (!el.imuStale) return;
+    if (!lastImuMs || age > 1200) {
+      el.imuStale.textContent = age > 1200 && lastImuMs ? "no /imu" : "waiting...";
+      el.imuStale.className = "imu-stale " + (lastImuMs ? "warn" : "unknown");
+    } else {
+      el.imuStale.textContent = "OK";
+      el.imuStale.className = "imu-stale ok";
+    }
+  }
+
+  function subscribeImu() {
+    if (imuSub) {
+      try {
+        imuSub.unsubscribe();
+      } catch (e) {}
+      imuSub = null;
+    }
+    if (!ros) return;
+    imuSub = new ROSLIB.Topic({
+      ros: ros,
+      name: IMU_TOPIC,
+      messageType: IMU_TYPE,
+    });
+    imuSub.subscribe(function (msg) {
+      const av = msg.angular_velocity;
+      let z = NaN;
+      if (av && typeof av.z === "number") z = av.z;
+      else if (av && av.z != null) z = parseFloat(av.z);
+      if (!Number.isFinite(z)) return;
+      lastImuMs = Date.now();
+      if (el.imuWz) el.imuWz.textContent = z.toFixed(3);
+      if (el.imuWabs) el.imuWabs.textContent = Math.abs(z).toFixed(3);
+    });
+  }
+
   function subscribeCam() {
     if (camSub) {
       try {
@@ -134,30 +195,51 @@
       ros: ros,
       name: CAMERA_TOPIC,
       messageType: CAMERA_TYPE,
-      throttle_rate: 80,
+      throttle_rate: 66,
     });
-    let lastT = 0;
+    const feedGen = ++camFeedGen;
+    let camUiPrimed = false;
+    let camFrameSeq = 0;
     camSub.subscribe(function (m) {
-      const now = Date.now();
-      if (now - lastT < 80) return;
-      lastT = now;
+      if (feedGen !== camFeedGen) return;
+      const seq = ++camFrameSeq;
+      let revokeUrl = null;
+      let url;
       try {
-        let src;
-        if (typeof m.data === "string") {
-          src = "data:image/jpeg;base64," + m.data;
-        } else {
-          const bytes = new Uint8Array(m.data);
-          const blob = new Blob([bytes], { type: "image/jpeg" });
-          src = URL.createObjectURL(blob);
-          if (el.cam._blobUrl) URL.revokeObjectURL(el.cam._blobUrl);
-          el.cam._blobUrl = src;
-        }
-        el.cam.src = src;
-        el.cam.classList.remove("hidden");
-        el.camPlaceholder.classList.add("hidden");
+        const u = compressedMessageToImageUrl(m);
+        url = u.url;
+        revokeUrl = u.revoke;
       } catch (err) {
         console.warn("Camera frame error:", err, typeof m.data, m.data && m.data.length);
+        return;
       }
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = function () {
+        if (feedGen !== camFeedGen || seq !== camFrameSeq) {
+          if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+          return;
+        }
+        try {
+          drawCamFrame(img);
+        } catch (e) {
+          console.warn("drawCamFrame:", e);
+        }
+        if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+        if (!camUiPrimed) {
+          camUiPrimed = true;
+          el.camCanvas.classList.remove("hidden");
+          el.camPlaceholder.classList.add("hidden");
+          if (el.camLive) {
+            el.camLive.textContent = "Live";
+            el.camLive.classList.add("live");
+          }
+        }
+      };
+      img.onerror = function () {
+        if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+      };
+      img.src = url;
     });
   }
 
@@ -204,8 +286,11 @@
       });
       if (pubTimer) clearInterval(pubTimer);
       pubTimer = setInterval(publishLoop, 1000 / PUBLISH_HZ);
+      if (imuUiTimer) clearInterval(imuUiTimer);
+      resetImuDisplay();
       subscribeCam();
-      applyWebTeleopDivisorToMotor();
+      subscribeImu();
+      imuUiTimer = setInterval(tickImuUi, 400);
     });
 
     ros.on("error", function (e) {
@@ -214,10 +299,15 @@
     });
 
     ros.on("close", function () {
+      camFeedGen++;
       setStatus("Disconnected", false);
       if (pubTimer) {
         clearInterval(pubTimer);
         pubTimer = null;
+      }
+      if (imuUiTimer) {
+        clearInterval(imuUiTimer);
+        imuUiTimer = null;
       }
       cmdVel = null;
       if (camSub) {
@@ -226,6 +316,13 @@
         } catch (e) {}
         camSub = null;
       }
+      if (imuSub) {
+        try {
+          imuSub.unsubscribe();
+        } catch (e) {}
+        imuSub = null;
+      }
+      resetImuDisplay();
     });
   }
 
@@ -242,8 +339,12 @@
       ros = null;
     }
     cmdVel = null;
-    el.cam.classList.add("hidden");
+    el.camCanvas.classList.add("hidden");
     el.camPlaceholder.classList.remove("hidden");
+    if (el.camLive) {
+      el.camLive.textContent = "Standby";
+      el.camLive.classList.remove("live");
+    }
     setStatus("Disconnected", false);
   }
 
@@ -252,7 +353,7 @@
       el.modeStatus.textContent = "Connect to rosbridge first";
       return;
     }
-    el.modeStatus.textContent = "Switching…";
+    el.modeStatus.textContent = "Switching...";
     activeBtn.disabled = true;
     inactiveBtn.disabled = true;
     const svc = new ROSLIB.Service({
@@ -301,19 +402,20 @@
   el.btnStop.addEventListener("click", stopMotion);
 
   el.maxLin.addEventListener("input", onMaxLinInput);
-  el.maxAng.addEventListener("input", onMaxAngInput);
 
   el.maxLinVal.textContent = liveMaxLin.toFixed(2);
-  el.maxAngVal.textContent = liveMaxAng.toFixed(2);
+  if (el.maxAngVal) el.maxAngVal.textContent = liveMaxAng.toFixed(2);
 
   document.querySelectorAll("button.drive").forEach(function (btn) {
     const lx = parseFloat(btn.getAttribute("data-lx"), 10) || 0;
     const az = parseFloat(btn.getAttribute("data-az"), 10) || 0;
 
     function apply() {
+      const t = teleopIntensity();
+      const g = 1.0 / LAUNCH_PWM_BOOST;
       currentTwist = {
-        linear: { x: lx * liveMaxLin, y: 0, z: 0 },
-        angular: { x: 0, y: 0, z: az * liveMaxAng },
+        linear: { x: lx * t * LAUNCH_TELEOP_MAX_LIN * g, y: 0, z: 0 },
+        angular: { x: 0, y: 0, z: az * t * LAUNCH_TELEOP_MAX_ANG * g },
       };
     }
 

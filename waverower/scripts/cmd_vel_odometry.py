@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Dead reckoning: /cmd_vel + /imu → /odom + TF odom→base_link.
+"""Dead reckoning: /cmd_vel + /imu -> /odom + TF odom->base_link.
 
-Yaw je integrovaný z IMU gyra (angular_velocity.z) – presnejší ako integrácia
-príkazového angular.z, ktorý nekopíruje skutočné otáčanie robota.
-Lineárna poloha (x, y) zostáva z integrácie cmd_vel linear.x (robot bez enkodérov).
-SLAM toolbox koriguje drift cez map→odom transform.
+Yaw z IMU gyro Z; poloha (x,y) z cmd_vel linear.x (bez enkoderov).
 """
 
 import math
@@ -42,7 +39,6 @@ class CmdVelOdometry(Node):
         self._last_cmd_time = self.get_clock().now()
         self._prev_tick = self.get_clock().now()
 
-        # IMU yaw rate (gyro Z) – použi ak dostupné
         self._imu_wz = 0.0
         self._imu_available = False
 
@@ -76,7 +72,6 @@ class CmdVelOdometry(Node):
         stale = (now - self._last_cmd_time).nanoseconds / 1e9 > self._timeout
         v = 0.0 if stale else float(self._last_cmd.linear.x)
 
-        # Yaw z IMU ak dostupný, inak z príkazu (záloha pred prvým IMU paketom)
         if self._imu_available:
             w = self._imu_wz
         else:

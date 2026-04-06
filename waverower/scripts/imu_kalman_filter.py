@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""1D Kalman filter pre každú zložku linear_acceleration a angular_velocity (Imu).
+"""1D Kalman na zlozky Imu linear_acceleration a angular_velocity.
 
-Orientáciu nemení (prepíše z poslednej správy); na plný „AHRS Kalman“ by bol potrebný
-Quaternion EKF — bežne sa v ROS 2 rieši cez imu_filter_madgwick alebo robot_localization.
-
-Parametre Q/R ladíš podľa šumu senzora (vyššie R = viac dôvery modelu / hladšie).
+Orientaciu kopiruje z poslednej spravy. Plny AHRS: madgwick / robot_localization.
+Q/R podla sumu senzora.
 """
 
 from __future__ import annotations
@@ -30,7 +28,7 @@ def _double_param(node: Node, name: str, default: float) -> float:
 
 
 class ScalarKalman:
-    """Konštantný model: x_k ≈ x_{k-1} + w, meranie z = x + v."""
+    """Konstantny model stavu, meranie z = x + sum."""
 
     __slots__ = ("_x", "_p", "_q", "_r", "_has_state")
 

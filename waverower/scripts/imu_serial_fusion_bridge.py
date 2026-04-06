@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
-"""Arduino USB → sensor_msgs/Imu: CSV z MPU6050 sketchu (15 alebo 20 polí).
+"""Arduino USB -> sensor_msgs/Imu (CSV MPU6050, 15 alebo 20 poli).
 
-15 polí:
-  ts_ms,ax_raw,ay_raw,az_raw,temp_raw,gx_raw,gy_raw,gz_raw,ax_g,ay_g,az_g,temp_c,gx_dps,gy_dps,gz_dps
-
-20 polí (komplementárny filter na Arduine):
-  ...,gz_dps, roll_acc,pitch_acc, roll_f,pitch_f,yaw_gyro
-  indexy 17–19 = roll_f, pitch_f, yaw_gyro [deg] → quaternion (yaw_gyro driftuje bez magneta)
-  indexy 15–16 = roll_acc, pitch_acc → voliteľne /imu/arduino_extra
+20-polovy format: roll_f, pitch_f, yaw_gyro [deg] -> quaternion.
 """
 
 import math
@@ -43,7 +37,7 @@ def _baud_from_param(node: Node) -> int:
 
 
 def _quaternion_from_rpy_deg(roll_deg: float, pitch_deg: float, yaw_deg: float) -> tuple:
-    """RPY v stupňoch, rotácia ZYX (bežná pre mobilnú platformu). Vráti (x, y, z, w)."""
+    """RPY [deg], ZYX, vrati quaternion (x,y,z,w)."""
     r = roll_deg * DEG2RAD
     p = pitch_deg * DEG2RAD
     y = yaw_deg * DEG2RAD
@@ -110,11 +104,11 @@ class ImuSerialFusionBridge(Node):
         extra_topic = self.get_parameter("extra_topic").get_parameter_value().string_value
         self._fill_ori = self.get_parameter("fill_orientation_from_fusion").get_parameter_value().bool_value
         self._zero_yaw = self.get_parameter("zero_yaw_on_start").get_parameter_value().bool_value
-        self._yaw_offset: Optional[float] = None  # nastavené pri prvom platnom meraní
+        self._yaw_offset: Optional[float] = None
 
         if port != requested_port:
             self.get_logger().warn(
-                f"Požadovaný port {requested_port} nie je dostupný, používam {port}"
+                f"Port {requested_port} nedostupny, pouzivam {port}"
             )
 
         if run_stty:
@@ -127,7 +121,7 @@ class ImuSerialFusionBridge(Node):
         try:
             self._fp: BinaryIO = open(port, "rb")
         except OSError as ex:
-            self.get_logger().fatal(f"Nepodarilo sa otvoriť {port}: {ex}")
+            self.get_logger().fatal(f"Nepodarilo otvorit {port}: {ex}")
             raise
 
         try:
@@ -151,7 +145,7 @@ class ImuSerialFusionBridge(Node):
         self.create_timer(0.001, self._flush_publish)
 
         self.get_logger().info(
-            f"IMU fusion serial → {topic} ({port} @ {baud}, 15/20 CSV, frame_id={self._frame_id})"
+            f"IMU fusion serial -> {topic} ({port} @ {baud}, 15/20 CSV, frame_id={self._frame_id})"
         )
 
     def _flush_publish(self) -> None:
@@ -202,12 +196,12 @@ class ImuSerialFusionBridge(Node):
                     pass
 
     def _apply_yaw_offset(self, yaw_deg: float) -> float:
-        """Vynuluje yaw pri prvom meraní – počiatočná orientácia = 0°."""
+        """Yaw offset pri prvom merani."""
         if not self._zero_yaw:
             return yaw_deg
         if self._yaw_offset is None:
             self._yaw_offset = yaw_deg
-            self.get_logger().info(f"Yaw vynulovaný – počiatočná hodnota: {yaw_deg:.2f}°")
+            self.get_logger().info(f"Yaw vynulovany, pociatok: {yaw_deg:.2f} deg")
         return yaw_deg - self._yaw_offset
 
     def _parse_line(self, line: str) -> Optional[tuple]:
@@ -242,7 +236,7 @@ class ImuSerialFusionBridge(Node):
         extra_msg: Optional[Float64MultiArray] = None
 
         if n == 20 and self._fill_ori:
-            # Zodpovedá hlavičke: roll_f, pitch_f, yaw_gyro (nie roll_acc/pitch_acc z 15–16)
+            # roll_f, pitch_f, yaw_gyro z CSV
             roll_deg, pitch_deg, yaw_deg = f[17], f[18], f[19]
             yaw_deg = self._apply_yaw_offset(yaw_deg)
             qx, qy, qz, qw = _quaternion_from_rpy_deg(roll_deg, pitch_deg, yaw_deg)
@@ -256,7 +250,7 @@ class ImuSerialFusionBridge(Node):
                 extra_msg = Float64MultiArray()
                 extra_msg.data = [float(f[15]), float(f[16])]
         elif n == 16 and self._fill_ori:
-            # 16 polí: 15 štandardných + yaw_gyro [deg] ako posledné pole
+            # 16 poli: 15 + yaw_gyro
             yaw_deg = self._apply_yaw_offset(f[15])
             qx, qy, qz, qw = _quaternion_from_rpy_deg(0.0, 0.0, yaw_deg)
             out.orientation.x = qx
@@ -264,7 +258,7 @@ class ImuSerialFusionBridge(Node):
             out.orientation.z = qz
             out.orientation.w = qw
             for i in range(9):
-                out.orientation_covariance[i] = 0.05  # vyššia neistota – len yaw, bez roll/pitch fúzie
+                out.orientation_covariance[i] = 0.05  # len yaw
         else:
             out.orientation_covariance[0] = -1.0
 

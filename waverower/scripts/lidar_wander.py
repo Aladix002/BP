@@ -1,15 +1,7 @@
 #!/usr/bin/env python3
-"""Autonómne bludenie – 2 stavy: FWD a STOP.
+"""Lidar wander: FWD a STOP (IMU integracia uhla otocenia).
 
-Stavy:
-  FWD  – jazdí dopredu; ak predok ≤ threshold → STOP
-  STOP – zastane, zvolí smer (L/R/180°), otočí sa,
-         IMU potvrdí ± 15° od cieľa → späť do FWD
-
-Dynamická rekonf.:
-  ros2 param set /lidar_wander_node enabled false
-  ros2 param set /lidar_wander_node threshold_m 0.30
-  ros2 param set /lidar_wander_node turn_speed 1.8
+ros2 param set /lidar_wander_node enabled false
 """
 
 import math
@@ -19,7 +11,7 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, LaserScan
 
-_TOLERANCE_RAD = math.radians(15.0)   # ±15° tolerancia
+_TOLERANCE_RAD = math.radians(8.0)
 
 
 class LidarWanderNode(Node):
@@ -36,6 +28,7 @@ class LidarWanderNode(Node):
         self.declare_parameter("turn_timeout_s",       6.0)
         self.declare_parameter("lidar_rotation_deg", -90.0)
         self.declare_parameter("cmd_topic",       "/cmd_vel")
+        self.declare_parameter("imu_angular_z_sign", -1.0)
 
         cmd_topic = self.get_parameter("cmd_topic").get_parameter_value().string_value
         self._pub      = self.create_publisher(Twist, cmd_topic, 10)
@@ -52,6 +45,9 @@ class LidarWanderNode(Node):
         self._turn_accum:  float = 0.0
         self._turn_start         = None
         self._last_imu_t         = None
+        self._imu_sign = self.get_parameter(
+            "imu_angular_z_sign"
+        ).get_parameter_value().double_value
 
         self._d_front: float = math.inf
         self._d_left:  float = math.inf
@@ -59,11 +55,9 @@ class LidarWanderNode(Node):
 
         self.create_timer(0.1, self._ctrl_cb)
         self.get_logger().info(
-            f"LidarWander → {cmd_topic}  "
+            f"LidarWander -> {cmd_topic} "
             f"[threshold={self.get_parameter('threshold_m').get_parameter_value().double_value:.2f} m]"
         )
-
-    # ── LiDAR ─────────────────────────────────────────────────────────────────
 
     def _sector_min(self, ranges, angle_min, angle_inc,
                     lo_deg, hi_deg, rotation_rad) -> float:
@@ -90,27 +84,29 @@ class LidarWanderNode(Node):
         self._d_right = self._sector_min(msg.ranges, msg.angle_min,
                                          msg.angle_increment, -135.0, -45.0, rot)
 
-    # ── IMU ───────────────────────────────────────────────────────────────────
-
     def _imu_cb(self, msg: Imu) -> None:
         now = self.get_clock().now()
-        if self._last_imu_t is not None and self._state == self._STOP:
+        if (
+            self._last_imu_t is not None
+            and self._state == self._STOP
+            and self._turn_start is not None
+        ):
             dt = (now - self._last_imu_t).nanoseconds * 1e-9
             if 0.0 < dt < 0.5:
-                self._turn_accum += abs(msg.angular_velocity.z) * dt
+                omega = msg.angular_velocity.z * self._imu_sign
+                self._turn_accum += omega * dt
         self._last_imu_t = now
-
-    # ── Otočenie ──────────────────────────────────────────────────────────────
 
     def _start_turn(self, direction: float, target_deg: float, reason: str) -> None:
         self._turn_dir    = direction
         self._turn_target = math.radians(target_deg)
         self._turn_accum  = 0.0
         self._turn_start  = self.get_clock().now()
-        side = "vľavo" if direction > 0 else "vpravo"
+        self._last_imu_t = None
+        side = "vlavo" if direction > 0 else "vpravo"
         self.get_logger().info(
-            f"{reason} → otáčam {side} o {target_deg:.0f}°  "
-            f"(F={self._d_front:.2f}  L={self._d_left:.2f}  R={self._d_right:.2f})"
+            f"{reason} -> otacam {side} o {target_deg:.0f} deg "
+            f"(F={self._d_front:.2f} L={self._d_left:.2f} R={self._d_right:.2f})"
         )
 
     def _choose_turn(self, reason: str) -> None:
@@ -128,9 +124,7 @@ class LidarWanderNode(Node):
             else:
                 self._start_turn(-1.0, 90.0, reason)
         else:
-            self._start_turn(+1.0, 180.0, f"{reason} – zablokovaný")
-
-    # ── Riadiaci cyklus ───────────────────────────────────────────────────────
+            self._start_turn(+1.0, 180.0, f"{reason} - zablokovany")
 
     def _ctrl_cb(self) -> None:
         if not self.get_parameter("enabled").get_parameter_value().bool_value:
@@ -149,37 +143,32 @@ class LidarWanderNode(Node):
         if self._state == self._FWD:
             if self._d_front <= thr:
                 self._state = self._STOP
-                self._turn_start = None   # zatiaľ nevieme smer, vyberieme nižšie
-                self.get_logger().info(
-                    f"Prekážka {self._d_front:.2f} m → STOP"
-                )
+                self._turn_start = None
+                self.get_logger().info(f"Prekazka {self._d_front:.2f} m -> STOP")
             else:
-                # Motor má opačný smer – negujeme linear.x
                 cmd.linear.x = -fwd
 
         if self._state == self._STOP:
             if self._turn_start is None:
-                # Práve sme vstúpili – vyber smer a začni otáčanie
-                self._choose_turn(f"Prekážka {self._d_front:.2f} m")
+                self._choose_turn(f"Prekazka {self._d_front:.2f} m")
             else:
-                # Prebieha otáčanie
                 elapsed = (self.get_clock().now() - self._turn_start).nanoseconds * 1e-9
-                min_rad = self._turn_target - _TOLERANCE_RAD   # cieľ − 15°
-                done_angle   = self._turn_accum >= min_rad
+                progress = abs(self._turn_accum)
+                min_ok = self._turn_target - _TOLERANCE_RAD
+                done_angle = progress >= min_ok
                 done_timeout = elapsed > tmax
 
                 if done_angle or done_timeout:
                     reason = "uhol" if done_angle else "timeout"
                     self.get_logger().info(
-                        f"Otočenie [{reason}]  "
-                        f"{math.degrees(self._turn_accum):.1f}° / "
-                        f"{math.degrees(self._turn_target):.0f}°  "
-                        f"{elapsed:.1f}s → FWD"
+                        f"Otocenie [{reason}] "
+                        f"{math.degrees(abs(self._turn_accum)):.1f} deg / "
+                        f"{math.degrees(self._turn_target):.0f} deg "
+                        f"{elapsed:.1f}s -> FWD"
                     )
                     self._state      = self._FWD
                     self._turn_start = None
                 else:
-                    # Motor má opačný smer otáčania – negujeme angular.z
                     cmd.angular.z = -(self._turn_dir * spd)
 
         self._pub.publish(cmd)

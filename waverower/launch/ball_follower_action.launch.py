@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kamera + motory + FollowBall ActionServer (bez priameho cmd_vel z ball_follower.py)."""
+"""Kamera + motor + FollowBall ActionServer (nie priamy ball_follower.py node)."""
 
 from launch import LaunchDescription
 from launch.actions import SetEnvironmentVariable

@@ -1,5 +1,4 @@
-// Dense optical flow: Farnebäck (calcOpticalFlowFarneback). See OpenCV tutorial:
-// https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
+// Dense optical flow Farneback (OpenCV)
 #include "nodes/optical_flow_dense.hpp"
 #include <algorithm>
 #include <cmath>
@@ -45,7 +44,7 @@ void OpticalFlowDenseNode::image_cb(const sensor_msgs::msg::CompressedImage::Sha
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_GRAYSCALE);
     if (frame.empty()) return;
 
-    // Farneback pracuje na menšom rozlíšení kvôli výkonu
+    // mensie rozlisenie kvoli vykonu
     if (frame.cols > 320) {
         cv::resize(frame, frame, cv::Size(320, frame.rows * 320 / frame.cols));
     }
@@ -69,12 +68,8 @@ void OpticalFlowDenseNode::image_cb(const sensor_msgs::msg::CompressedImage::Sha
                                  1.2,   // poly_sigma
                                  0);    // flags
 
-    // flow je 2-kanálový Mat (každý pixel má dx, dy)
-    // spočítaj priemer horizontálnej zložky (kanál 0 = x)
     const cv::Scalar mean_flow = cv::mean(flow);
-    const double mean_dx = mean_flow[0];  // priemer dx cez všetky pixely
-
-    // normalizuj šírkou → [-0.5, 0.5] zhruba
+    const double mean_dx = mean_flow[0];
     const double mean_dx_norm = mean_dx / frame.cols;
     const double raw = -mean_dx_norm * correction_gain_;
     flow_correction_ = std::clamp(raw, -max_correction_, max_correction_);

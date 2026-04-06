@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rosbridge (WebSocket :9090) + statický HTTP server (:8080) pre mobilné web UI."""
+"""Rosbridge (WebSocket :9090) + HTTP server :8080 pre mobilne web UI."""
 
 import os
 
@@ -52,8 +52,7 @@ def generate_launch_description():
             ),
             LogInfo(
                 msg=(
-                    "Web teleop: v prehliadači http://<IP-tohoto-stroja>:8080 "
-                    "→ Pripojiť k ws://<IP>:9090 · Príkazy na /teleop_cmd_vel · Kamera /camera/camera_node/image_raw/compressed"
+                    "Web teleop: http://<IP>:8080  ws://<IP>:9090  /teleop_cmd_vel  kamera .../image_raw/compressed"
                 )
             ),
             rosbridge,

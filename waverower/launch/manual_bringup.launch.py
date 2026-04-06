@@ -1,23 +1,122 @@
 #!/usr/bin/env python3
-"""Manuálna jazda (waverower) + kamera (camera_ros) + voliteľne IMU (Arduino USB fusion), LD19, teleop.
+"""Manualna jazda + kamera + volitelne IMU, LD19, teleop; predvolene SLAM (slam_toolbox).
 
-Zarovnanie pri jazde rovno (predvolene IMU):
-  correction_mode:=imu           – gyro PID v motore (predvolené)
-  correction_mode:=optical_flow  – Lucas-Kanade / Farnebäck z kamery (vypne IMU PID)
-  correction_mode:=none          – bez korekcie
+correction_mode: imu | optical_flow | none
+SLAM: use_slam:=true a use_lidar:=true -> /map. Vypnut: use_slam:=false.
 
-Optical flow vyžaduje use_camera:=true a komprimovaný obraz z camera_ros.
+Ulozenie mapy: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/cesta/mapa'}}"
+
+Optical flow: use_camera:=true.
 """
 
 import os
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
+    SetEnvironmentVariable,
+    TimerAction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+
+
+def _slam_stack(context, *args, **kwargs):
+    use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
+    use_lidar = LaunchConfiguration("use_lidar").perform(context) == "true"
+    if not use_slam:
+        return []
+    pkg = get_package_share_directory("waverower")
+    slam_params = os.path.join(pkg, "params", "slam.yaml")
+    ekf_params = os.path.join(pkg, "params", "ekf.yaml")
+    use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
+    use_rviz = LaunchConfiguration("use_rviz").perform(context) == "true"
+    if not use_lidar:
+        return [
+            LogInfo(
+                msg=(
+                    "use_slam:=true ale use_lidar:=false - SLAM sa nespusta (chyba /scan). "
+                    "Nastav use_lidar:=true."
+                ),
+            ),
+        ]
+    actions = []
+    if not use_ekf:
+        actions.append(
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="odom_to_base_link",
+                output="screen",
+                arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
+            )
+        )
+    actions.append(
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="base_link_to_imu",
+            output="screen",
+            arguments=["0", "0", "0.05", "0", "0", "0", "base_link", "imu_link"],
+        )
+    )
+    if use_ekf:
+        actions.append(
+            Node(
+                package="robot_localization",
+                executable="ekf_node",
+                name="ekf_filter_node",
+                output="screen",
+                parameters=[ekf_params],
+            )
+        )
+    actions.extend(
+        [
+            Node(
+                package="slam_toolbox",
+                executable="async_slam_toolbox_node",
+                name="slam_toolbox",
+                output="screen",
+                parameters=[slam_params],
+            ),
+            TimerAction(
+                period=2.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
+                        output="screen",
+                    )
+                ],
+            ),
+            TimerAction(
+                period=4.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                        output="screen",
+                    )
+                ],
+            ),
+        ]
+    )
+    if use_rviz:
+        actions.append(
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                output="screen",
+                arguments=["-d", os.path.join(pkg, "params", "slam.rviz")],
+            )
+        )
+    return actions
 
 
 def generate_launch_description():
@@ -47,8 +146,6 @@ def generate_launch_description():
 
     camera_stack = []
     if have_camera_ros:
-        # camera_ros publikuje CompressedImage na
-        # /camera/camera_node/image_raw/compressed (namespace + node name).
         camera_stack = [
             Node(
                 package="camera_ros",
@@ -69,7 +166,7 @@ def generate_launch_description():
             LogInfo(
                 condition=IfCondition(use_camera),
                 msg=(
-                    "use_camera:=true vyžaduje nainštalovaný balík camera_ros "
+                    "use_camera:=true vyzaduje nainstalovany balik camera_ros "
                     "(napr. sudo apt install ros-jazzy-camera-ros)."
                 ),
             )
@@ -77,7 +174,6 @@ def generate_launch_description():
 
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
 
-    # optical_flow → /teleop_cmd_vel_corrected; imu | none → /teleop_cmd_vel
     motor_twist_topic = PythonExpression([
         '"/teleop_cmd_vel_corrected" if "', correction_mode, '" == "optical_flow"',
         ' else "/teleop_cmd_vel"',
@@ -89,17 +185,17 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_camera",
                 default_value="false",
-                description="Spusti camera_ros (camera_node v /camera); topic napr. /camera/image_raw.",
+                description="camera_ros (camera_node v /camera), topic napr. /camera/image_raw",
             ),
             DeclareLaunchArgument(
                 "camera_id",
                 default_value="0",
-                description="Parameter camera pre camera_ros: index 0,1,... alebo napr. /dev/video0 (Záleží od ovládača).",
+                description="camera parameter pre camera_ros: index alebo /dev/video0",
             ),
             DeclareLaunchArgument(
                 "use_imu",
                 default_value="false",
-                description="Arduino USB: imu_serial_fusion_bridge (CSV 15/20 polí) → /imu.",
+                description="Arduino USB -> imu_serial_fusion_bridge (CSV 15/20 poli) -> /imu",
             ),
             DeclareLaunchArgument("imu_serial_port", default_value="/dev/serial/by-id/usb-Arduino_Nano_R4_3501110A36313236694133344B573230-if00"),
             DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
@@ -107,36 +203,51 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_imu_kalman",
                 default_value="false",
-                description="imu_kalman_filter: /imu → /imu/filtered (6× 1D Kalman na a, ω).",
+                description="imu_kalman_filter: /imu -> /imu/filtered (6x 1D Kalman)",
             ),
             DeclareLaunchArgument(
                 "imu_kalman_output",
                 default_value="/imu/filtered",
-                description="Výstup vyhladeného Imu.",
+                description="vystup vyhladeneho Imu",
             ),
             DeclareLaunchArgument(
                 "use_lidar",
+                default_value="true",
+                description="ldlidar_ros2 ld19.launch.py (/scan), default true pre SLAM",
+            ),
+            DeclareLaunchArgument(
+                "use_slam",
+                default_value="true",
+                description="slam_toolbox async + TF (vyzaduje use_lidar:=true)",
+            ),
+            DeclareLaunchArgument(
+                "use_ekf",
                 default_value="false",
-                description="Include ldlidar_ros2 ld19.launch.py (scan na /scan).",
+                description="robot_localization EKF (IMU->odom); ak true, bez statickeho odom->base_link",
+            ),
+            DeclareLaunchArgument(
+                "use_rviz",
+                default_value="false",
+                description="RViz2 + slam.rviz (na RPi narocne; casto RViz na PC, rovnaky DOMAIN_ID)",
             ),
             DeclareLaunchArgument(
                 "use_teleop",
                 default_value="false",
                 description=(
-                    "teleop_twist_keyboard → /teleop_cmd_vel. Vyžaduje TTY; v launch je emulate_tty. "
-                    "Ak stále padá (Cursor/SSH), spusti teleop v druhom termináli: "
+                    "teleop_twist_keyboard -> /teleop_cmd_vel. Vyzaduje TTY; launch ma emulate_tty. "
+                    "Ak pada (Cursor/SSH), spusti teleop v druhom terminale: "
                     "ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/teleop_cmd_vel"
                 ),
             ),
             DeclareLaunchArgument(
                 "correction_mode",
                 default_value="imu",
-                description="Zarovnanie jazdy rovno: imu | optical_flow | none (predvolene imu).",
+                description="zarovnanie rovno: imu | optical_flow | none",
             ),
             DeclareLaunchArgument(
                 "flow_algo",
                 default_value="lk",
-                description="Algoritmus optical flow: lk (Lucas-Kanade sparse) | farneback (dense).",
+                description="optical flow: lk | farneback",
             ),
             DeclareLaunchArgument("i2c_bus", default_value="1"),
             DeclareLaunchArgument("i2c_address", default_value="64"),
@@ -148,7 +259,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_ball_follow",
                 default_value="false",
-                description="Spusti ball_follower (vyžaduje use_camera:=true).",
+                description="ball_follower (vyzaduje use_camera:=true)",
             ),
             Node(
                 package="waverower",
@@ -254,5 +365,6 @@ def generate_launch_description():
             ),
             lidar_include,
             *camera_stack,
+            OpaqueFunction(function=_slam_stack),
         ]
     )

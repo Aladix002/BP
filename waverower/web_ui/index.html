@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=22" />
 </head>
 <body>
   <header class="topbar">
@@ -35,40 +35,67 @@
     <p id="modeStatus" class="mode-line">—</p>
   </section>
 
+  <section class="strip strip-imu" aria-label="IMU">
+    <span class="strip-label imu-title">IMU · regulation</span>
+    <div class="imu-grid">
+      <div class="imu-cell">
+        <span class="imu-k">ω<sub>z</sub> (/imu) <span class="imu-unit">rad/s</span></span>
+        <span id="imuWz" class="imu-val">—</span>
+      </div>
+      <div class="imu-cell">
+        <span class="imu-k">|ω|</span>
+        <span id="imuWabs" class="imu-val">—</span>
+      </div>
+      <div class="imu-cell">
+        <span class="imu-k">Status</span>
+        <span id="imuStale" class="imu-stale unknown">—</span>
+      </div>
+    </div>
+  </section>
+
   <section class="cam-drive" aria-label="Camera and drive">
     <div class="cam-col">
-      <span class="cam-label">Camera</span>
-      <div class="cam-frame">
-        <div id="camPlaceholder" class="cam-placeholder">No feed</div>
-        <img id="cam" alt="Camera" class="cam hidden" />
+      <div class="cam-panel">
+        <div class="cam-panel-head">
+          <span class="cam-panel-title">Camera</span>
+          <span id="camLive" class="cam-live-badge" role="status">Standby</span>
+        </div>
+        <div class="cam-frame">
+          <div class="cam-frame-inner">
+            <div id="camPlaceholder" class="cam-placeholder">
+              <span class="cam-ph-icon" aria-hidden="true">◉</span>
+              <span class="cam-ph-text">Connect to show the feed</span>
+            </div>
+            <canvas id="camCanvas" class="cam-canvas hidden" width="640" height="480" aria-label="Robot camera feed"></canvas>
+          </div>
+        </div>
       </div>
     </div>
     <div class="drive-col">
-      <span class="cam-label">Drive <span class="hint-inline">hold</span></span>
+      <span class="cam-label">Drive</span>
       <div class="dpad dpad-compact">
         <div></div>
-        <button type="button" class="drive" data-lx="0.5" data-az="0" aria-label="Forward">▲</button>
+        <button type="button" class="drive" data-lx="1" data-az="0" aria-label="Forward">▲</button>
         <div></div>
-        <button type="button" class="drive" data-lx="0" data-az="0.9" aria-label="Left">◀</button>
+        <button type="button" class="drive" data-lx="0" data-az="1" aria-label="Left">◀</button>
         <button type="button" class="stop" id="btnStop" aria-label="Stop">■</button>
-        <button type="button" class="drive" data-lx="0" data-az="-0.9" aria-label="Right">▶</button>
+        <button type="button" class="drive" data-lx="0" data-az="-1" aria-label="Right">▶</button>
         <div></div>
-        <button type="button" class="drive" data-lx="-0.5" data-az="0" aria-label="Back">▼</button>
+        <button type="button" class="drive" data-lx="-1" data-az="0" aria-label="Back">▼</button>
         <div></div>
       </div>
       <div class="speed-block">
         <div class="speed-row">
-          <label for="maxLin">Linear max [m/s]</label>
+          <label for="maxLin">Speed [m/s]</label>
           <div class="speed-row-inner">
-            <input type="range" id="maxLin" min="0.05" max="0.9" step="0.01" value="0.5" />
-            <span id="maxLinVal" class="speed-val">0.50</span>
+            <input type="range" id="maxLin" min="0.01" max="0.08" step="0.01" value="0.04" />
+            <span id="maxLinVal" class="speed-val">0.04</span>
           </div>
         </div>
         <div class="speed-row">
-          <label for="maxAng">Angular max [rad/s]</label>
+          <label>Turn [rad/s]</label>
           <div class="speed-row-inner">
-            <input type="range" id="maxAng" min="0.2" max="3.0" step="0.05" value="1.8" />
-            <span id="maxAngVal" class="speed-val">1.80</span>
+            <span id="maxAngVal" class="speed-val speed-val-derived">—</span>
           </div>
         </div>
       </div>
@@ -76,6 +103,6 @@
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>

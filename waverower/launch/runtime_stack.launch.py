@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-"""Jeden stack: motor + LiDAR wander + IMU + voliteľne kamera; manuál (web/teleop) alebo wander.
+"""Motor + LiDAR wander + IMU + volitelne kamera; manual (web/teleop) alebo wander.
 
-Zarovnanie pri jazde rovno (predvolene IMU):
-  correction_mode:=imu | optical_flow | none
-  Optical flow: correction_mode:=optical_flow use_camera:=true
+correction_mode: imu | optical_flow | none (optical flow: use_camera:=true)
 
-Prepínanie počas behu (služby):
+Sluzby:
   ros2 service call /waverower/switch_to_wander std_srvs/srv/Trigger
   ros2 service call /waverower/switch_to_manual std_srvs/srv/Trigger
 
-Spustenie:
-  ros2 launch waverower runtime_stack.launch.py
-  ros2 launch waverower runtime_stack.launch.py stack_mode:=wander use_lidar:=true
-  ros2 launch waverower runtime_stack.launch.py correction_mode:=imu use_camera:=false
+Spustenie: ros2 launch waverower runtime_stack.launch.py
 """
 
 import os
@@ -28,14 +23,14 @@ from launch_ros.actions import Node
 def _opaque(context, *args, **kwargs):
     mode = LaunchConfiguration("stack_mode").perform(context)
     if mode not in ("manual", "wander"):
-        raise RuntimeError("stack_mode musí byť manual alebo wander")
+        raise RuntimeError("stack_mode musi byt manual alebo wander")
 
     ctrl = "auto" if mode == "wander" else "manual"
     wand_en = mode == "wander"
 
     correction_mode = LaunchConfiguration("correction_mode").perform(context)
     if correction_mode not in ("imu", "optical_flow", "none"):
-        raise RuntimeError("correction_mode musí byť imu, optical_flow alebo none")
+        raise RuntimeError("correction_mode musi byt imu, optical_flow alebo none")
 
     use_imu_corr = correction_mode == "imu"
     use_flow = correction_mode == "optical_flow"
@@ -64,7 +59,6 @@ def _opaque(context, *args, **kwargs):
         "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
     )
 
-    # Wander + optical flow: wander → /cmd_vel_raw → optical_flow → /cmd_vel → motor
     wander_cmd_topic = "/cmd_vel_raw" if (wand_en and use_flow) else "/cmd_vel"
 
     invert_ang = mode == "manual"
@@ -77,11 +71,15 @@ def _opaque(context, *args, **kwargs):
         "cmd_vel_invert_linear": False,
         "cmd_vel_invert_angular": invert_ang,
         "imu_correction": use_imu_corr,
-        "imu_yaw_kp": 0.15,
-        "imu_yaw_ki": 0.05,
-        "imu_yaw_kd": 0.01,
+        "imu_yaw_kp": 0.35,
+        "imu_yaw_ki": 0.12,
+        "imu_yaw_kd": 0.02,
         "imu_yaw_deadband": 0.02,
         "imu_yaw_integral_limit": 0.3,
+        "teleop_max_linear_m_s": 0.5,
+        "teleop_max_angular_rad_s": 1.0,
+        "snap_threshold": 0.95,
+        "pwm_boost": 2.35,
     }
 
     cid_raw = LaunchConfiguration("camera_id").perform(context)
@@ -163,7 +161,7 @@ def _opaque(context, *args, **kwargs):
             )
         )
     elif use_camera and not have_cam:
-        actions.append(LogInfo(msg="use_camera:=true vyžaduje balík camera_ros."))
+        actions.append(LogInfo(msg="use_camera:=true vyzaduje balik camera_ros."))
 
     if use_flow_lk:
         flow_params_lk = {
@@ -246,7 +244,7 @@ def _opaque(context, *args, **kwargs):
 def generate_launch_description():
     return LaunchDescription([
         SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
-        DeclareLaunchArgument("stack_mode", default_value="manual", description="manual | wander (počiatočný režim)"),
+        DeclareLaunchArgument("stack_mode", default_value="manual", description="manual | wander"),
         DeclareLaunchArgument("use_lidar", default_value="true"),
         DeclareLaunchArgument("use_imu", default_value="true"),
         DeclareLaunchArgument("use_camera", default_value="true"),
@@ -255,22 +253,27 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "correction_mode",
             default_value="imu",
-            description="Zarovnanie: imu | optical_flow | none (predvolene imu).",
+            description="zarovnanie: imu | optical_flow | none",
         ),
         DeclareLaunchArgument("flow_algo", default_value="lk"),
         DeclareLaunchArgument("use_teleop", default_value="false"),
         DeclareLaunchArgument("use_ball_follow", default_value="false"),
         DeclareLaunchArgument("i2c_bus", default_value="1"),
         DeclareLaunchArgument("i2c_address", default_value="64"),
-        DeclareLaunchArgument("imu_serial_port", default_value="/dev/ttyACM0"),
+        DeclareLaunchArgument(
+            "imu_serial_port",
+            default_value="/dev/serial/by-id/usb-Arduino_Nano_R4_3501110A36313236694133344B573230-if00",
+            description=(
+                "Arduino IMU (115200). Stabilna cesta by-id. "
+                "Ak /imu neprudi: ls /dev/serial/by-id/ alebo imu_serial_port:=/dev/ttyACM2"
+            ),
+        ),
         DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
         DeclareLaunchArgument("imu_frame_id", default_value="imu_link"),
         DeclareLaunchArgument("threshold_m", default_value="0.30"),
         DeclareLaunchArgument("forward_speed", default_value="0.10"),
         DeclareLaunchArgument("turn_speed", default_value="1.80"),
         DeclareLaunchArgument("lidar_rotation_deg", default_value="-90.0"),
-        LogInfo(msg=(
-            "runtime_stack: /waverower/switch_to_{manual,wander} · web ak use_web:=true"
-        )),
+        LogInfo(msg="runtime_stack: /waverower/switch_to_{manual,wander}; web ak use_web:=true"),
         OpaqueFunction(function=_opaque),
     ])

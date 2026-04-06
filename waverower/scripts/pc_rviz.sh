@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# Spusti RViz na PC s Nav2 a SLAM mapou (robot beží na RPi).
-# Použitie: ./pc_rviz.sh [RPi_IP]
-# Príklad:  ./pc_rviz.sh 192.168.0.218
+# RViz na PC (Nav2 + SLAM), robot na RPi
+# Pouzitie: ./pc_rviz.sh [RPi_IP]
+# Priklad: ./pc_rviz.sh 192.168.0.218
 
-RPI_IP="${1:-192.168.0.218}"
-RVIZ_CONFIG="/tmp/slam_nav.rviz"
+set -euo pipefail
+RPI_IP="${1:-raspberrypi.local}"
 
+echo "Kopirujem RViz config z RPi (${RPI_IP})..."
+if ! scp -q "pi@${RPI_IP}:~/BP/install/waverower/share/waverower/params/slam.rviz" /tmp/waverower_slam_pc.rviz 2>/dev/null; then
+    echo "scp zlyhalo - skusam lokalny subor"
+fi
+
+echo "Spustam RViz2..."
 source /opt/ros/jazzy/setup.bash
-export ROS_DOMAIN_ID=0
-
-echo "Kopírujem RViz konfig z RPi (${RPI_IP})..."
-scp "aladix@${RPI_IP}:/home/aladix/Desktop/BP/waverower/params/slam.rviz" "${RVIZ_CONFIG}" || {
-    echo "scp zlyhalo – skúšam bez kopírovania (použijem lokálny súbor ak existuje)"
-    RVIZ_CONFIG="$(dirname "$0")/../params/slam.rviz"
-}
-
-echo "Spúšťam RViz2..."
-rviz2 -d "${RVIZ_CONFIG}"
+rviz2 -d /tmp/waverower_slam_pc.rviz 2>/dev/null || rviz2

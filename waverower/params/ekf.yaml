@@ -1,9 +1,9 @@
-# robot_localization EKF – IMU-only odom (bez enkodérov)
-# Fúzia: len yaw rate z gyra → odom→base_link obsahuje rotáciu, pozícia zostáva na 0.
-# SLAM (scan matching) koriguje polohu cez map→odom transform.
+# robot_localization EKF, IMU-only odom (bez enkoderov)
+# yaw rate z gyra -> odom->base_link rotacia; poloha 0
+# SLAM koriguje cez map->odom
 ekf_filter_node:
     ros__parameters:
-        # 50 Hz na slabšom HW často nevyjde; znižuje „Failed to meet update rate!“
+        # 25 Hz - slabsi HW nestiha 50 Hz
         frequency: 25.0
         sensor_timeout: 0.1
         two_d_mode: true
@@ -18,13 +18,13 @@ ekf_filter_node:
         print_diagnostics: false
         debug: false
 
-        # IMU z Arduina (cez imu_serial_fusion_bridge) → /imu
+        # IMU z Arduina (imu_serial_fusion_bridge) -> /imu
         imu0: /imu
         # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
         imu0_config: [false, false, false,
-                      false, false, false,   # orientáciu ignorujeme – yaw_gyro driftuje bez magnetu
+                      false, false, false,   # orientacia off (yaw drift bez magnetu)
                       false, false, false,
-                      false, false, true,    # yaw rate (gyro Z) – čistý merateľný signál
+                      false, false, true,    # yaw rate gyro Z
                       false, false, false]
         imu0_differential: false
         imu0_relative: false
