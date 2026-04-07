@@ -32,6 +32,7 @@ def _setup(context, *args, **kwargs):
                 "pwm_max":       4095,
                 "max_wheel_speed": 0.4,
                 "wheel_base":    0.20,
+                "cmd_vel_invert_linear": True,
             }],
         ),
         Node(

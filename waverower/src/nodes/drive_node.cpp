@@ -44,6 +44,8 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<int>("cmd_vel_timeout_ms", 300);
   declare_parameter<double>("max_wheel_speed", 0.4);  // fyzická max. rýchlosť kolesa [m/s]
   declare_parameter<double>("wheel_base",      0.20); // rozchod kolies [m]
+  // Wander / ball_follow / Nav2: ak +linear.x ide fyzicky vzad, zapni true
+  declare_parameter<bool>("cmd_vel_invert_linear", false);
 
   // IMU korekcia priamej jazdy (PID na yaw rate)
   declare_parameter<bool>("imu_correction", false);
@@ -53,6 +55,9 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("imu_deadband", 0.02);  // [rad/s] pod ktorou sa neopravuje
   declare_parameter<double>("imu_windup",   0.30);  // limit integrátora
   declare_parameter<double>("imu_sign",    -1.0);   // smer korekcie: +1 alebo -1
+  // ωz z /imu: EMA + podlahová mŕtva zóna (malé vykyvy pri státí → 0 pre PID aj drive_debug)
+  declare_parameter<double>("imu_yaw_lowpass_alpha", 0.18);
+  declare_parameter<double>("imu_yaw_noise_floor_rad_s", 0.025);
 
   hat_ = std::make_unique<Pca9685>(bus, static_cast<uint8_t>(addr));
   hat_->set_pwm_freq_hz(freq);
@@ -146,18 +151,23 @@ void DriveNode::teleop_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
 // ---------------------------------------------------------------------------
 // cmd_vel_cb – automatický režim (nav2, ball_follower, wander)
 //
-// Diferenciálna kinematika (unicycle → tank):
-//   v_l = (v - w * half_base) / max_wheel_speed
-//   v_r = (v + w * half_base) / max_wheel_speed
+// Diferenciálna kinematika (unicycle → tank), výsledok v [-1, 1].
+// Delíme teleop_max_linear (nie max_wheel_speed): Twist.linear.x je v m/s rovnako
+// ako pri teleope; pri max_wheel_speed ~0.4 a v~0.5 m/s sa inak nasýtilo na plný výkon.
 // ---------------------------------------------------------------------------
 void DriveNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   if (get_parameter("control_mode").as_string() == "manual") return;
 
-  const double max_v  = std::max(get_parameter("max_wheel_speed").as_double(), 0.01);
+  const double max_v  = std::max(get_parameter("teleop_max_linear").as_double(), 0.01);
   const double half_b = 0.5 * std::max(get_parameter("wheel_base").as_double(),  0.01);
 
-  const double v_l = std::clamp((msg->linear.x - msg->angular.z * half_b) / max_v, -1.0, 1.0);
-  const double v_r = std::clamp((msg->linear.x + msg->angular.z * half_b) / max_v, -1.0, 1.0);
+  double v = msg->linear.x;
+  if (get_parameter("cmd_vel_invert_linear").as_bool()) {
+    v = -v;
+  }
+  const double w = msg->angular.z;
+  const double v_l = std::clamp((v - w * half_b) / max_v, -1.0, 1.0);
+  const double v_r = std::clamp((v + w * half_b) / max_v, -1.0, 1.0);
 
   std::lock_guard<std::mutex> lk(mu_);
   target_l_  = v_l;
@@ -170,9 +180,15 @@ void DriveNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
 // imu_cb – nízkoúrovňový filter yaw rate (EMA)
 // ---------------------------------------------------------------------------
 void DriveNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
+  const double a = std::clamp(get_parameter("imu_yaw_lowpass_alpha").as_double(), 0.02, 1.0);
+  const double floor_rad =
+      std::max(0.0, get_parameter("imu_yaw_noise_floor_rad_s").as_double());
+  double z = msg->angular_velocity.z;
   std::lock_guard<std::mutex> lk(mu_);
-  constexpr double kAlpha = 0.25;
-  imu_yaw_rate_ += kAlpha * (msg->angular_velocity.z - imu_yaw_rate_);
+  imu_yaw_rate_ += a * (z - imu_yaw_rate_);
+  if (std::abs(imu_yaw_rate_) < floor_rad) {
+    imu_yaw_rate_ = 0.0;
+  }
 }
 
 // ---------------------------------------------------------------------------

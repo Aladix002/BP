@@ -18,6 +18,7 @@ const PUBLISH_HZ     = 20;
 // Plna skala: 0..100% z toho, co ma motor_hat_node ako teleop_max_* (fetch pri connect).
 const SLIDER_SCALE   = { min: 0.0, max: 1.0, step: 0.01 };
 const TURN_LIN_RATIO = 2.0;
+// Zhoda s waverower/launch/runtime_stack.launch.py (WANDER_TURN_RATIO)
 const WANDER_TURN_RATIO = 18.0;
 
 const IMU_DEFAULTS = {
@@ -31,6 +32,7 @@ const IMU_DEFAULTS = {
 
 const PTYPE_BOOL   = 1;
 const PTYPE_DOUBLE = 3;
+const PTYPE_STRING = 4;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -42,6 +44,11 @@ const makeParam = (name, value) =>
     ? { name, value: { type: PTYPE_BOOL,   bool_value:   value } }
     : { name, value: { type: PTYPE_DOUBLE, double_value: value } };
 
+const makeStringParam = (name, value) => ({
+  name,
+  value: { type: PTYPE_STRING, string_value: value },
+});
+
 const rosGetParams = (ros, node, names) =>
   new Promise((ok, err) =>
     new ROSLIB.Service({ ros, name: `${node}/get_parameters`, serviceType: "rcl_interfaces/srv/GetParameters" })
@@ -51,11 +58,6 @@ const rosSetParams = (ros, node, parameters) =>
   new Promise((ok, err) =>
     new ROSLIB.Service({ ros, name: `${node}/set_parameters`, serviceType: "rcl_interfaces/srv/SetParameters" })
       .callService(new ROSLIB.ServiceRequest({ parameters }), ok, err));
-
-const rosTrigger = (ros, name) =>
-  new Promise((ok, err) =>
-    new ROSLIB.Service({ ros, name, serviceType: "std_srvs/srv/Trigger" })
-      .callService(new ROSLIB.ServiceRequest({}), ok, err));
 
 // ─── Hook: useRos ─────────────────────────────────────────────────────────────
 function useRos() {
@@ -156,14 +158,31 @@ function ModeCard({ ros, connected }) {
   async function switchMode(m) {
     if (!connected || busy) return;
     setBusy(true); setStatus("Switching…");
+    const isWander = m === "wander";
     try {
-      const svc = m === "manual" ? "/waverower/switch_to_manual" : "/waverower/switch_to_wander";
-      const r = await rosTrigger(ros, svc);
-      if (r?.success) { setMode(m); setStatus(m === "manual" ? "Manual active" : "Wander active"); }
-      else setStatus("Error: " + (r?.message ?? "no response"));
+      const mr = await rosSetParams(ros, MOTOR_NODE, [
+        makeStringParam("control_mode", isWander ? "auto" : "manual"),
+      ]);
+      if (!mr?.results?.every(x => x.successful)) {
+        const why = mr?.results?.find(r => !r.successful)?.reason || "motor set_parameters failed";
+        throw new Error(why);
+      }
+      try {
+        const wr = await rosSetParams(ros, WANDER_NODE, [makeParam("enabled", isWander)]);
+        if (!wr?.results?.every(x => x.successful)) {
+          const why = wr?.results?.find(r => !r.successful)?.reason || "wander set_parameters failed";
+          throw new Error(why);
+        }
+      } catch (e) {
+        if (isWander) throw e;
+      }
+      setMode(m);
+      setStatus(m === "manual" ? "Manual active" : "Wander active");
     } catch (e) {
       setStatus("Error: " + e);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

@@ -127,6 +127,8 @@ def generate_launch_description():
     use_teleop = LaunchConfiguration("use_teleop")
     correction_mode = LaunchConfiguration("correction_mode")
     use_ball_follow = LaunchConfiguration("use_ball_follow")
+    teleop_max_linear = LaunchConfiguration("teleop_max_linear")
+    teleop_max_angular = LaunchConfiguration("teleop_max_angular")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -251,6 +253,16 @@ def generate_launch_description():
                 default_value="false",
                 description="ball_follower (vyzaduje use_camera:=true)",
             ),
+            DeclareLaunchArgument(
+                "teleop_max_linear",
+                default_value="1.0",
+                description="max |linear.x| pri 100 % teleop / web UI (runtime_stack rovnake)",
+            ),
+            DeclareLaunchArgument(
+                "teleop_max_angular",
+                default_value="2.0",
+                description="max |angular.z| pri 100 % teleop / web UI",
+            ),
             Node(
                 package="waverower",
                 executable="waverower_motor",
@@ -266,9 +278,10 @@ def generate_launch_description():
                     # Teleop normalizacia: teleop_max_linear = rychlost pri ktore motor ide naplno
                     # Teleop klaves 'i' posiela linear.x = speed (napr 0.5 az 3.0 podla nastavenia q/z)
                     # Nastav tuto hodnotu = maximalna rychlost ktoru chces pouzivat v teleop
-                    "teleop_max_linear":   1.0,
-                    "teleop_max_angular":  2.0,
+                    "teleop_max_linear":   teleop_max_linear,
+                    "teleop_max_angular":  teleop_max_angular,
                     "invert_linear":       True,
+                    "cmd_vel_invert_linear": True,
                     "smooth_alpha":        0.20,
                     "imu_correction":      use_imu_correction,
                     "imu_kp":              0.30,

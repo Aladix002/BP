@@ -19,6 +19,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+# Musi sediet s waverower/web_ui/app.js (WANDER_TURN_RATIO)
+WANDER_TURN_RATIO = 18.0
+
 
 def _opaque(context, *args, **kwargs):
     mode = LaunchConfiguration("stack_mode").perform(context)
@@ -59,6 +62,22 @@ def _opaque(context, *args, **kwargs):
 
     invert_ang = mode == "manual"
 
+    max_lin = float(LaunchConfiguration("teleop_max_linear").perform(context))
+    max_ang = float(LaunchConfiguration("teleop_max_angular").perform(context))
+    w_scale = float(LaunchConfiguration("wander_speed_scale").perform(context))
+
+    auto_wander_fwd = w_scale * max_lin
+    auto_wander_turn = auto_wander_fwd * WANDER_TURN_RATIO
+
+    def _wander_speed(name: str, auto_v: float) -> float:
+        raw = LaunchConfiguration(name).perform(context).strip().lower()
+        if raw in ("auto", "", "-1"):
+            return auto_v
+        return float(raw)
+
+    wander_fwd = _wander_speed("forward_speed", auto_wander_fwd)
+    wander_turn = _wander_speed("turn_speed", auto_wander_turn)
+
     motor_params = {
         "control_mode":       ctrl,
         "i2c_bus":            int(LaunchConfiguration("i2c_bus").perform(context)),
@@ -66,14 +85,15 @@ def _opaque(context, *args, **kwargs):
         # PWM rozsah
         "pwm_min":            400,
         "pwm_max":            4095,
-        # Teleop normalizacia
-        "teleop_max_linear":  1.0,
-        "teleop_max_angular": 2.0,
+        # Teleop normalizacia (zhodne s manual_bringup / web UI fetch)
+        "teleop_max_linear":  max_lin,
+        "teleop_max_angular": max_ang,
         "invert_linear":      True,
         "smooth_alpha":       0.20,
         # Auto rezim (cmd_vel)
         "max_wheel_speed":    0.4,
         "wheel_base":         0.20,
+        "cmd_vel_invert_linear": True,
         "cmd_vel_timeout_ms": 300,
         # IMU korekcia
         "imu_correction":     use_imu_corr,
@@ -107,8 +127,8 @@ def _opaque(context, *args, **kwargs):
             parameters=[{
                 "enabled": wand_en,
                 "threshold_m": float(LaunchConfiguration("threshold_m").perform(context)),
-                "forward_speed": float(LaunchConfiguration("forward_speed").perform(context)),
-                "turn_speed": float(LaunchConfiguration("turn_speed").perform(context)),
+                "forward_speed": wander_fwd,
+                "turn_speed": wander_turn,
                 "lidar_rotation_deg": float(LaunchConfiguration("lidar_rotation_deg").perform(context)),
                 "cmd_topic": wander_cmd_topic,
             }],
@@ -261,8 +281,31 @@ def generate_launch_description():
         DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
         DeclareLaunchArgument("imu_frame_id", default_value="imu_link"),
         DeclareLaunchArgument("threshold_m", default_value="0.30"),
-        DeclareLaunchArgument("forward_speed", default_value="0.10"),
-        DeclareLaunchArgument("turn_speed", default_value="1.80"),
+        DeclareLaunchArgument(
+            "teleop_max_linear",
+            default_value="1.0",
+            description="Zhoda s manual_bringup motor; web UI berie z /motor_hat_node",
+        ),
+        DeclareLaunchArgument(
+            "teleop_max_angular",
+            default_value="2.0",
+            description="Zhoda s manual_bringup motor; max |angular.z| pri 100 % skale",
+        ),
+        DeclareLaunchArgument(
+            "wander_speed_scale",
+            default_value="0.5",
+            description="0..1 ako Speed scale vo web UI; wander forward = scale * teleop_max_linear",
+        ),
+        DeclareLaunchArgument(
+            "forward_speed",
+            default_value="auto",
+            description="auto = wander_speed_scale * teleop_max_linear; inak cislo [m/s]",
+        ),
+        DeclareLaunchArgument(
+            "turn_speed",
+            default_value="auto",
+            description="auto = forward * 18 (ako web UI); inak cislo [rad/s]",
+        ),
         DeclareLaunchArgument("lidar_rotation_deg", default_value="-90.0"),
         LogInfo(msg="runtime_stack: /waverower/switch_to_{manual,wander}; web ak use_web:=true"),
         OpaqueFunction(function=_opaque),
