@@ -10,26 +10,23 @@ const CAMERA_TOPIC   = "/camera/camera_node/image_raw/compressed";
 const CAMERA_TYPE    = "sensor_msgs/msg/CompressedImage";
 const IMU_TOPIC      = "/imu";
 const IMU_TYPE       = "sensor_msgs/msg/Imu";
-const IMU_DBG_TOPIC  = "/motor_hat_node/imu_correction_debug";
+const IMU_DBG_TOPIC  = "/motor_hat_node/drive_debug";
 const IMU_DBG_TYPE   = "std_msgs/msg/Float64MultiArray";
 const MOTOR_NODE     = "/motor_hat_node";
 const WANDER_NODE    = "/lidar_wander_node";
 const PUBLISH_HZ     = 20;
-// Jemnejsia a sirsia skala: predtym bolo len 8 krokov (0.01..0.08 po 0.01).
-const SLIDER_LIN     = { min: 0.01, max: 0.22, step: 0.005 };
-const TELEOP_MAX_LIN = 0.5;
-const TELEOP_MAX_ANG = 1.0;
-const PWM_BOOST      = 2.35;
+// Plna skala: 0..100% z toho, co ma motor_hat_node ako teleop_max_* (fetch pri connect).
+const SLIDER_SCALE   = { min: 0.0, max: 1.0, step: 0.01 };
 const TURN_LIN_RATIO = 2.0;
 const WANDER_TURN_RATIO = 18.0;
 
 const IMU_DEFAULTS = {
-  imu_correction:         false,
-  imu_yaw_kp:             0.15,
-  imu_yaw_ki:             0.05,
-  imu_yaw_kd:             0.01,
-  imu_yaw_deadband:       0.02,
-  imu_yaw_integral_limit: 0.3,
+  imu_correction: false,
+  imu_kp:         0.30,
+  imu_ki:         0.05,
+  imu_kd:         0.01,
+  imu_deadband:   0.02,
+  imu_windup:     0.30,
 };
 
 const PTYPE_BOOL   = 1;
@@ -272,16 +269,49 @@ function CameraPanel({ ros, connected }) {
 
 // ─── DrivePanel ───────────────────────────────────────────────────────────────
 function DrivePanel({ ros, connected }) {
-  const [maxLin, setMaxLin] = useState(() => {
-    const v = parseFloat(localStorage.getItem("waverower_web_max_lin"));
-    return Number.isFinite(v) ? snap(clamp(v, SLIDER_LIN.min, SLIDER_LIN.max), SLIDER_LIN.step) : 0.10;
+  const [speedScale, setSpeedScale] = useState(() => {
+    const v = parseFloat(localStorage.getItem("waverower_web_speed_scale"));
+    return Number.isFinite(v)
+      ? snap(clamp(v, SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step)
+      : 0.5;
   });
+  /** Musi sediet s /motor_hat_node teleop_max_* — inak sa skala „zasekne“ (napr. max uz pri 50 %). */
+  const [teleopMax, setTeleopMax] = useState({ lin: 0.5, ang: 1.8 });
+  const teleopMaxRef = useRef({ lin: 0.5, ang: 1.8 });
   const twistRef    = useRef({ linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } });
   const pubRef      = useRef(null);
   const cmdRef      = useRef(null);
-  const maxLinRef   = useRef(maxLin);
+  const scaleRef    = useRef(speedScale);
   const syncRef     = useRef(null);
-  maxLinRef.current = maxLin;
+  scaleRef.current = speedScale;
+  teleopMaxRef.current = teleopMax;
+
+  useEffect(() => {
+    if (!ros || !connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await rosGetParams(ros, MOTOR_NODE, [
+          "teleop_max_linear",
+          "teleop_max_angular",
+        ]);
+        if (cancelled || !r?.values) return;
+        const next = { lin: 1.0, ang: 2.0 };
+        const names = ["teleop_max_linear", "teleop_max_angular"];
+        names.forEach((name, i) => {
+          const v = r.values[i];
+          if (!v || v.type !== PTYPE_DOUBLE) return;
+          if (name === "teleop_max_linear"  && v.double_value >= 0.05) next.lin = v.double_value;
+          if (name === "teleop_max_angular" && v.double_value >= 0.1)  next.ang = v.double_value;
+        });
+        teleopMaxRef.current = next;
+        setTeleopMax(next);
+      } catch (_) {
+        /* fallback defaults */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ros, connected]);
 
   useEffect(() => {
     if (!ros || !connected) {
@@ -299,7 +329,7 @@ function DrivePanel({ ros, connected }) {
     if (syncRef.current) clearTimeout(syncRef.current);
     syncRef.current = setTimeout(async () => {
       try {
-        const wanderFwd = maxLinRef.current;
+        const wanderFwd = scaleRef.current * teleopMaxRef.current.lin;
         const wanderTurn = wanderFwd * WANDER_TURN_RATIO;
         await rosSetParams(ros, WANDER_NODE, [
           makeParam("forward_speed", wanderFwd),
@@ -316,7 +346,7 @@ function DrivePanel({ ros, connected }) {
         syncRef.current = null;
       }
     };
-  }, [maxLin, ros, connected]);
+  }, [speedScale, ros, connected, teleopMax.lin, teleopMax.ang]);
 
   const stop = () => {
     twistRef.current = { linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } };
@@ -324,8 +354,10 @@ function DrivePanel({ ros, connected }) {
   };
 
   const drive = (lx, az) => {
-    const lin = maxLinRef.current;
-    const ang = maxLinRef.current * TURN_LIN_RATIO;
+    const s = scaleRef.current;
+    const { lin: maxL, ang: maxA } = teleopMaxRef.current;
+    const lin = s * maxL;
+    const ang = s * maxA;
     twistRef.current = {
       linear:  { x: lx * lin, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: az * ang },
@@ -347,12 +379,14 @@ function DrivePanel({ ros, connected }) {
   );
 
   const onSlider = e => {
-    const v = snap(clamp(parseFloat(e.target.value), SLIDER_LIN.min, SLIDER_LIN.max), SLIDER_LIN.step);
-    setMaxLin(v);
-    localStorage.setItem("waverower_web_max_lin", String(v));
+    const v = snap(clamp(parseFloat(e.target.value), SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step);
+    setSpeedScale(v);
+    localStorage.setItem("waverower_web_speed_scale", String(v));
   };
 
-  const maxAng = maxLin * TURN_LIN_RATIO;
+  const maxLin = speedScale * teleopMax.lin;
+  const maxAng = speedScale * teleopMax.ang;
+  const speedPct = Math.round(speedScale * 100);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-lg shadow-black/40 flex flex-col">
@@ -375,15 +409,15 @@ function DrivePanel({ ros, connected }) {
       <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Speed <span className="normal-case font-normal">m/s</span></span>
-            <span className="text-xs font-semibold text-blue-400 tabular-nums">{maxLin.toFixed(2)}</span>
+            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Speed scale</span>
+            <span className="text-xs font-semibold text-blue-400 tabular-nums">{speedPct}%</span>
           </div>
-          <input type="range" min={SLIDER_LIN.min} max={SLIDER_LIN.max} step={SLIDER_LIN.step}
-            value={maxLin} onChange={onSlider} className="w-full" />
+          <input type="range" min={SLIDER_SCALE.min} max={SLIDER_SCALE.max} step={SLIDER_SCALE.step}
+            value={speedScale} onChange={onSlider} className="w-full" />
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Turn <span className="normal-case font-normal">rad/s</span></span>
-          <span className="text-xs text-slate-500 tabular-nums">{maxAng.toFixed(2)}</span>
+          <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Effective <span className="normal-case font-normal">lin/ang</span></span>
+          <span className="text-xs text-slate-500 tabular-nums">{maxLin.toFixed(2)} / {maxAng.toFixed(2)}</span>
         </div>
       </div>
     </div>
@@ -523,25 +557,19 @@ function ImuPanel({ ros, connected }) {
         ))}
       </div>
 
-      {/* Correction visualizer – reálne dáta z /motor_hat_node/imu_correction_debug */}
+      {/* Correction visualizer – dáta z /motor_hat_node/drive_debug */}
+      {/* Layout: [0]=pwm_l%, [1]=pwm_r%, [2]=left_cmd, [3]=right_cmd, [4]=imu_corr, [5]=imu_yaw_rate */}
       {(() => {
-        const active   = dbg ? dbg[0] > 0.5 : false;
-        const lowFwd   = dbg ? dbg[1] > 0.5 : false;
-        const yawRate  = dbg ? dbg[2] : (wz ?? 0);
-        const error    = dbg ? dbg[3] : 0;
-        const p        = dbg ? dbg[4] : 0;
-        const i        = dbg ? dbg[5] : 0;
-        const d        = dbg ? dbg[6] : 0;
-        const total    = dbg ? dbg[7] : 0;
-        const corrPct  = dbg ? dbg[8] : 0;
-        const pwmL     = dbg ? dbg[9]  : 0;
-        const pwmR     = dbg ? dbg[10] : 0;
+        const pwmL    = dbg ? dbg[0] : 0;
+        const pwmR    = dbg ? dbg[1] : 0;
+        const imuCorr = dbg ? dbg[4] : 0;
+        const yawRate = dbg ? dbg[5] : (wz ?? 0);
+        const active  = dbg ? Math.abs(dbg[4]) > 0.001 : false;
         // bar: yawRate ±0.5 rad/s → ±50%
         const barPct  = Math.min(Math.abs(yawRate) / 0.5, 1) * 50;
         const barLeft = yawRate < 0;
-        // corrPct > 0 → left--, right++
-        const leftDown  = active && corrPct > 0;
-        const rightDown = active && corrPct < 0;
+        const leftDown  = active && imuCorr > 0;
+        const rightDown = active && imuCorr < 0;
         const hasDbg    = dbg !== null;
         return (
           <div className="bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2.5 mb-3 space-y-2">
@@ -550,12 +578,9 @@ function ImuPanel({ ros, connected }) {
               <span className="text-[0.57rem] font-bold uppercase tracking-wider text-slate-600">
                 Correction {hasDbg ? "(live)" : "(no debug topic)"}
               </span>
-              <div className="flex gap-1.5 items-center">
-                {lowFwd && <span className="text-[0.57rem] text-amber-500 font-bold uppercase">Low speed</span>}
-                <span className={`text-[0.6rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
-                  active ? "text-emerald-400 bg-emerald-950/50" : "text-slate-600 bg-slate-800/50"
-                }`}>{active ? "Active" : "Off"}</span>
-              </div>
+              <span className={`text-[0.6rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
+                active ? "text-emerald-400 bg-emerald-950/50" : "text-slate-600 bg-slate-800/50"
+              }`}>{active ? "Active" : "Off"}</span>
             </div>
 
             {/* yaw_rate bar */}
@@ -565,32 +590,20 @@ function ImuPanel({ ros, connected }) {
                 style={{ width: barPct + "%", left: barLeft ? (50 - barPct) + "%" : "50%" }} />
             </div>
 
-            {/* PID breakdown */}
-            <div className="grid grid-cols-4 gap-1 text-center">
-              {[["P", p], ["I", i], ["D", d], ["Σ", total]].map(([lbl, val]) => (
-                <div key={lbl} className="bg-slate-900 rounded px-1 py-1">
-                  <span className="block text-[0.52rem] font-bold text-slate-600 mb-0.5">{lbl}</span>
-                  <span className={`text-xs font-mono tabular-nums font-semibold ${
-                    Math.abs(val) < 0.001 ? "text-slate-600" : val > 0 ? "text-amber-400" : "text-blue-400"
-                  }`}>{val >= 0 ? "+" : ""}{val.toFixed(3)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Wheel PWM */}
+            {/* Wheel PWM + correction */}
             <div className="grid grid-cols-3 gap-1 items-center text-center">
               <div className={`text-xs font-bold rounded py-1 transition-colors ${
                 leftDown  ? "text-amber-400 bg-amber-950/40" : "text-slate-500 bg-slate-800/40"
               }`}>
-                L {hasDbg ? Math.round(pwmL) + "%" : "—"} {active && corrPct !== 0 ? (leftDown ? "▼" : "▲") : ""}
+                L {hasDbg ? Math.round(pwmL) + "%" : "—"} {active ? (leftDown ? "▼" : "▲") : ""}
               </div>
               <div className="text-[0.62rem] tabular-nums text-slate-500 font-mono">
-                {corrPct !== 0 ? (corrPct > 0 ? "+" : "") + Math.round(corrPct) + "%" : "±0%"}
+                {imuCorr !== 0 ? (imuCorr > 0 ? "+" : "") + imuCorr.toFixed(3) : "±0"}
               </div>
               <div className={`text-xs font-bold rounded py-1 transition-colors ${
                 rightDown ? "text-amber-400 bg-amber-950/40" : "text-slate-500 bg-slate-800/40"
               }`}>
-                R {hasDbg ? Math.round(pwmR) + "%" : "—"} {active && corrPct !== 0 ? (rightDown ? "▼" : "▲") : ""}
+                R {hasDbg ? Math.round(pwmR) + "%" : "—"} {active ? (rightDown ? "▼" : "▲") : ""}
               </div>
             </div>
           </div>
@@ -623,11 +636,11 @@ function ImuPanel({ ros, connected }) {
 
       {/* PID inputs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
-        <NumField name="imu_yaw_kp"             label="Kp"         step={0.01}  />
-        <NumField name="imu_yaw_ki"             label="Ki"         step={0.01}  />
-        <NumField name="imu_yaw_kd"             label="Kd"         step={0.001} />
-        <NumField name="imu_yaw_deadband"       label="Deadband"   step={0.001} />
-        <NumField name="imu_yaw_integral_limit" label="Int. Limit" step={0.05}  />
+        <NumField name="imu_kp"       label="Kp"         step={0.01}  />
+        <NumField name="imu_ki"       label="Ki"         step={0.01}  />
+        <NumField name="imu_kd"       label="Kd"         step={0.001} />
+        <NumField name="imu_deadband" label="Deadband"   step={0.001} />
+        <NumField name="imu_windup"   label="Int. Limit" step={0.05}  />
       </div>
 
       {/* Footer */}

@@ -257,16 +257,26 @@ def generate_launch_description():
                 name="motor_hat_node",
                 output="screen",
                 parameters=[{
-                    "control_mode":       LaunchConfiguration("control_mode"),
-                    "i2c_bus":            LaunchConfiguration("i2c_bus"),
-                    "i2c_address":        LaunchConfiguration("i2c_address"),
-                    "manual_twist_topic": motor_twist_topic,
-                    "imu_correction":     use_imu_correction,
-                    "imu_yaw_kp":         0.15,
-                    "imu_yaw_ki":         0.05,
-                    "imu_yaw_kd":         0.01,
-                    "imu_yaw_deadband":   0.02,
-                    "imu_yaw_integral_limit": 0.3,
+                    "control_mode":        LaunchConfiguration("control_mode"),
+                    "i2c_bus":             LaunchConfiguration("i2c_bus"),
+                    "i2c_address":         LaunchConfiguration("i2c_address"),
+                    # PWM rozsah: pwm_min = minimum kedy sa motor pohne, pwm_max = maximum
+                    "pwm_min":             400,
+                    "pwm_max":             4095,
+                    # Teleop normalizacia: teleop_max_linear = rychlost pri ktore motor ide naplno
+                    # Teleop klaves 'i' posiela linear.x = speed (napr 0.5 az 3.0 podla nastavenia q/z)
+                    # Nastav tuto hodnotu = maximalna rychlost ktoru chces pouzivat v teleop
+                    "teleop_max_linear":   1.0,
+                    "teleop_max_angular":  2.0,
+                    "invert_linear":       True,
+                    "smooth_alpha":        0.20,
+                    "imu_correction":      use_imu_correction,
+                    "imu_kp":              0.30,
+                    "imu_ki":              0.05,
+                    "imu_kd":              0.01,
+                    "imu_deadband":        0.02,
+                    "imu_windup":          0.30,
+                    "imu_sign":            -1.0,
                 }],
             ),
             Node(

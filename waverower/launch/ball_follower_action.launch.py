@@ -26,7 +26,13 @@ def _setup(context, *args, **kwargs):
             executable="waverower_motor",
             name="motor_hat_node",
             output="screen",
-            parameters=[{"mode": "manual"}],
+            parameters=[{
+                "control_mode": "auto",
+                "pwm_min":       400,
+                "pwm_max":       4095,
+                "max_wheel_speed": 0.4,
+                "wheel_base":    0.20,
+            }],
         ),
         Node(
             package="camera_ros",

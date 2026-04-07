@@ -60,22 +60,29 @@ def _opaque(context, *args, **kwargs):
     invert_ang = mode == "manual"
 
     motor_params = {
-        "control_mode": ctrl,
-        "i2c_bus": int(LaunchConfiguration("i2c_bus").perform(context)),
-        "i2c_address": int(LaunchConfiguration("i2c_address").perform(context)),
-        "manual_twist_topic": motor_twist_topic,
-        "cmd_vel_invert_linear": False,
-        "cmd_vel_invert_angular": invert_ang,
-        "imu_correction": use_imu_corr,
-        "imu_yaw_kp": 0.35,
-        "imu_yaw_ki": 0.12,
-        "imu_yaw_kd": 0.02,
-        "imu_yaw_deadband": 0.02,
-        "imu_yaw_integral_limit": 0.3,
-        "teleop_max_linear_m_s": 0.5,
-        "teleop_max_angular_rad_s": 1.0,
-        "snap_threshold": 0.95,
-        "pwm_boost": 2.35,
+        "control_mode":       ctrl,
+        "i2c_bus":            int(LaunchConfiguration("i2c_bus").perform(context)),
+        "i2c_address":        int(LaunchConfiguration("i2c_address").perform(context)),
+        # PWM rozsah
+        "pwm_min":            400,
+        "pwm_max":            4095,
+        # Teleop normalizacia
+        "teleop_max_linear":  1.0,
+        "teleop_max_angular": 2.0,
+        "invert_linear":      True,
+        "smooth_alpha":       0.20,
+        # Auto rezim (cmd_vel)
+        "max_wheel_speed":    0.4,
+        "wheel_base":         0.20,
+        "cmd_vel_timeout_ms": 300,
+        # IMU korekcia
+        "imu_correction":     use_imu_corr,
+        "imu_kp":             0.30,
+        "imu_ki":             0.05,
+        "imu_kd":             0.01,
+        "imu_deadband":       0.02,
+        "imu_windup":         0.30,
+        "imu_sign":           -1.0,
     }
 
     cid_raw = LaunchConfiguration("camera_id").perform(context)

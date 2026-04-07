@@ -9,13 +9,6 @@ int main(int argc, char* argv[])
   rclcpp::init(argc, argv);
 
   rclcpp::NodeOptions node_options;
-  // default parametre; control_mode z launchu (manual/auto)
-  node_options.parameter_overrides({
-      rclcpp::Parameter("pwm_boost", 2.35),
-      rclcpp::Parameter("snap_threshold", 0.22),
-      rclcpp::Parameter("smooth_alpha", 1.0),
-      rclcpp::Parameter("base_speed", 1.0),
-  });
 
   try {
     auto node = std::make_shared<nodes::DriveNode>(node_options);
