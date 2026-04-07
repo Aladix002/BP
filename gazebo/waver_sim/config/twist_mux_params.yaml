@@ -1,11 +1,15 @@
-# twist_mux priority configuration
+# Tento subor urcuje prioritu viacerych cmd_vel vstupov.
+# Ciel:
+# - manualne riadenie z klavesnice ma mat prednost,
+# - nav2 ma riadit len ked manualny vstup mlci.
 #
-# Teleop (keyboard) has higher priority than Nav2.
-# When no key is pressed for 0.5 s, Nav2 automatically regains control.
+# topic /cmd_vel_key:
+#   publikuje teleop_twist_keyboard.
+#   timeout 0.5 znamena, ze po 0.5s bez spravy sa manualny zdroj povazuje za neaktivny.
 #
-# Manual:    ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-#                --ros-args -r /cmd_vel:=/cmd_vel_key
-# Autonomous: use "Nav2 Goal" tool in RViz to click a destination
+# topic /cmd_vel_nav:
+#   publikuje nav2/controller.
+#   timeout 2.0 je dlhsie okno, aby nav2 neodpadaval pri kratkom jitteri.
 
 twist_mux:
   ros__parameters:

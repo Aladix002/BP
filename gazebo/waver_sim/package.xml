@@ -1,5 +1,10 @@
 <?xml version="1.0"?>
 <package format="3">
+  <!--
+    Balik waver_sim:
+    obsahuje launch/config/description pre simulaciu robota.
+    Zavislosti su runtime baliky potrebne na spustenie simulacie.
+  -->
   <name>waver_sim</name>
   <version>0.0.0</version>
   <description>WaveRover-like robot with SLAM and Nav2</description>

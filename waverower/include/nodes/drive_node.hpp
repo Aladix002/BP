@@ -1,5 +1,5 @@
-#ifndef NODES_MOTOR_HAT_HPP
-#define NODES_MOTOR_HAT_HPP
+#ifndef NODES_DRIVE_NODE_HPP
+#define NODES_DRIVE_NODE_HPP
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -20,14 +20,14 @@
 
 namespace nodes {
 
-class MotorHatI2c;
+class Pca9685;
 
-enum class HatControlMode : std::uint8_t { Manual = 0, Auto = 1 };
+enum class DriveMode : std::uint8_t { Manual = 0, Auto = 1 };
 
-class MotorHatNode : public rclcpp::Node {
+class DriveNode : public rclcpp::Node {
 public:
-  explicit MotorHatNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
-  ~MotorHatNode() override;
+  explicit DriveNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+  ~DriveNode() override;
 
   void prepare_terminal();
   void start_input_thread();
@@ -46,7 +46,7 @@ private:
   void cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
   void teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
   void reset_motion_state();
-  static HatControlMode parse_control_mode(const std::string& s);
+  static DriveMode parse_control_mode(const std::string& s);
   rcl_interfaces::msg::SetParametersResult on_param_change(const std::vector<rclcpp::Parameter>& parameters);
 
   void apply_tank(double l_cmd, double r_cmd, double base, double boost, double snap_fwd,
@@ -61,7 +61,7 @@ private:
   std::chrono::steady_clock::time_point imu_pid_last_time_{};
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
-  std::unique_ptr<MotorHatI2c> hat_;
+  std::unique_ptr<Pca9685> hat_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_teleop_;
@@ -88,7 +88,7 @@ private:
   double wheel_separation_m_{0.20};
   double max_wheel_linear_m_s_{0.35};
 
-  std::atomic<HatControlMode> control_mode_{HatControlMode::Manual};
+  std::atomic<DriveMode> control_mode_{DriveMode::Manual};
 
   int i2c_bus_{1};
   int i2c_addr_{0x40};

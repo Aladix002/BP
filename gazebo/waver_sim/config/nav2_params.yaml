@@ -1,5 +1,15 @@
-# Nav2 parameters for WaveRover (ROS 2 Jazzy)
-# Robot: 4-wheel skid-steer, wheel_separation=0.123m, radius≈0.12m, max 0.35 m/s
+# Nav2 parametre pre waver_sim (ROS 2 Jazzy).
+# Tento subor je "centralny mozog" navigacie:
+# - lokalizacia (AMCL),
+# - behavior tree navigator,
+# - lokalny regulator (controller_server),
+# - costmapy (global/local),
+# - planner, smoother, behavior, waypoint, velocity_smoother.
+#
+# Prakticky dopad:
+# - ak robot zle zataca / osciluje: ladit controller_server/FolllowPath a costmap.
+# - ak robot nejde cez uzke pasaze: ladit robot_radius + inflation_radius.
+# - ak su problemy s cielom: ladit goal_checker tolerancie.
 
 amcl:
   ros__parameters:

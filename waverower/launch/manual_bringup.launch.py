@@ -127,7 +127,6 @@ def generate_launch_description():
     use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
     correction_mode = LaunchConfiguration("correction_mode")
-    flow_algo  = LaunchConfiguration("flow_algo")
     use_ball_follow = LaunchConfiguration("use_ball_follow")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
@@ -244,11 +243,6 @@ def generate_launch_description():
                 default_value="imu",
                 description="zarovnanie rovno: imu | optical_flow | none",
             ),
-            DeclareLaunchArgument(
-                "flow_algo",
-                default_value="lk",
-                description="optical flow: lk | farneback",
-            ),
             DeclareLaunchArgument("i2c_bus", default_value="1"),
             DeclareLaunchArgument("i2c_address", default_value="64"),
             DeclareLaunchArgument(
@@ -297,33 +291,15 @@ def generate_launch_description():
                 name="optical_flow_node",
                 output="screen",
                 condition=IfCondition(
-                    PythonExpression([
-                        '"', correction_mode, '" == "optical_flow" and "', flow_algo, '" != "farneback"',
-                    ])
+                    PythonExpression(['"', correction_mode, '" == "optical_flow"'])
                 ),
                 parameters=[{
+                    "image_topic":       "/camera/image_raw/compressed",
                     "correction_gain":   1.5,
                     "max_correction":    0.3,
                     "forward_threshold": 0.05,
                     "steer_deadzone":    0.12,
                     "min_features":      15,
-                }],
-            ),
-            Node(
-                package="waverower",
-                executable="optical_flow_dense",
-                name="optical_flow_node",
-                output="screen",
-                condition=IfCondition(
-                    PythonExpression([
-                        '"', correction_mode, '" == "optical_flow" and "', flow_algo, '" == "farneback"',
-                    ])
-                ),
-                parameters=[{
-                    "correction_gain":   1.5,
-                    "max_correction":    0.3,
-                    "forward_threshold": 0.05,
-                    "steer_deadzone":    0.12,
                 }],
             ),
             Node(

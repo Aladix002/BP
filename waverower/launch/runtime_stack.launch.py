@@ -44,16 +44,12 @@ def _opaque(context, *args, **kwargs):
     use_web = LaunchConfiguration("use_web").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
     use_ball = LaunchConfiguration("use_ball_follow").perform(context) == "true"
-    flow_algo = LaunchConfiguration("flow_algo").perform(context)
 
     try:
         get_package_share_directory("camera_ros")
         have_cam = True
     except PackageNotFoundError:
         have_cam = False
-
-    use_flow_lk = use_flow and flow_algo != "farneback"
-    use_flow_fb = use_flow and flow_algo == "farneback"
 
     motor_twist_topic = (
         "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
@@ -163,8 +159,9 @@ def _opaque(context, *args, **kwargs):
     elif use_camera and not have_cam:
         actions.append(LogInfo(msg="use_camera:=true vyzaduje balik camera_ros."))
 
-    if use_flow_lk:
-        flow_params_lk = {
+    if use_flow:
+        flow_params = {
+            "image_topic": "/camera/image_raw/compressed",
             "correction_gain": 1.5,
             "max_correction": 0.3,
             "forward_threshold": 0.05,
@@ -172,34 +169,15 @@ def _opaque(context, *args, **kwargs):
             "min_features": 15,
         }
         if wand_en:
-            flow_params_lk["teleop_topic"] = "/cmd_vel_raw"
-            flow_params_lk["output_topic"] = "/cmd_vel"
+            flow_params["teleop_topic"] = "/cmd_vel_raw"
+            flow_params["output_topic"] = "/cmd_vel"
         actions.append(
             Node(
                 package="waverower",
                 executable="optical_flow",
                 name="optical_flow_node",
                 output="screen",
-                parameters=[flow_params_lk],
-            )
-        )
-    if use_flow_fb:
-        flow_params_fb = {
-            "correction_gain": 1.5,
-            "max_correction": 0.3,
-            "forward_threshold": 0.05,
-            "steer_deadzone": 0.12,
-        }
-        if wand_en:
-            flow_params_fb["teleop_topic"] = "/cmd_vel_raw"
-            flow_params_fb["output_topic"] = "/cmd_vel"
-        actions.append(
-            Node(
-                package="waverower",
-                executable="optical_flow_dense",
-                name="optical_flow_node",
-                output="screen",
-                parameters=[flow_params_fb],
+                parameters=[flow_params],
             )
         )
     if use_teleop:
@@ -255,7 +233,6 @@ def generate_launch_description():
             default_value="imu",
             description="zarovnanie: imu | optical_flow | none",
         ),
-        DeclareLaunchArgument("flow_algo", default_value="lk"),
         DeclareLaunchArgument("use_teleop", default_value="false"),
         DeclareLaunchArgument("use_ball_follow", default_value="false"),
         DeclareLaunchArgument("i2c_bus", default_value="1"),

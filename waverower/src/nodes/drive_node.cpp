@@ -1,6 +1,6 @@
-#include "nodes/motor_hat.hpp"
+#include "nodes/drive_node.hpp"
 
-#include "nodes/motor_hat_i2c.hpp"
+#include "nodes/pca9685.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,7 +22,7 @@ std::string lower(std::string s) {
 
 }  // namespace
 
-MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
+DriveNode::DriveNode(const rclcpp::NodeOptions& options)
     : Node("motor_hat_node", options) {
   i2c_bus_ = declare_parameter<int>("i2c_bus", 1);
   i2c_addr_ = declare_parameter<int>("i2c_address", 0x40);
@@ -46,7 +46,6 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("teleop_max_linear_m_s", 0.5);
   declare_parameter<double>("teleop_max_angular_rad_s", 1.8);
   declare_parameter<bool>("teleop_invert_linear", true);
-  // /cmd_vel: volitelne znamienko (ball_follower launch)
   declare_parameter<bool>("cmd_vel_invert_linear", false);
   declare_parameter<bool>("cmd_vel_invert_angular", false);
 
@@ -55,9 +54,7 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("imu_yaw_kp", 0.15);
   declare_parameter<double>("imu_yaw_ki", 0.05);
   declare_parameter<double>("imu_yaw_kd", 0.01);
-  // imu_yaw_deadband [rad/s], potlacenie sumu
   declare_parameter<double>("imu_yaw_deadband", 0.02);
-  // imu_yaw_integral_limit anti-windup
   declare_parameter<double>("imu_yaw_integral_limit", 0.3);
   imu_pid_last_time_ = std::chrono::steady_clock::now();
 
@@ -69,39 +66,38 @@ MotorHatNode::MotorHatNode(const rclcpp::NodeOptions& options)
 
   control_mode_ = parse_control_mode(get_parameter("control_mode").as_string());
 
-  hat_ = std::make_unique<MotorHatI2c>(i2c_bus_, static_cast<uint8_t>(i2c_addr_));
+  hat_ = std::make_unique<Pca9685>(i2c_bus_, static_cast<uint8_t>(i2c_addr_));
   hat_->set_pwm_freq_hz(pwm_freq_hz_);
 
   sub_cmd_ = create_subscription<geometry_msgs::msg::Twist>(
       cmd_topic, rclcpp::QoS(10),
-      std::bind(&MotorHatNode::cmd_vel_cb, this, std::placeholders::_1));
+      std::bind(&DriveNode::cmd_vel_cb, this, std::placeholders::_1));
 
   if (!teleop_topic.empty()) {
     sub_teleop_ = create_subscription<geometry_msgs::msg::Twist>(
         teleop_topic, rclcpp::QoS(10),
-        std::bind(&MotorHatNode::teleop_twist_cb, this, std::placeholders::_1));
+        std::bind(&DriveNode::teleop_twist_cb, this, std::placeholders::_1));
   }
 
-  // IMU subscription (imu_correction:=true)
   sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu", rclcpp::SensorDataQoS(),
-      std::bind(&MotorHatNode::imu_cb, this, std::placeholders::_1));
+      std::bind(&DriveNode::imu_cb, this, std::placeholders::_1));
 
   param_cb_ = add_on_set_parameters_callback(
-      std::bind(&MotorHatNode::on_param_change, this, std::placeholders::_1));
+      std::bind(&DriveNode::on_param_change, this, std::placeholders::_1));
 
   timer_ = create_wall_timer(std::chrono::milliseconds(10), [this] { timer_cb(); });
 
   last_cmd_steady_ = std::chrono::steady_clock::now();
 
   RCLCPP_INFO(get_logger(),
-              "Motor HAT  mode=%s  i2c-%d 0x%02x  %.0fHz  cmd_vel=%s  teleop=%s  [M] prepina manual/auto",
-              control_mode_ == HatControlMode::Auto ? "auto" : "manual", i2c_bus_, i2c_addr_,
+              "DriveNode  mode=%s  i2c-%d 0x%02x  %.0fHz  cmd_vel=%s  teleop=%s",
+              control_mode_ == DriveMode::Auto ? "auto" : "manual", i2c_bus_, i2c_addr_,
               pwm_freq_hz_, cmd_topic.c_str(),
               teleop_topic.empty() ? "(off)" : teleop_topic.c_str());
 }
 
-MotorHatNode::~MotorHatNode() {
+DriveNode::~DriveNode() {
   running_ = false;
   if (input_thread_.joinable()) {
     input_thread_.join();
@@ -115,15 +111,15 @@ MotorHatNode::~MotorHatNode() {
   }
 }
 
-HatControlMode MotorHatNode::parse_control_mode(const std::string& s) {
+DriveMode DriveNode::parse_control_mode(const std::string& s) {
   const std::string k = lower(s);
   if (k == "auto" || k == "autonomous") {
-    return HatControlMode::Auto;
+    return DriveMode::Auto;
   }
-  return HatControlMode::Manual;
+  return DriveMode::Manual;
 }
 
-rcl_interfaces::msg::SetParametersResult MotorHatNode::on_param_change(
+rcl_interfaces::msg::SetParametersResult DriveNode::on_param_change(
     const std::vector<rclcpp::Parameter>& parameters) {
   rcl_interfaces::msg::SetParametersResult out;
   out.successful = true;
@@ -140,16 +136,16 @@ rcl_interfaces::msg::SetParametersResult MotorHatNode::on_param_change(
         out.reason = "control_mode: manual alebo auto";
         return out;
       }
-      HatControlMode m = (v == "manual") ? HatControlMode::Manual : HatControlMode::Auto;
+      DriveMode m = (v == "manual") ? DriveMode::Manual : DriveMode::Auto;
       control_mode_.store(m, std::memory_order_relaxed);
       reset_motion_state();
-      RCLCPP_INFO(get_logger(), "control_mode -> %s", m == HatControlMode::Auto ? "auto" : "manual");
+      RCLCPP_INFO(get_logger(), "control_mode -> %s", m == DriveMode::Auto ? "auto" : "manual");
     }
   }
   return out;
 }
 
-void MotorHatNode::reset_motion_state() {
+void DriveNode::reset_motion_state() {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = 0.0;
   tr_ = 0.0;
@@ -162,7 +158,7 @@ void MotorHatNode::reset_motion_state() {
   smooth_r_ = 0.0;
 }
 
-void MotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
+void DriveNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
   const bool inv_l = get_parameter("cmd_vel_invert_linear").as_bool();
   const bool inv_w = get_parameter("cmd_vel_invert_angular").as_bool();
@@ -172,8 +168,8 @@ void MotorHatNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   last_cmd_steady_ = std::chrono::steady_clock::now();
 }
 
-void MotorHatNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
-  if (control_mode_.load(std::memory_order_relaxed) != HatControlMode::Manual) {
+void DriveNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
+  if (control_mode_.load(std::memory_order_relaxed) != DriveMode::Manual) {
     return;
   }
   double max_lin = std::max(get_parameter("teleop_max_linear_m_s").as_double(), 0.05);
@@ -190,7 +186,7 @@ void MotorHatNode::teleop_twist_cb(const geometry_msgs::msg::Twist::SharedPtr ms
   last_tr_ = t;
 }
 
-void MotorHatNode::prepare_terminal() {
+void DriveNode::prepare_terminal() {
   if (!isatty(STDIN_FILENO)) {
     RCLCPP_WARN(get_logger(), "stdin nie je TTY");
     return;
@@ -208,24 +204,24 @@ void MotorHatNode::prepare_terminal() {
   tty_ok_ = true;
 }
 
-void MotorHatNode::start_input_thread() {
+void DriveNode::start_input_thread() {
   running_ = true;
   input_thread_ = std::thread([this] { input_loop(); });
 }
 
-void MotorHatNode::touch_fb(double v) {
+void DriveNode::touch_fb(double v) {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = std::clamp(v, -1.0, 1.0);
   last_fb_ = std::chrono::steady_clock::now();
 }
 
-void MotorHatNode::touch_tr(double v) {
+void DriveNode::touch_tr(double v) {
   std::lock_guard<std::mutex> lock(mu_);
   tr_ = std::clamp(v, -1.0, 1.0);
   last_tr_ = std::chrono::steady_clock::now();
 }
 
-void MotorHatNode::full_stop_keys() {
+void DriveNode::full_stop_keys() {
   std::lock_guard<std::mutex> lock(mu_);
   fb_ = 0.0;
   tr_ = 0.0;
@@ -234,7 +230,7 @@ void MotorHatNode::full_stop_keys() {
   smooth_r_ = 0.0;
 }
 
-void MotorHatNode::bump_speed(double delta) {
+void DriveNode::bump_speed(double delta) {
   double new_base = 0.0;
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -245,7 +241,7 @@ void MotorHatNode::bump_speed(double delta) {
   RCLCPP_INFO(get_logger(), "base_speed = %.2f", new_base);
 }
 
-void MotorHatNode::input_loop() {
+void DriveNode::input_loop() {
   std::array<char, 8> esc_buf{};
   int esc_len = 0;
 
@@ -271,20 +267,11 @@ void MotorHatNode::input_loop() {
       }
       if (esc_len >= 3 && esc_buf[0] == '\x1b' && esc_buf[1] == '[') {
         switch (esc_buf[2]) {
-          case 'A':
-            touch_fb(-1.0);
-            break;
-          case 'B':
-            touch_fb(1.0);
-            break;
-          case 'C':
-            touch_tr(1.0);
-            break;
-          case 'D':
-            touch_tr(-1.0);
-            break;
-          default:
-            break;
+          case 'A': touch_fb(-1.0); break;
+          case 'B': touch_fb(1.0);  break;
+          case 'C': touch_tr(1.0);  break;
+          case 'D': touch_tr(-1.0); break;
+          default: break;
         }
         esc_len = 0;
       } else if (esc_len >= 2 && esc_buf[0] == '\x1b' && esc_buf[1] != '[') {
@@ -300,55 +287,30 @@ void MotorHatNode::input_loop() {
     }
 
     switch (c) {
-      case 'w':
-      case 'W':
-        touch_fb(-1.0);
-        break;
-      case 's':
-      case 'S':
-        touch_fb(1.0);
-        break;
-      case 'a':
-      case 'A':
-        touch_tr(1.0);
-        break;
-      case 'd':
-      case 'D':
-        touch_tr(-1.0);
-        break;
-      case 'm':
-      case 'M': {
-        const bool go_auto = (control_mode_.load(std::memory_order_relaxed) == HatControlMode::Manual);
+      case 'w': case 'W': touch_fb(-1.0); break;
+      case 's': case 'S': touch_fb(1.0);  break;
+      case 'a': case 'A': touch_tr(1.0);  break;
+      case 'd': case 'D': touch_tr(-1.0); break;
+      case 'm': case 'M': {
+        const bool go_auto = (control_mode_.load(std::memory_order_relaxed) == DriveMode::Manual);
         const std::string next = go_auto ? "auto" : "manual";
         (void)set_parameters({ rclcpp::Parameter("control_mode", next) });
         break;
       }
-      case ' ':
-      case 'x':
-      case 'X':
-        full_stop_keys();
-        break;
-      case '+':
-      case '=':
-        bump_speed(0.05);
-        break;
-      case '-':
-      case '_':
-        bump_speed(-0.05);
-        break;
-      case 'q':
-      case 'Q':
+      case ' ': case 'x': case 'X': full_stop_keys(); break;
+      case '+': case '=': bump_speed(0.05);  break;
+      case '-': case '_': bump_speed(-0.05); break;
+      case 'q': case 'Q':
         RCLCPP_INFO(get_logger(), "Quit (Q)");
         rclcpp::shutdown();
         running_ = false;
         break;
-      default:
-        break;
+      default: break;
     }
   }
 }
 
-void MotorHatNode::timer_cb() {
+void DriveNode::timer_cb() {
   using clock = std::chrono::steady_clock;
   const auto now = clock::now();
   const double boost = std::clamp(get_parameter("pwm_boost").as_double(), 1.0, 2.5);
@@ -362,16 +324,16 @@ void MotorHatNode::timer_cb() {
   const double alpha = std::clamp(get_parameter("smooth_alpha").as_double(), 0.05, 1.0);
   const double alpha_spin = std::clamp(get_parameter("smooth_alpha_spin").as_double(), 0.05, 1.0);
 
-  if (control_mode_.load(std::memory_order_relaxed) == HatControlMode::Auto) {
+  if (control_mode_.load(std::memory_order_relaxed) == DriveMode::Auto) {
     timer_cb_auto(boost, snap, snap_turn, in_place_boost, alpha, alpha_spin);
   } else {
     timer_cb_manual(now, boost, snap, snap_turn, in_place_boost, alpha, alpha_spin);
   }
 }
 
-void MotorHatNode::timer_cb_manual(const std::chrono::steady_clock::time_point& now, double boost,
-                                       double snap, double snap_turn, double in_place_boost, double alpha,
-                                       double alpha_spin) {
+void DriveNode::timer_cb_manual(const std::chrono::steady_clock::time_point& now, double boost,
+                                double snap, double snap_turn, double in_place_boost, double alpha,
+                                double alpha_spin) {
   double fb = 0.0;
   double tr = 0.0;
   double base = 1.0;
@@ -409,8 +371,8 @@ void MotorHatNode::timer_cb_manual(const std::chrono::steady_clock::time_point& 
   apply_tank(sl, sr, base, boost, snap, snap_turn, low_forward, in_place_boost);
 }
 
-void MotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, double in_place_boost,
-                                     double alpha, double alpha_spin) {
+void DriveNode::timer_cb_auto(double boost, double snap, double snap_turn, double in_place_boost,
+                              double alpha, double alpha_spin) {
   cmd_vel_timeout_ms_ = get_parameter("cmd_vel_timeout_ms").as_int();
   wheel_separation_m_ = std::max(get_parameter("wheel_separation_m").as_double(), 0.01);
   max_wheel_linear_m_s_ = std::max(get_parameter("max_wheel_linear_m_s").as_double(), 0.05);
@@ -457,17 +419,15 @@ void MotorHatNode::timer_cb_auto(double boost, double snap, double snap_turn, do
   apply_tank(sl, sr, base, boost, snap, snap_turn, low_forward, in_place_boost);
 }
 
-void MotorHatNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
+void DriveNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mu_);
-  // EMA filter gyro (alpha=0.25)
   constexpr double kAlpha = 0.25;
   imu_yaw_rate_ += kAlpha * (msg->angular_velocity.z - imu_yaw_rate_);
 }
 
-void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
-                                  double snap_fwd, double snap_turn, bool low_forward,
-                                  double in_place_boost) {
-  // IMU yaw PID pri jazde rovno; korekcia na PWM po snap (bez skokov)
+void DriveNode::apply_tank(double l_cmd, double r_cmd, double base, double boost,
+                           double snap_fwd, double snap_turn, bool low_forward,
+                           double in_place_boost) {
   double corr = 0.0;
   if (get_parameter("imu_correction").as_bool() && !low_forward) {
     const double kp           = get_parameter("imu_yaw_kp").as_double();
@@ -486,7 +446,6 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     const double dt = std::chrono::duration<double>(now - imu_pid_last_time_).count();
     imu_pid_last_time_ = now;
 
-    // makky deadband
     double error;
     if (std::abs(yaw_rate) <= deadband) {
       error = 0.0;
@@ -502,7 +461,6 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     }
     imu_yaw_prev_error_ = error;
   } else {
-    // reset PID ak korekcia vypnuta
     imu_yaw_integral_   = 0.0;
     imu_yaw_prev_error_ = 0.0;
     imu_pid_last_time_  = std::chrono::steady_clock::now();
@@ -519,7 +477,6 @@ void MotorHatNode::apply_tank(double l_cmd, double r_cmd, double base, double bo
     return std::min(100, static_cast<int>(std::lround(raw)));
   };
 
-  // snap na povodnych prikazoch, potom IMU korekcia na PWM
   int pl = to_pct(l_cmd);
   int pr = to_pct(r_cmd);
   if (corr != 0.0) {

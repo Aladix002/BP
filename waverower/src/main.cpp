@@ -2,7 +2,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "nodes/motor_hat.hpp"
+#include "nodes/drive_node.hpp"
 
 int main(int argc, char* argv[])
 {
@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
   });
 
   try {
-    auto node = std::make_shared<nodes::MotorHatNode>(node_options);
+    auto node = std::make_shared<nodes::DriveNode>(node_options);
     // Keyboard input is intentionally disabled.
     // Control is expected via ROS topics (e.g. /teleop_cmd_vel or /cmd_vel).
     rclcpp::spin(node);

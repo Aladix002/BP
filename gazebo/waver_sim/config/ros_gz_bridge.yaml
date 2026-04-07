@@ -1,3 +1,15 @@
+# Mapa topic bridge-ov medzi ROS 2 a Gazebo Transport.
+# Kazda polozka hovori:
+# - ROS topic meno,
+# - Gazebo topic meno,
+# - typ spravy na oboch stranach,
+# - smer prenosu.
+#
+# Smer GZ_TO_ROS:
+#   data vznikaju v simulatori a idu do ROS.
+# Smer ROS_TO_GZ:
+#   data vznikaju v ROS a riadia simulator.
+
 - ros_topic_name: "/clock"
   gz_topic_name: "/clock"
   ros_type_name: "rosgraph_msgs/msg/Clock"

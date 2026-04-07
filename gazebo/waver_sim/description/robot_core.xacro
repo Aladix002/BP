@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- WaveRover dimensions -->
+  <!-- Geometria podvozku (v metroch). -->
   <xacro:property name="body_l"       value="0.183"/>
   <xacro:property name="body_w"       value="0.130"/>
   <xacro:property name="body_h"       value="0.050"/>
@@ -18,7 +18,10 @@
   <material name="silver">   <color rgba="0.78 0.78 0.78 1"/></material>
   <material name="blue">     <color rgba="0.1  0.1  0.75 1"/></material>
 
-  <!-- base_footprint -->
+  <!--
+    base_footprint je 2D referencny frame na podlahe.
+    base_link je fyzicke telo robota; je posunute o wheel_radius do vysky.
+  -->
   <link name="base_footprint"/>
   <joint name="base_footprint_joint" type="fixed">
     <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
@@ -26,7 +29,7 @@
     <child  link="base_link"/>
   </joint>
 
-  <!-- Main chassis -->
+  <!-- Hlavne telo robota. -->
   <link name="base_link">
     <inertial>
       <mass value="1.2"/>
@@ -50,7 +53,7 @@
     </collision>
   </link>
 
-  <!-- Top shell plate -->
+  <!-- Horna "karoseria" cast, cisto vizual + kolizia. -->
   <link name="top_shell_link">
     <inertial>
       <mass value="0.050"/>
@@ -77,7 +80,11 @@
     <preserveFixedJoint>true</preserveFixedJoint>
   </gazebo>
 
-  <!-- Wheels -->
+  <!--
+    Makro kolesa:
+    - jedno makro sa pouzije 4x (FL, FR, BL, BR),
+    - kazde koleso ma continuous joint okolo osi Y.
+  -->
   <xacro:macro name="wheel" params="name xyz">
     <link name="${name}">
       <inertial>
@@ -115,7 +122,7 @@
   <xacro:wheel name="wheel_back_left"   xyz="-${wheel_base/2}  ${wheel_sep/2} 0"/>
   <xacro:wheel name="wheel_back_right"  xyz="-${wheel_base/2} -${wheel_sep/2} 0"/>
 
-  <!-- Gazebo surface properties -->
+  <!-- Povrchove vlastnosti v Gazebe (trenie, material). -->
   <gazebo reference="base_link">
     <mu1>0.2</mu1><mu2>0.2</mu2>
     <selfCollide>false</selfCollide>

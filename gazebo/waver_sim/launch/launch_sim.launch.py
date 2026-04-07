@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""
-waver_sim – Gazebo Harmonic simulation with SLAM + Nav2.
+"""Hlavny launch pre simulaciu.
 
-Usage:
-    ros2 launch waver_sim launch_sim.launch.py
-
-Timeline:
-    t=0s   – Gazebo Harmonic, robot_state_publisher, spawn robot
-    t=2s   – ros_gz_bridge
-    t=10s  – Nav2 bringup (includes SLAM toolbox)
-    t=13s  – RViz2
+Pipeline:
+1) vygeneruje robot_description z xacro,
+2) pusti Gazebo s worldom room.sdf,
+3) spawne robota do sveta,
+4) zapne twist_mux (teleop ma vyssiu prioritu ako nav2),
+5) zapne ros_gz_bridge (topic bridge medzi ROS a Gazebo),
+6) po kratkom oneskoreni pusti Nav2 bringup so SLAM,
+7) nakoniec pusti RViz s pripravenou konfiguraciou.
 """
 
 from launch import LaunchDescription
@@ -30,16 +29,19 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    # use_sim_time=True: vsetky ROS nody pouzivaju /clock z Gazeba.
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    # Prefix cesty do balika waver_sim (config/, launch/, description/).
     pkg = FindPackageShare('waver_sim')
 
-    # ── Robot description ──────────────────────────────────────────────
+    # Xacro -> URDF text, ktory posielame do robot_state_publisher.
     robot_description = ParameterValue(
         Command(['xacro ',
                  PathJoinSubstitution([pkg, 'description', 'robot.urdf.xacro'])]),
         value_type=str,
     )
 
+    # robot_state_publisher publikuje TF strom robota podla URDF.
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -50,7 +52,7 @@ def generate_launch_description():
         }],
     )
 
-    # ── Gazebo Harmonic ────────────────────────────────────────────────
+    # Spusti samotny Gazebo simulator a nacita world room.sdf z waver_gazebo.
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -65,6 +67,7 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Vytvori instanciu robota vo svete pod menom "waver_sim".
     spawn = Node(
         package='ros_gz_sim',
         executable='create',
@@ -78,7 +81,9 @@ def generate_launch_description():
         output='screen',
     )
 
-    # ── Twist mux (keyboard priority > Nav2) ──────────────────────────
+    # Mixuje cmd_vel vstupy:
+    # - /cmd_vel_key (teleop) ma prioritu
+    # - /cmd_vel_nav (nav2) je fallback.
     twist_mux = Node(
         package='twist_mux',
         executable='twist_mux',
@@ -91,7 +96,7 @@ def generate_launch_description():
         output='screen',
     )
 
-    # ── ROS ↔ Gazebo bridge ────────────────────────────────────────────
+    # Bridge sa spusta po 2s, aby bol Gazebo uz inicializovany.
     gz_bridge = TimerAction(
         period=2.0,
         actions=[Node(
@@ -108,7 +113,9 @@ def generate_launch_description():
         )],
     )
 
-    # ── Nav2 bringup (SLAM + navigation) ──────────────────────────────
+    # Nav2 bringup sa pusta po 10s:
+    # - simulator aj bridge uz bezia,
+    # - SLAM + nav stack sa rozbieha stabilnejsie.
     nav2_bringup = TimerAction(
         period=10.0,
         actions=[IncludeLaunchDescription(
@@ -131,7 +138,7 @@ def generate_launch_description():
         )],
     )
 
-    # ── RViz ──────────────────────────────────────────────────────────
+    # RViz po 13s, aby uz boli k dispozicii map/TF topicy.
     rviz = TimerAction(
         period=13.0,
         actions=[Node(
@@ -145,6 +152,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        # Jediny verejny argument launchu.
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         rsp,
         gz_sim,

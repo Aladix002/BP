@@ -27,7 +27,6 @@ def generate_launch_description():
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
     correction_mode = LaunchConfiguration("correction_mode")
-    flow_algo_lc = LaunchConfiguration("flow_algo")
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
 
     return LaunchDescription([
@@ -63,12 +62,6 @@ def generate_launch_description():
             default_value="false",
             description="camera_ros pre optical_flow",
         ),
-        DeclareLaunchArgument(
-            "flow_algo",
-            default_value="lk",
-            description="optical flow: lk | farneback",
-        ),
-
         Node(
             package="waverower",
             executable="waverower_motor",
@@ -117,35 +110,15 @@ def generate_launch_description():
             name="optical_flow_node",
             output="screen",
             condition=IfCondition(
-                PythonExpression([
-                    '"', correction_mode, '" == "optical_flow" and "', flow_algo_lc, '" != "farneback"',
-                ])
+                PythonExpression(['"', correction_mode, '" == "optical_flow"'])
             ),
             parameters=[{
+                "image_topic": "/camera/camera_node/image_raw/compressed",
                 "correction_gain": 1.5,
                 "max_correction": 0.3,
                 "forward_threshold": 0.05,
                 "steer_deadzone": 0.12,
                 "min_features": 15,
-                "teleop_topic": "/cmd_vel_raw",
-                "output_topic": "/cmd_vel",
-            }],
-        ),
-        Node(
-            package="waverower",
-            executable="optical_flow_dense",
-            name="optical_flow_dense_node",
-            output="screen",
-            condition=IfCondition(
-                PythonExpression([
-                    '"', correction_mode, '" == "optical_flow" and "', flow_algo_lc, '" == "farneback"',
-                ])
-            ),
-            parameters=[{
-                "correction_gain": 1.5,
-                "max_correction": 0.3,
-                "forward_threshold": 0.05,
-                "steer_deadzone": 0.12,
                 "teleop_topic": "/cmd_vel_raw",
                 "output_topic": "/cmd_vel",
             }],

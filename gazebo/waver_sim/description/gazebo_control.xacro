@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- Gazebo Harmonic diff-drive (4-wheel skid-steer) -->
+  <!--
+    Gazebo pluginy pre pohyb:
+    - DiffDrive cita /cmd_vel a toci vsetkymi 4 kolesami,
+    - JointStatePublisher publikuje stavy klbov.
+  -->
   <gazebo>
     <plugin filename="gz-sim-diff-drive-system"
             name="gz::sim::systems::DiffDrive">
@@ -10,6 +14,7 @@
       <left_joint>wheel_back_left_joint</left_joint>
       <right_joint>wheel_back_right_joint</right_joint>
 
+      <!-- Musi sediet s geometriou v robot_core.xacro -->
       <wheel_separation>0.123</wheel_separation>
       <wheel_radius>0.0406</wheel_radius>
 
@@ -22,6 +27,7 @@
       <max_angular_velocity>1.5</max_angular_velocity>
       <min_angular_velocity>-1.5</min_angular_velocity>
 
+      <!-- Topic mapovanie na Gazebo strane (bridge ich prenesie do ROS). -->
       <topic>cmd_vel</topic>
       <odom_topic>odometry</odom_topic>
       <tf_topic>/tf</tf_topic>

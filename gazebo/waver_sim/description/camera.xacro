@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- Camera link – front face of chassis -->
+  <!--
+    Kamera je fixny senzor vpredu na podvozku.
+    Gazebo publikuje "camera" a "camera/camera_info",
+    bridge ich mapuje na ROS /camera/image_raw a /camera/camera_info.
+  -->
   <link name="camera_link">
     <inertial>
       <mass value="0.0035"/>
@@ -25,7 +29,6 @@
     </collision>
   </link>
 
-  <!-- x = body_l/2 + 0.005 = 0.097 -->
   <joint name="camera_joint" type="fixed">
     <origin xyz="0.097 0 0.005" rpy="0 0 0"/>
     <parent link="base_link"/>

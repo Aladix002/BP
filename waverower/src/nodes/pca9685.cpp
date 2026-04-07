@@ -1,4 +1,4 @@
-#include "nodes/motor_hat_i2c.hpp"
+#include "nodes/pca9685.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -29,7 +29,7 @@ constexpr uint8_t kPcaFullOffHigh = 0x10;
 
 }  // namespace
 
-MotorHatI2c::MotorHatI2c(int i2c_bus, uint8_t addr7) {
+Pca9685::Pca9685(int i2c_bus, uint8_t addr7) {
   std::string path = "/dev/i2c-" + std::to_string(i2c_bus);
   fd_ = open(path.c_str(), O_RDWR);
   if (fd_ < 0) {
@@ -43,20 +43,20 @@ MotorHatI2c::MotorHatI2c(int i2c_bus, uint8_t addr7) {
   write_reg(kPcaMode1, 0x00);
 }
 
-MotorHatI2c::~MotorHatI2c() {
+Pca9685::~Pca9685() {
   if (fd_ >= 0) {
     close(fd_);
   }
 }
 
-void MotorHatI2c::write_reg(uint8_t reg, uint8_t val) {
+void Pca9685::write_reg(uint8_t reg, uint8_t val) {
   uint8_t buf[2] = {reg, val};
   if (write(fd_, buf, sizeof(buf)) != static_cast<ssize_t>(sizeof(buf))) {
     throw std::runtime_error("I2C write zlyhal");
   }
 }
 
-uint8_t MotorHatI2c::read_reg(uint8_t reg) {
+uint8_t Pca9685::read_reg(uint8_t reg) {
   if (write(fd_, &reg, 1) != 1) {
     throw std::runtime_error("I2C read addr zlyhal");
   }
@@ -67,7 +67,7 @@ uint8_t MotorHatI2c::read_reg(uint8_t reg) {
   return v;
 }
 
-void MotorHatI2c::set_pwm_freq_hz(double freq) {
+void Pca9685::set_pwm_freq_hz(double freq) {
   double prescaleval = 25000000.0 / 4096.0 / freq - 1.0;
   auto prescale = static_cast<uint8_t>(std::floor(prescaleval + 0.5));
   if (prescale < 3) {
@@ -82,7 +82,7 @@ void MotorHatI2c::set_pwm_freq_hz(double freq) {
   write_reg(kPcaMode1, static_cast<uint8_t>(oldmode | 0x80));
 }
 
-void MotorHatI2c::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
+void Pca9685::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, static_cast<uint8_t>(on & 0xFF));
   write_reg(base + 1, static_cast<uint8_t>((on >> 8) & 0xFF));
@@ -90,7 +90,7 @@ void MotorHatI2c::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   write_reg(base + 3, static_cast<uint8_t>((off >> 8) & 0xFF));
 }
 
-void MotorHatI2c::set_channel_full_on(int channel) {
+void Pca9685::set_channel_full_on(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
   write_reg(base + 1, kPcaFullOnHigh);
@@ -98,7 +98,7 @@ void MotorHatI2c::set_channel_full_on(int channel) {
   write_reg(base + 3, 0);
 }
 
-void MotorHatI2c::set_channel_full_off(int channel) {
+void Pca9685::set_channel_full_off(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
   write_reg(base + 1, 0);
@@ -106,7 +106,7 @@ void MotorHatI2c::set_channel_full_off(int channel) {
   write_reg(base + 3, kPcaFullOffHigh);
 }
 
-void MotorHatI2c::set_duty_percent(int channel, int percent) {
+void Pca9685::set_duty_percent(int channel, int percent) {
   percent = std::clamp(percent, 0, 100);
   if (percent <= 0) {
     set_channel_full_off(channel);
@@ -121,7 +121,7 @@ void MotorHatI2c::set_duty_percent(int channel, int percent) {
   set_pwm_channel(channel, 0, off);
 }
 
-void MotorHatI2c::set_level(int channel, bool high) {
+void Pca9685::set_level(int channel, bool high) {
   if (high) {
     set_channel_full_on(channel);
   } else {
@@ -129,13 +129,13 @@ void MotorHatI2c::set_level(int channel, bool high) {
   }
 }
 
-void MotorHatI2c::motor_stop(int motor) {
+void Pca9685::motor_stop(int motor) {
   set_level(motor == 0 ? kAin1 : kBin1, false);
   set_level(motor == 0 ? kAin2 : kBin2, false);
   set_duty_percent(motor == 0 ? kPwma : kPwmb, 0);
 }
 
-void MotorHatI2c::apply_drive(int pct_left, bool fwd_left, int pct_right, bool fwd_right) {
+void Pca9685::apply_drive(int pct_left, bool fwd_left, int pct_right, bool fwd_right) {
   pct_left = std::clamp(pct_left, 0, 100);
   pct_right = std::clamp(pct_right, 0, 100);
 

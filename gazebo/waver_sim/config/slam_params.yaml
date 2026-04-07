@@ -1,9 +1,23 @@
-# SLAM Toolbox – online async mapping for WaveRover
-# Tuned for LD19 LiDAR (0.03-12m, 720 pts, 10 Hz) on a small indoor robot.
+# Parametre pre slam_toolbox v simulacii.
+# Tento profil je nastaveny na:
+# - indoor mapovanie,
+# - lidar s rozsahom cca do 12 m,
+# - rozumny kompromis medzi presnostou a vykonom.
+#
+# Najdolezitejsie sekcie:
+# 1) Frames:
+#    odom_frame/map_frame/base_frame musia sediet s TF stromom robota.
+# 2) Vykon:
+#    map_update_interval, scan_queue_size, throttle_scans ovplyvnuju CPU.
+# 3) Scan matching:
+#    agresivita lokalneho porovnavania skenov.
+# 4) Loop closing:
+#    schopnost opravovat drift po navrate na uz navstivene miesto.
+# 5) Correlation search:
+#    rozmery a rozlisenie priestoru, kde sa hlada najlepsie zarovnanie.
 
 slam_toolbox:
   ros__parameters:
-    # Solver
     solver_plugin: solver_plugins::CeresSolver
     ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
     ceres_preconditioner: SCHUR_JACOBI
@@ -13,18 +27,16 @@ slam_toolbox:
 
     mode: mapping
 
-    # Frames
     odom_frame: odom
     map_frame: map
     base_frame: base_footprint
     scan_topic: /scan
 
-    # Performance
     scan_queue_size: 1
     throttle_scans: 1
-    transform_publish_period: 0.02   # 50 Hz TF
+    transform_publish_period: 0.02
     map_update_interval: 1.0
-    resolution: 0.05                 # 5 cm/cell – better performance
+    resolution: 0.05
     min_laser_range: 0.03
     max_laser_range: 12.0
     minimum_time_interval: 0.1
@@ -32,11 +44,9 @@ slam_toolbox:
     tf_buffer_duration: 30.0
     stack_size_to_use: 80000000
 
-    # Motion thresholds (small robot, low by default)
     minimum_travel_distance: 0.10
     minimum_travel_heading: 0.10
 
-    # Scan matching
     use_scan_matching: true
     use_scan_barycenter: false
     scan_buffer_size: 20
@@ -44,7 +54,6 @@ slam_toolbox:
     link_match_minimum_response_fine: 0.40
     link_scan_maximum_distance: 2.0
 
-    # Loop closure
     do_loop_closing: true
     loop_search_maximum_distance: 5.0
     loop_match_minimum_chain_size: 15
@@ -52,17 +61,14 @@ slam_toolbox:
     loop_match_minimum_response_coarse: 0.50
     loop_match_minimum_response_fine: 0.75
 
-    # Correlation (fine alignment)
     correlation_search_space_dimension: 0.8
     correlation_search_space_resolution: 0.005
     correlation_search_space_smear_deviation: 0.05
 
-    # Correlation (loop closure)
     loop_search_space_dimension: 10.0
     loop_search_space_resolution: 0.025
     loop_search_space_smear_deviation: 0.03
 
-    # Scan matcher penalties
     distance_variance_penalty: 0.3
     angle_variance_penalty: 0.3
     fine_search_angle_offset: 0.00175
@@ -74,7 +80,6 @@ slam_toolbox:
     min_pass_through: 3
     occupancy_threshold: 0.1
 
-    # Misc
     debug_logging: false
     enable_interactive_mode: true
     position_covariance_scale: 1.0
@@ -83,5 +88,4 @@ slam_toolbox:
     restamp_tf: false
     check_min_dist_and_heading_precisely: true
 
-    # Prevent extrapolation errors on startup when odom TF is not yet stable
     use_pose_extrapolator: false

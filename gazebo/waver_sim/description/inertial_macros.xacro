@@ -1,8 +1,14 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
-    <!-- Specify some standard inertial calculations https://en.wikipedia.org/wiki/List_of_moments_of_inertia -->
-    <!-- These make use of xacro's mathematical functionality -->
+    <!--
+      Pomocne makra pre vypocet momentov zotrvacnosti.
+      Vdaka nim nemusime rucne pocitat ixx/iyy/izz pre kazdy tvar.
+      Pouzitie:
+        <xacro:inertial_box .../>
+        <xacro:inertial_cylinder .../>
+        <xacro:inertial_sphere .../>
+    -->
 
     <xacro:macro name="inertial_sphere" params="mass radius *origin">
         <inertial>

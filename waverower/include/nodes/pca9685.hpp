@@ -1,18 +1,18 @@
-#ifndef NODES_MOTOR_HAT_I2C_HPP
-#define NODES_MOTOR_HAT_I2C_HPP
+#ifndef NODES_PCA9685_HPP
+#define NODES_PCA9685_HPP
 
 #include <cstdint>
 
 namespace nodes {
 
 /** PCA9685 + TB6612 na Waveshare Motor Driver HAT (I2C). */
-class MotorHatI2c {
+class Pca9685 {
 public:
-  explicit MotorHatI2c(int i2c_bus, uint8_t addr7);
-  ~MotorHatI2c();
+  explicit Pca9685(int i2c_bus, uint8_t addr7);
+  ~Pca9685();
 
-  MotorHatI2c(const MotorHatI2c&) = delete;
-  MotorHatI2c& operator=(const MotorHatI2c&) = delete;
+  Pca9685(const Pca9685&) = delete;
+  Pca9685& operator=(const Pca9685&) = delete;
 
   void set_pwm_freq_hz(double freq);
   void motor_stop(int motor);

@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- LiDAR link – mounted on top of chassis (matches WaveRover LD19 placement) -->
+  <!--
+    Lidar je fixne prichyteny na base_link.
+    Sensor typ gpu_lidar publikuje topic "scan" na Gazebo strane.
+    Cez ros_gz_bridge sa mapuje na ROS topic /scan.
+  -->
   <link name="lidar_link">
     <inertial>
       <mass value="0.046"/>
@@ -25,7 +29,6 @@
     </collision>
   </link>
 
-  <!-- z = body_h/2 + shell_h + post_height + half_puck = 0.025+0.016+0.036+0.015 = 0.092 -->
   <joint name="lidar_joint" type="fixed">
     <origin xyz="0.04 0 0.092" rpy="0 0 0"/>
     <parent link="base_link"/>
