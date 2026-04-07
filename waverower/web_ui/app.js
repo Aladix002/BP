@@ -10,12 +10,16 @@ const CAMERA_TOPIC   = "/camera/camera_node/image_raw/compressed";
 const CAMERA_TYPE    = "sensor_msgs/msg/CompressedImage";
 const IMU_TOPIC      = "/imu";
 const IMU_TYPE       = "sensor_msgs/msg/Imu";
+const IMU_DBG_TOPIC  = "/motor_hat_node/imu_correction_debug";
+const IMU_DBG_TYPE   = "std_msgs/msg/Float64MultiArray";
 const MOTOR_NODE     = "/motor_hat_node";
+const WANDER_NODE    = "/lidar_wander_node";
 const PUBLISH_HZ     = 20;
 const SLIDER_LIN     = { min: 0.01, max: 0.08, step: 0.01 };
 const TELEOP_MAX_LIN = 0.5;
 const TELEOP_MAX_ANG = 1.0;
 const PWM_BOOST      = 2.35;
+const WANDER_TURN_RATIO = 18.0;
 
 const IMU_DEFAULTS = {
   imu_correction:         false,
@@ -274,6 +278,7 @@ function DrivePanel({ ros, connected }) {
   const pubRef      = useRef(null);
   const cmdRef      = useRef(null);
   const maxLinRef   = useRef(maxLin);
+  const syncRef     = useRef(null);
   maxLinRef.current = maxLin;
 
   useEffect(() => {
@@ -286,6 +291,30 @@ function DrivePanel({ ros, connected }) {
     pubRef.current = setInterval(() => cmdRef.current?.publish(new ROSLIB.Message(twistRef.current)), 1000 / PUBLISH_HZ);
     return () => { if (pubRef.current) { clearInterval(pubRef.current); pubRef.current = null; } cmdRef.current = null; };
   }, [ros, connected]);
+
+  useEffect(() => {
+    if (!ros || !connected) return;
+    if (syncRef.current) clearTimeout(syncRef.current);
+    syncRef.current = setTimeout(async () => {
+      try {
+        const wanderFwd = maxLinRef.current;
+        const wanderTurn = wanderFwd * WANDER_TURN_RATIO;
+        await rosSetParams(ros, WANDER_NODE, [
+          makeParam("forward_speed", wanderFwd),
+          makeParam("turn_speed", wanderTurn),
+        ]);
+      } catch (_) {
+        // best-effort: slider musi fungovat aj ked wander node nebezi
+      }
+      syncRef.current = null;
+    }, 250);
+    return () => {
+      if (syncRef.current) {
+        clearTimeout(syncRef.current);
+        syncRef.current = null;
+      }
+    };
+  }, [maxLin, ros, connected]);
 
   const stop = () => {
     twistRef.current = { linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } };
@@ -359,12 +388,17 @@ function DrivePanel({ ros, connected }) {
 }
 
 // ─── ImuPanel ─────────────────────────────────────────────────────────────────
+// Debug data layout from C++:
+// [0]=active [1]=low_fwd [2]=yaw_rate [3]=error [4]=p [5]=i [6]=d [7]=total [8]=corr_pct [9]=pwm_l [10]=pwm_r
 function ImuPanel({ ros, connected }) {
   const [wz, setWz]       = useState(null);
   const [imuSt, setImuSt] = useState("disconnected");
   const lastMsRef         = useRef(0);
   const subRef            = useRef(null);
   const timerRef          = useRef(null);
+
+  const [dbg, setDbg]     = useState(null);   // raw Float64MultiArray data array
+  const dbgSubRef         = useRef(null);
 
   const [pid, setPid]               = useState({ ...IMU_DEFAULTS });
   const [fetchMsg, setFetchMsg]     = useState("");
@@ -374,11 +408,14 @@ function ImuPanel({ ros, connected }) {
 
   useEffect(() => {
     if (!ros || !connected) {
-      lastMsRef.current = 0; setWz(null); setImuSt("disconnected");
-      if (subRef.current)  { try { subRef.current.unsubscribe();  } catch (_) {} subRef.current  = null; }
+      lastMsRef.current = 0; setWz(null); setImuSt("disconnected"); setDbg(null);
+      if (subRef.current)   { try { subRef.current.unsubscribe();   } catch (_) {} subRef.current   = null; }
+      if (dbgSubRef.current){ try { dbgSubRef.current.unsubscribe();} catch (_) {} dbgSubRef.current = null; }
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       return;
     }
+
+    // /imu subscriber (status indicator)
     const sub = new ROSLIB.Topic({ ros, name: IMU_TOPIC, messageType: IMU_TYPE });
     subRef.current = sub;
     sub.subscribe((msg) => {
@@ -389,14 +426,24 @@ function ImuPanel({ ros, connected }) {
       if (!Number.isFinite(z)) return;
       lastMsRef.current = Date.now(); setWz(z);
     });
+
+    // debug topic – throttle na 10 Hz cez rosbridge
+    const dbgSub = new ROSLIB.Topic({
+      ros, name: IMU_DBG_TOPIC, messageType: IMU_DBG_TYPE, throttle_rate: 100,
+    });
+    dbgSubRef.current = dbgSub;
+    dbgSub.subscribe((msg) => setDbg(msg.data));
+
     timerRef.current = setInterval(() => {
       const age = lastMsRef.current ? Date.now() - lastMsRef.current : 999999;
       if (!lastMsRef.current) setImuSt("waiting");
       else if (age > 1200)    setImuSt("stale");
       else                    setImuSt("ok");
     }, 400);
+
     return () => {
-      try { sub.unsubscribe(); } catch (_) {} subRef.current = null;
+      try { sub.unsubscribe();    } catch (_) {} subRef.current    = null;
+      try { dbgSub.unsubscribe(); } catch (_) {} dbgSubRef.current = null;
       clearInterval(timerRef.current); timerRef.current = null;
     };
   }, [ros, connected]);
@@ -458,7 +505,7 @@ function ImuPanel({ ros, connected }) {
       <SectionLabel>IMU · Regulation</SectionLabel>
 
       {/* Live metrics */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-3">
         {[
           { label: "ωz", sub: "rad/s", val: wz !== null ? wz.toFixed(3) : "—", color: "text-blue-400" },
           { label: "|ω|", val: wz !== null ? Math.abs(wz).toFixed(3) : "—", color: "text-blue-400" },
@@ -472,6 +519,80 @@ function ImuPanel({ ros, connected }) {
           </div>
         ))}
       </div>
+
+      {/* Correction visualizer – reálne dáta z /motor_hat_node/imu_correction_debug */}
+      {(() => {
+        const active   = dbg ? dbg[0] > 0.5 : false;
+        const lowFwd   = dbg ? dbg[1] > 0.5 : false;
+        const yawRate  = dbg ? dbg[2] : (wz ?? 0);
+        const error    = dbg ? dbg[3] : 0;
+        const p        = dbg ? dbg[4] : 0;
+        const i        = dbg ? dbg[5] : 0;
+        const d        = dbg ? dbg[6] : 0;
+        const total    = dbg ? dbg[7] : 0;
+        const corrPct  = dbg ? dbg[8] : 0;
+        const pwmL     = dbg ? dbg[9]  : 0;
+        const pwmR     = dbg ? dbg[10] : 0;
+        // bar: yawRate ±0.5 rad/s → ±50%
+        const barPct  = Math.min(Math.abs(yawRate) / 0.5, 1) * 50;
+        const barLeft = yawRate < 0;
+        // corrPct > 0 → left--, right++
+        const leftDown  = active && corrPct > 0;
+        const rightDown = active && corrPct < 0;
+        const hasDbg    = dbg !== null;
+        return (
+          <div className="bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2.5 mb-3 space-y-2">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <span className="text-[0.57rem] font-bold uppercase tracking-wider text-slate-600">
+                Correction {hasDbg ? "(live)" : "(no debug topic)"}
+              </span>
+              <div className="flex gap-1.5 items-center">
+                {lowFwd && <span className="text-[0.57rem] text-amber-500 font-bold uppercase">Low speed</span>}
+                <span className={`text-[0.6rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
+                  active ? "text-emerald-400 bg-emerald-950/50" : "text-slate-600 bg-slate-800/50"
+                }`}>{active ? "Active" : "Off"}</span>
+              </div>
+            </div>
+
+            {/* yaw_rate bar */}
+            <div className="relative h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div className="absolute top-0 bottom-0 w-px bg-slate-600 left-1/2" />
+              <div className={`absolute top-0 bottom-0 rounded-full transition-all ${active ? "bg-blue-400" : "bg-slate-600"}`}
+                style={{ width: barPct + "%", left: barLeft ? (50 - barPct) + "%" : "50%" }} />
+            </div>
+
+            {/* PID breakdown */}
+            <div className="grid grid-cols-4 gap-1 text-center">
+              {[["P", p], ["I", i], ["D", d], ["Σ", total]].map(([lbl, val]) => (
+                <div key={lbl} className="bg-slate-900 rounded px-1 py-1">
+                  <span className="block text-[0.52rem] font-bold text-slate-600 mb-0.5">{lbl}</span>
+                  <span className={`text-xs font-mono tabular-nums font-semibold ${
+                    Math.abs(val) < 0.001 ? "text-slate-600" : val > 0 ? "text-amber-400" : "text-blue-400"
+                  }`}>{val >= 0 ? "+" : ""}{val.toFixed(3)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Wheel PWM */}
+            <div className="grid grid-cols-3 gap-1 items-center text-center">
+              <div className={`text-xs font-bold rounded py-1 transition-colors ${
+                leftDown  ? "text-amber-400 bg-amber-950/40" : "text-slate-500 bg-slate-800/40"
+              }`}>
+                L {hasDbg ? Math.round(pwmL) + "%" : "—"} {active && corrPct !== 0 ? (leftDown ? "▼" : "▲") : ""}
+              </div>
+              <div className="text-[0.62rem] tabular-nums text-slate-500 font-mono">
+                {corrPct !== 0 ? (corrPct > 0 ? "+" : "") + Math.round(corrPct) + "%" : "±0%"}
+              </div>
+              <div className={`text-xs font-bold rounded py-1 transition-colors ${
+                rightDown ? "text-amber-400 bg-amber-950/40" : "text-slate-500 bg-slate-800/40"
+              }`}>
+                R {hasDbg ? Math.round(pwmR) + "%" : "—"} {active && corrPct !== 0 ? (rightDown ? "▼" : "▲") : ""}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Divider */}
       <div className="border-t border-slate-800 -mx-3 mb-4" />

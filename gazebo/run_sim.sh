@@ -1,15 +1,6 @@
 #!/bin/bash
-# -----------------------------------------------------------------------------
-# Tento skript je "one-click" start simulacie.
-# Co spravi:
-# 1) zastavi stare procesy zo simulacie,
-# 2) pripravi ROS prostredie,
-# 3) otvori teleop v samostatnom terminali,
-# 4) spusti hlavny launch subor waver_sim.
-#
 # Pouzitie:
 #   ./run_sim.sh
-# -----------------------------------------------------------------------------
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

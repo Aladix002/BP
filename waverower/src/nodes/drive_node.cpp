@@ -32,7 +32,8 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("smooth_alpha", 1.0);
   pwm_freq_hz_ = declare_parameter<double>("pwm_freq_hz", 800.0);
   declare_parameter<double>("pwm_boost", 2.35);
-  declare_parameter<double>("snap_threshold", 0.22);
+  // 1.0 = bez "snap to full"; plynulé využitie celej PWM škály.
+  declare_parameter<double>("snap_threshold", 1.0);
   declare_parameter<double>("turn_snap_threshold", 0.0);
   declare_parameter<double>("in_place_turn_pwm_boost", 1.0);
   declare_parameter<double>("smooth_alpha_spin", 1.0);
@@ -85,6 +86,9 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
 
   param_cb_ = add_on_set_parameters_callback(
       std::bind(&DriveNode::on_param_change, this, std::placeholders::_1));
+
+  pub_imu_debug_ = create_publisher<std_msgs::msg::Float64MultiArray>(
+      "imu_correction_debug", rclcpp::QoS(5));
 
   timer_ = create_wall_timer(std::chrono::milliseconds(10), [this] { timer_cb(); });
 
@@ -314,7 +318,7 @@ void DriveNode::timer_cb() {
   using clock = std::chrono::steady_clock;
   const auto now = clock::now();
   const double boost = std::clamp(get_parameter("pwm_boost").as_double(), 1.0, 2.5);
-  const double snap = std::clamp(get_parameter("snap_threshold").as_double(), 0.12, 1.0);
+  const double snap = std::clamp(get_parameter("snap_threshold").as_double(), 0.0, 1.0);
   const double turn_snap_raw = get_parameter("turn_snap_threshold").as_double();
   const double snap_turn = (turn_snap_raw <= 0.0)
                                ? snap
@@ -429,48 +433,55 @@ void DriveNode::apply_tank(double l_cmd, double r_cmd, double base, double boost
                            double snap_fwd, double snap_turn, bool low_forward,
                            double in_place_boost) {
   double corr = 0.0;
-  if (get_parameter("imu_correction").as_bool() && !low_forward) {
+  double dbg_yaw_rate = 0.0, dbg_error = 0.0;
+  double dbg_p = 0.0, dbg_i = 0.0, dbg_d = 0.0;
+  const bool correction_on = get_parameter("imu_correction").as_bool();
+
+  if (correction_on && !low_forward) {
     const double kp           = get_parameter("imu_yaw_kp").as_double();
     const double ki           = get_parameter("imu_yaw_ki").as_double();
     const double kd           = get_parameter("imu_yaw_kd").as_double();
     const double deadband     = get_parameter("imu_yaw_deadband").as_double();
     const double windup_limit = get_parameter("imu_yaw_integral_limit").as_double();
 
-    double yaw_rate = 0.0;
     {
       std::lock_guard<std::mutex> lock(mu_);
-      yaw_rate = imu_yaw_rate_;
+      dbg_yaw_rate = imu_yaw_rate_;
     }
 
     const auto now = std::chrono::steady_clock::now();
     const double dt = std::chrono::duration<double>(now - imu_pid_last_time_).count();
     imu_pid_last_time_ = now;
 
-    double error;
-    if (std::abs(yaw_rate) <= deadband) {
-      error = 0.0;
+    if (std::abs(dbg_yaw_rate) <= deadband) {
+      dbg_error = 0.0;
     } else {
-      error = yaw_rate > 0.0 ? yaw_rate - deadband : yaw_rate + deadband;
+      dbg_error = dbg_yaw_rate > 0.0 ? dbg_yaw_rate - deadband : dbg_yaw_rate + deadband;
     }
 
     if (dt > 0.001 && dt < 0.5) {
-      imu_yaw_integral_ += error * dt;
+      imu_yaw_integral_ += dbg_error * dt;
       imu_yaw_integral_ = std::clamp(imu_yaw_integral_, -windup_limit, windup_limit);
-      const double d_error = (error - imu_yaw_prev_error_) / dt;
-      corr = kp * error + ki * imu_yaw_integral_ + kd * d_error;
+      const double d_error = (dbg_error - imu_yaw_prev_error_) / dt;
+      dbg_p = kp * dbg_error;
+      dbg_i = ki * imu_yaw_integral_;
+      dbg_d = kd * d_error;
+      corr  = dbg_p + dbg_i + dbg_d;
     }
-    imu_yaw_prev_error_ = error;
+    imu_yaw_prev_error_ = dbg_error;
   } else {
     imu_yaw_integral_   = 0.0;
     imu_yaw_prev_error_ = 0.0;
     imu_pid_last_time_  = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(mu_);
+    dbg_yaw_rate = imu_yaw_rate_;
   }
 
   const double snap_eff = low_forward ? snap_turn : snap_fwd;
   const double extra = low_forward ? in_place_boost : 1.0;
   auto to_pct = [&](double cmd) -> int {
     double m = std::abs(cmd);
-    if (m >= snap_eff) {
+    if (snap_eff > 0.0 && m >= snap_eff) {
       m = 1.0;
     }
     const double raw = m * base * 100.0 * boost * extra;
@@ -479,11 +490,30 @@ void DriveNode::apply_tank(double l_cmd, double r_cmd, double base, double boost
 
   int pl = to_pct(l_cmd);
   int pr = to_pct(r_cmd);
+  int corr_pct = 0;
   if (corr != 0.0) {
-    const int corr_pct = static_cast<int>(std::lround(corr * boost * 100.0));
+    corr_pct = static_cast<int>(std::lround(corr * boost * 100.0));
     pl = std::clamp(pl - corr_pct, 0, 100);
     pr = std::clamp(pr + corr_pct, 0, 100);
   }
+
+  // Publish debug info (~100 Hz, rosbridge throttles na strane klienta)
+  // Layout: [active, low_fwd, yaw_rate, error, p, i, d, total, corr_pct, pwm_l, pwm_r]
+  std_msgs::msg::Float64MultiArray dbg_msg;
+  dbg_msg.data = {
+    correction_on && !low_forward ? 1.0 : 0.0,
+    low_forward ? 1.0 : 0.0,
+    dbg_yaw_rate,
+    dbg_error,
+    dbg_p,
+    dbg_i,
+    dbg_d,
+    corr,
+    static_cast<double>(corr_pct),
+    static_cast<double>(pl),
+    static_cast<double>(pr),
+  };
+  pub_imu_debug_->publish(dbg_msg);
 
   if (pl <= 0 && pr <= 0) {
     hat_->motor_stop(0);

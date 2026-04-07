@@ -7,6 +7,7 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <cstdint>
 #include <atomic>
@@ -60,6 +61,7 @@ private:
   double imu_yaw_prev_error_{0.0};
   std::chrono::steady_clock::time_point imu_pid_last_time_{};
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_imu_debug_;
 
   std::unique_ptr<Pca9685> hat_;
   rclcpp::TimerBase::SharedPtr timer_;
