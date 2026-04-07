@@ -99,7 +99,7 @@ def main():
     rclpy.init(args=sys.argv)
     node = Node("ball_follow_bt_runner")
 
-    node.declare_parameter("ball_color",       "white")
+    node.declare_parameter("ball_color",       "orange")
     node.declare_parameter("max_duration_sec", 0.0)
     node.declare_parameter("tick_rate_hz",     10.0)
 

@@ -1,0 +1,32 @@
+/**:
+  ros__parameters:
+    ball_color: orange
+    image_use_best_effort_qos: true
+    auto_switch_image_topic: true
+    no_frame_stop_only: true
+
+    min_radius_px: 10.0
+    max_radius_px: 145.0
+    stop_radius_px: 74.0
+    min_circularity: 0.76
+    max_contour_area_ratio: 0.12
+    max_bbox_aspect_ratio: 1.34
+    min_solidity: 0.84
+    min_fill_ratio: 0.64
+    min_detection_confidence: 0.76
+    forward_confirm_sec: 2.0
+
+    gaussian_blur_ksize: 11
+    mask_erode_iters: 2
+    mask_dilate_iters: 2
+
+    detection_max_center_jump_frac: 0.28
+    jump_reset_lost_sec: 0.45
+    success_hold_ticks: 6
+
+    forward_speed: 0.13
+    forward_speed_scale_after_detect: 0.75
+    angular_speed: 0.65
+    search_burst_speed: 1.00
+    burst_on_sec: 0.10
+    burst_off_sec: 0.90

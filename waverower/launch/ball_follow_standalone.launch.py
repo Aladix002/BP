@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Kamera + motor + FollowBall ActionServer (bez BT runnera)."""
+"""Minimalny standalone ball-follow stack: motor + kamera + action + (volitelne) BT."""
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -14,6 +15,8 @@ def _setup(context, *args, **kwargs):
     pkg = get_package_share_directory("waverower")
     profile = LaunchConfiguration("profile").perform(context).strip().lower()
     image_topic = LaunchConfiguration("image_topic").perform(context)
+    cmd_topic = LaunchConfiguration("cmd_topic").perform(context)
+    color = LaunchConfiguration("ball_color").perform(context)
 
     if profile == "daylight":
         profile_file = os.path.join(pkg, "config", "ball_follow_white_daylight.yaml")
@@ -26,15 +29,26 @@ def _setup(context, *args, **kwargs):
             executable="waverower_motor",
             name="motor_hat_node",
             output="screen",
-            parameters=[{"mode": "manual"}],
+            parameters=[{
+                "mode": "manual",
+                "manual_twist_topic": cmd_topic,
+            }],
         ),
         Node(
             package="camera_ros",
             executable="camera_node",
-            name="camera_node",
             namespace="camera",
+            name="camera_node",
             output="screen",
-            parameters=[{"width": 800, "height": 600, "format": "XRGB8888"}],
+            remappings=[
+                ("image_raw", "/camera/image_raw"),
+                ("camera_info", "/camera/camera_info"),
+            ],
+            parameters=[{
+                "width": 800,
+                "height": 600,
+                "format": "XRGB8888",
+            }],
         ),
         Node(
             package="waverower",
@@ -45,10 +59,20 @@ def _setup(context, *args, **kwargs):
                 profile_file,
                 {
                     "image_topic": image_topic,
-                    "cmd_topic": "/cmd_vel",
-                    "ball_color": "orange",
+                    "cmd_topic": cmd_topic,
+                    "ball_color": color,
                 },
             ],
+        ),
+        Node(
+            package="waverower",
+            executable="ball_follow_bt_runner.py",
+            name="ball_follow_bt_runner",
+            output="screen",
+            condition=IfCondition(LaunchConfiguration("run_bt")),
+            parameters=[{
+                "ball_color": color,
+            }],
         ),
     ]
 
@@ -57,5 +81,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("profile", default_value="indoor"),  # indoor|daylight
         DeclareLaunchArgument("image_topic", default_value="/camera/camera_node/image_raw"),
+        DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
+        DeclareLaunchArgument("ball_color", default_value="orange"),
+        DeclareLaunchArgument("run_bt", default_value="true"),
         OpaqueFunction(function=_setup),
     ])

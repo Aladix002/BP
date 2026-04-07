@@ -52,6 +52,7 @@ install(TARGETS waverower_motor optical_flow
 )
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY params DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY web_ui DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/imu_serial_fusion_bridge.py DESTINATION lib/${PROJECT_NAME})

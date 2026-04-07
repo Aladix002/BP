@@ -46,7 +46,6 @@ def _opaque(context, *args, **kwargs):
     use_camera = LaunchConfiguration("use_camera").perform(context) == "true"
     use_web = LaunchConfiguration("use_web").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
-    use_ball = LaunchConfiguration("use_ball_follow").perform(context) == "true"
 
     try:
         get_package_share_directory("camera_ros")
@@ -212,20 +211,6 @@ def _opaque(context, *args, **kwargs):
                 remappings=[("cmd_vel", "/teleop_cmd_vel")],
             )
         )
-    if use_ball and use_camera and have_cam and mode == "manual":
-        actions.append(
-            Node(
-                package="waverower",
-                executable="ball_follower_action.py",
-                name="ball_follower",
-                output="screen",
-                parameters=[{
-                    "image_topic": "/camera/image_raw",
-                    "cmd_topic": "/cmd_vel",
-                    "invert_angular": False,
-                }],
-            )
-        )
 
     if use_web:
         pkg = get_package_share_directory("waverower")
@@ -256,7 +241,6 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("flow_algo", default_value="lk"),
         DeclareLaunchArgument("use_teleop", default_value="false"),
-        DeclareLaunchArgument("use_ball_follow", default_value="false"),
         DeclareLaunchArgument("i2c_bus", default_value="1"),
         DeclareLaunchArgument("i2c_address", default_value="64"),
         DeclareLaunchArgument(
