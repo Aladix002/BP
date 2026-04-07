@@ -41,7 +41,7 @@ def _setup(context, *args, **kwargs):
             name="camera_node",
             namespace="camera",
             output="screen",
-            parameters=[{"width": 800, "height": 600, "format": "XRGB8888"}],
+            parameters=[{"width": 320, "height": 240, "format": "XRGB8888"}],
         ),
         Node(
             package="waverower",

@@ -26,6 +26,11 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
+# camera_ros: jednotné rozlíšenie vo všetkých bringupoch (manual / runtime / ball follow)
+CAMERA_WIDTH = 320
+CAMERA_HEIGHT = 240
+CAMERA_FORMAT = "XRGB8888"
+
 
 def _slam_stack(context, *args, **kwargs):
     use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
@@ -154,7 +159,12 @@ def generate_launch_description():
                 namespace="camera",
                 output="screen",
                 condition=IfCondition(use_camera),
-                parameters=[{"camera": camera_id}],
+                parameters=[{
+                    "camera": camera_id,
+                    "width": CAMERA_WIDTH,
+                    "height": CAMERA_HEIGHT,
+                    "format": CAMERA_FORMAT,
+                }],
                 remappings=[
                     ("image_raw", "/camera/image_raw"),
                     ("camera_info", "/camera/camera_info"),

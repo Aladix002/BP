@@ -22,6 +22,11 @@ from launch_ros.actions import Node
 # Musi sediet s waverower/web_ui/app.js (WANDER_TURN_RATIO)
 WANDER_TURN_RATIO = 18.0
 
+# camera_ros: rovnaké rozlíšenie ako manual_bringup / ball follow
+CAMERA_WIDTH = 320
+CAMERA_HEIGHT = 240
+CAMERA_FORMAT = "XRGB8888"
+
 
 def _opaque(context, *args, **kwargs):
     mode = LaunchConfiguration("stack_mode").perform(context)
@@ -176,7 +181,12 @@ def _opaque(context, *args, **kwargs):
                 name="camera_node",
                 namespace="camera",
                 output="screen",
-                parameters=[{"camera": cam_param}],
+                parameters=[{
+                    "camera": cam_param,
+                    "width": CAMERA_WIDTH,
+                    "height": CAMERA_HEIGHT,
+                    "format": CAMERA_FORMAT,
+                }],
                 remappings=[
                     ("image_raw", "/camera/image_raw"),
                     ("camera_info", "/camera/camera_info"),

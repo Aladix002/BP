@@ -45,8 +45,8 @@ def _setup(context, *args, **kwargs):
                 ("camera_info", "/camera/camera_info"),
             ],
             parameters=[{
-                "width": 800,
-                "height": 600,
+                "width": 320,
+                "height": 240,
                 "format": "XRGB8888",
             }],
         ),

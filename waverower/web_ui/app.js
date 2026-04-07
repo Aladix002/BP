@@ -14,7 +14,8 @@ const IMU_DBG_TOPIC  = "/motor_hat_node/drive_debug";
 const IMU_DBG_TYPE   = "std_msgs/msg/Float64MultiArray";
 const MOTOR_NODE     = "/motor_hat_node";
 const WANDER_NODE    = "/lidar_wander_node";
-const PUBLISH_HZ     = 20;
+// Teleop publish rate (vyššie = hladšie ovládanie; zvyšuje traffic cez rosbridge)
+const PUBLISH_HZ     = 30;
 // Plna skala: 0..100% z toho, co ma motor_hat_node ako teleop_max_* (fetch pri connect).
 const SLIDER_SCALE   = { min: 0.0, max: 1.0, step: 0.01 };
 const TURN_LIN_RATIO = 2.0;
@@ -224,7 +225,8 @@ function CameraPanel({ ros, connected }) {
     }
     const gen = ++genRef.current;
     let primed = false, frameSeq = 0;
-    const sub = new ROSLIB.Topic({ ros, name: CAMERA_TOPIC, messageType: CAMERA_TYPE, throttle_rate: 66 });
+    // throttle_rate = min. interval medzi správami v ms (rosbridge); ~33 ms ≈ 30 Hz
+    const sub = new ROSLIB.Topic({ ros, name: CAMERA_TOPIC, messageType: CAMERA_TYPE, throttle_rate: 33 });
     subRef.current = sub;
 
     sub.subscribe((m) => {
@@ -483,9 +485,9 @@ function ImuPanel({ ros, connected }) {
       lastMsRef.current = Date.now(); setWz(z);
     });
 
-    // debug topic – throttle na 10 Hz cez rosbridge
+    // debug topic – rosbridge throttle (ms); 50 → ~20 Hz (predtým 100 = 10 Hz)
     const dbgSub = new ROSLIB.Topic({
-      ros, name: IMU_DBG_TOPIC, messageType: IMU_DBG_TYPE, throttle_rate: 100,
+      ros, name: IMU_DBG_TOPIC, messageType: IMU_DBG_TYPE, throttle_rate: 50,
     });
     dbgSubRef.current = dbgSub;
     dbgSub.subscribe((msg) => setDbg(msg.data));
@@ -495,7 +497,7 @@ function ImuPanel({ ros, connected }) {
       if (!lastMsRef.current) setImuSt("waiting");
       else if (age > 1200)    setImuSt("stale");
       else                    setImuSt("ok");
-    }, 400);
+    }, 150);
 
     return () => {
       try { sub.unsubscribe();    } catch (_) {} subRef.current    = null;
