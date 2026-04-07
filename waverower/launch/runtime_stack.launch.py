@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Motor + LiDAR wander + IMU + volitelne kamera; manual (web/teleop) alebo wander.
 
-correction_mode: imu | optical_flow | none (optical flow: use_camera:=true)
+correction_mode: imu | optical_flow | none
 
 Sluzby:
   ros2 service call /waverower/switch_to_wander std_srvs/srv/Trigger
@@ -34,6 +34,9 @@ def _opaque(context, *args, **kwargs):
 
     use_imu_corr = correction_mode == "imu"
     use_flow = correction_mode == "optical_flow"
+    flow_algo = LaunchConfiguration("flow_algo").perform(context)
+    if flow_algo not in ("lk", "farneback"):
+        raise RuntimeError("flow_algo musi byt lk alebo farneback")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -51,11 +54,9 @@ def _opaque(context, *args, **kwargs):
     except PackageNotFoundError:
         have_cam = False
 
-    motor_twist_topic = (
-        "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
-    )
+    motor_twist_topic = "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
 
-    wander_cmd_topic = "/cmd_vel_raw" if (wand_en and use_flow) else "/cmd_vel"
+    wander_cmd_topic = "/cmd_vel"
 
     invert_ang = mode == "manual"
 
@@ -160,26 +161,46 @@ def _opaque(context, *args, **kwargs):
         actions.append(LogInfo(msg="use_camera:=true vyzaduje balik camera_ros."))
 
     if use_flow:
-        flow_params = {
-            "image_topic": "/camera/image_raw/compressed",
-            "correction_gain": 1.5,
-            "max_correction": 0.3,
-            "forward_threshold": 0.05,
-            "steer_deadzone": 0.12,
-            "min_features": 15,
-        }
-        if wand_en:
-            flow_params["teleop_topic"] = "/cmd_vel_raw"
-            flow_params["output_topic"] = "/cmd_vel"
-        actions.append(
-            Node(
-                package="waverower",
-                executable="optical_flow",
-                name="optical_flow_node",
-                output="screen",
-                parameters=[flow_params],
+        if not (have_cam and use_camera):
+            actions.append(LogInfo(msg="correction_mode:=optical_flow vyzaduje use_camera:=true a camera_ros."))
+        elif flow_algo == "lk":
+            actions.append(
+                Node(
+                    package="waverower",
+                    executable="optical_flow",
+                    name="optical_flow_node",
+                    output="screen",
+                    parameters=[{
+                        "correction_gain": 1.5,
+                        "max_correction": 0.3,
+                        "forward_threshold": 0.05,
+                        "steer_deadzone": 0.12,
+                        "min_features": 15,
+                        "image_topic": "/camera/camera_node/image_raw/compressed",
+                        "teleop_topic": "/teleop_cmd_vel",
+                        "output_topic": "/teleop_cmd_vel_corrected",
+                    }],
+                )
             )
-        )
+        else:
+            actions.append(
+                Node(
+                    package="waverower",
+                    executable="optical_flow_dense",
+                    name="optical_flow_node",
+                    output="screen",
+                    parameters=[{
+                        "correction_gain": 1.5,
+                        "max_correction": 0.3,
+                        "forward_threshold": 0.05,
+                        "steer_deadzone": 0.12,
+                        "image_topic": "/camera/camera_node/image_raw/compressed",
+                        "teleop_topic": "/teleop_cmd_vel",
+                        "output_topic": "/teleop_cmd_vel_corrected",
+                    }],
+                )
+            )
+
     if use_teleop:
         actions.append(
             Node(
@@ -233,6 +254,7 @@ def generate_launch_description():
             default_value="imu",
             description="zarovnanie: imu | optical_flow | none",
         ),
+        DeclareLaunchArgument("flow_algo", default_value="lk"),
         DeclareLaunchArgument("use_teleop", default_value="false"),
         DeclareLaunchArgument("use_ball_follow", default_value="false"),
         DeclareLaunchArgument("i2c_bus", default_value="1"),

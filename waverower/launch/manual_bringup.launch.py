@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Manualna jazda + kamera + volitelne IMU, LD19, teleop; predvolene SLAM (slam_toolbox).
 
-correction_mode: imu | optical_flow | none
+correction_mode: imu | none
 SLAM: use_slam:=true a use_lidar:=true -> /map. Vypnut: use_slam:=false.
 
 Ulozenie mapy: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/cesta/mapa'}}"
 
-Optical flow: use_camera:=true.
 """
 
 import os
@@ -173,10 +172,7 @@ def generate_launch_description():
 
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
 
-    motor_twist_topic = PythonExpression([
-        '"/teleop_cmd_vel_corrected" if "', correction_mode, '" == "optical_flow"',
-        ' else "/teleop_cmd_vel"',
-    ])
+    motor_twist_topic = "/teleop_cmd_vel"
 
     return LaunchDescription(
         [
@@ -241,7 +237,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "correction_mode",
                 default_value="imu",
-                description="zarovnanie rovno: imu | optical_flow | none",
+                description="zarovnanie rovno: imu | none",
             ),
             DeclareLaunchArgument("i2c_bus", default_value="1"),
             DeclareLaunchArgument("i2c_address", default_value="64"),
@@ -283,23 +279,6 @@ def generate_launch_description():
                     "image_topic":    "/camera/image_raw",
                     "cmd_topic":      "/cmd_vel",
                     "invert_angular": True,
-                }],
-            ),
-            Node(
-                package="waverower",
-                executable="optical_flow",
-                name="optical_flow_node",
-                output="screen",
-                condition=IfCondition(
-                    PythonExpression(['"', correction_mode, '" == "optical_flow"'])
-                ),
-                parameters=[{
-                    "image_topic":       "/camera/image_raw/compressed",
-                    "correction_gain":   1.5,
-                    "max_correction":    0.3,
-                    "forward_threshold": 0.05,
-                    "steer_deadzone":    0.12,
-                    "min_features":      15,
                 }],
             ),
             Node(

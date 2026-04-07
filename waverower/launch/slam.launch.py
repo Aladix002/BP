@@ -29,7 +29,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "correction_mode",
                 default_value="imu",
-                description="imu | optical_flow | none",
+                description="imu | none",
             ),
             DeclareLaunchArgument("use_rviz", default_value="false"),
             DeclareLaunchArgument(

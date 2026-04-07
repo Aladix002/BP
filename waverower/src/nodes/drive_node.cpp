@@ -57,6 +57,7 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<double>("imu_yaw_kd", 0.01);
   declare_parameter<double>("imu_yaw_deadband", 0.02);
   declare_parameter<double>("imu_yaw_integral_limit", 0.3);
+  declare_parameter<double>("imu_correction_sign", -1.0);
   imu_pid_last_time_ = std::chrono::steady_clock::now();
 
   base_speed_ = std::clamp(base_speed_, 0.2, 1.0);
@@ -477,24 +478,30 @@ void DriveNode::apply_tank(double l_cmd, double r_cmd, double base, double boost
     dbg_yaw_rate = imu_yaw_rate_;
   }
 
+  const double corr_sign = std::clamp(get_parameter("imu_correction_sign").as_double(), -1.0, 1.0);
+  corr *= corr_sign;
+
   const double snap_eff = low_forward ? snap_turn : snap_fwd;
   const double extra = low_forward ? in_place_boost : 1.0;
-  auto to_pct = [&](double cmd) -> int {
+  auto to_duty = [&](double cmd) -> uint16_t {
     double m = std::abs(cmd);
     if (snap_eff > 0.0 && m >= snap_eff) {
       m = 1.0;
     }
-    const double raw = m * base * 100.0 * boost * extra;
-    return std::min(100, static_cast<int>(std::lround(raw)));
+    const double raw = m * base * boost * extra * 4095.0;
+    const auto duty = static_cast<int>(std::lround(raw));
+    return static_cast<uint16_t>(std::clamp(duty, 0, 4095));
   };
 
-  int pl = to_pct(l_cmd);
-  int pr = to_pct(r_cmd);
-  int corr_pct = 0;
+  uint16_t dl = to_duty(l_cmd);
+  uint16_t dr = to_duty(r_cmd);
+  int corr_duty = 0;
   if (corr != 0.0) {
-    corr_pct = static_cast<int>(std::lround(corr * boost * 100.0));
-    pl = std::clamp(pl - corr_pct, 0, 100);
-    pr = std::clamp(pr + corr_pct, 0, 100);
+    corr_duty = static_cast<int>(std::lround(corr * boost * 4095.0));
+    const int l = std::clamp(static_cast<int>(dl) - corr_duty, 0, 4095);
+    const int r = std::clamp(static_cast<int>(dr) + corr_duty, 0, 4095);
+    dl = static_cast<uint16_t>(l);
+    dr = static_cast<uint16_t>(r);
   }
 
   // Publish debug info (~100 Hz, rosbridge throttles na strane klienta)
@@ -509,18 +516,18 @@ void DriveNode::apply_tank(double l_cmd, double r_cmd, double base, double boost
     dbg_i,
     dbg_d,
     corr,
-    static_cast<double>(corr_pct),
-    static_cast<double>(pl),
-    static_cast<double>(pr),
+    static_cast<double>(corr_duty),
+    static_cast<double>(dl) * 100.0 / 4095.0,
+    static_cast<double>(dr) * 100.0 / 4095.0,
   };
   pub_imu_debug_->publish(dbg_msg);
 
-  if (pl <= 0 && pr <= 0) {
+  if (dl == 0 && dr == 0) {
     hat_->motor_stop(0);
     hat_->motor_stop(1);
     return;
   }
-  hat_->apply_drive(pl, l_cmd > 0.0, pr, r_cmd > 0.0);
+  hat_->apply_drive(dl, l_cmd > 0.0, dr, r_cmd > 0.0);
 }
 
 }  // namespace nodes

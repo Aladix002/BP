@@ -121,6 +121,19 @@ void Pca9685::set_duty_percent(int channel, int percent) {
   set_pwm_channel(channel, 0, off);
 }
 
+void Pca9685::set_duty_12bit(int channel, uint16_t duty) {
+  duty = std::min<uint16_t>(duty, 4095);
+  if (duty == 0) {
+    set_channel_full_off(channel);
+    return;
+  }
+  if (duty >= 4095) {
+    set_channel_full_on(channel);
+    return;
+  }
+  set_pwm_channel(channel, 0, duty);
+}
+
 void Pca9685::set_level(int channel, bool high) {
   if (high) {
     set_channel_full_on(channel);
@@ -135,26 +148,26 @@ void Pca9685::motor_stop(int motor) {
   set_duty_percent(motor == 0 ? kPwma : kPwmb, 0);
 }
 
-void Pca9685::apply_drive(int pct_left, bool fwd_left, int pct_right, bool fwd_right) {
-  pct_left = std::clamp(pct_left, 0, 100);
-  pct_right = std::clamp(pct_right, 0, 100);
+void Pca9685::apply_drive(uint16_t duty_left, bool fwd_left, uint16_t duty_right, bool fwd_right) {
+  duty_left = std::min<uint16_t>(duty_left, 4095);
+  duty_right = std::min<uint16_t>(duty_right, 4095);
 
-  if (pct_left <= 0) {
+  if (duty_left == 0) {
     set_level(kAin1, false);
     set_level(kAin2, false);
   } else {
     set_level(kAin1, !fwd_left);
     set_level(kAin2, fwd_left);
   }
-  if (pct_right <= 0) {
+  if (duty_right == 0) {
     set_level(kBin1, false);
     set_level(kBin2, false);
   } else {
     set_level(kBin1, !fwd_right);
     set_level(kBin2, fwd_right);
   }
-  set_duty_percent(kPwma, pct_left);
-  set_duty_percent(kPwmb, pct_right);
+  set_duty_12bit(kPwma, duty_left);
+  set_duty_12bit(kPwmb, duty_right);
 }
 
 }  // namespace nodes

@@ -15,10 +15,12 @@ const IMU_DBG_TYPE   = "std_msgs/msg/Float64MultiArray";
 const MOTOR_NODE     = "/motor_hat_node";
 const WANDER_NODE    = "/lidar_wander_node";
 const PUBLISH_HZ     = 20;
-const SLIDER_LIN     = { min: 0.01, max: 0.08, step: 0.01 };
+// Jemnejsia a sirsia skala: predtym bolo len 8 krokov (0.01..0.08 po 0.01).
+const SLIDER_LIN     = { min: 0.01, max: 0.22, step: 0.005 };
 const TELEOP_MAX_LIN = 0.5;
 const TELEOP_MAX_ANG = 1.0;
 const PWM_BOOST      = 2.35;
+const TURN_LIN_RATIO = 2.0;
 const WANDER_TURN_RATIO = 18.0;
 
 const IMU_DEFAULTS = {
@@ -272,7 +274,7 @@ function CameraPanel({ ros, connected }) {
 function DrivePanel({ ros, connected }) {
   const [maxLin, setMaxLin] = useState(() => {
     const v = parseFloat(localStorage.getItem("waverower_web_max_lin"));
-    return Number.isFinite(v) ? snap(clamp(v, SLIDER_LIN.min, SLIDER_LIN.max), SLIDER_LIN.step) : 0.04;
+    return Number.isFinite(v) ? snap(clamp(v, SLIDER_LIN.min, SLIDER_LIN.max), SLIDER_LIN.step) : 0.10;
   });
   const twistRef    = useRef({ linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } });
   const pubRef      = useRef(null);
@@ -322,10 +324,11 @@ function DrivePanel({ ros, connected }) {
   };
 
   const drive = (lx, az) => {
-    const t = maxLinRef.current / SLIDER_LIN.max, g = 1.0 / PWM_BOOST;
+    const lin = maxLinRef.current;
+    const ang = maxLinRef.current * TURN_LIN_RATIO;
     twistRef.current = {
-      linear:  { x: lx * t * TELEOP_MAX_LIN * g, y: 0, z: 0 },
-      angular: { x: 0, y: 0, z: az * t * TELEOP_MAX_ANG * g },
+      linear:  { x: lx * lin, y: 0, z: 0 },
+      angular: { x: 0, y: 0, z: az * ang },
     };
   };
 
@@ -349,7 +352,7 @@ function DrivePanel({ ros, connected }) {
     localStorage.setItem("waverower_web_max_lin", String(v));
   };
 
-  const maxAng = (maxLin / SLIDER_LIN.max) * (TELEOP_MAX_ANG / PWM_BOOST);
+  const maxAng = maxLin * TURN_LIN_RATIO;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-lg shadow-black/40 flex flex-col">

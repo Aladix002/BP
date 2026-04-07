@@ -16,7 +16,7 @@ public:
 
   void set_pwm_freq_hz(double freq);
   void motor_stop(int motor);
-  void apply_drive(int pct_left, bool fwd_left, int pct_right, bool fwd_right);
+  void apply_drive(uint16_t duty_left, bool fwd_left, uint16_t duty_right, bool fwd_right);
 
 private:
   void write_reg(uint8_t reg, uint8_t val);
@@ -24,6 +24,7 @@ private:
   void set_pwm_channel(int channel, uint16_t on, uint16_t off);
   void set_channel_full_on(int channel);
   void set_channel_full_off(int channel);
+  void set_duty_12bit(int channel, uint16_t duty);
   void set_duty_percent(int channel, int percent);
   void set_level(int channel, bool high);
 

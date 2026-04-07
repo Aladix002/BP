@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Autonomne bludenie: LiDAR + IMU + korekcia priamky. Bez mapy, bez Nav2.
 
-correction_mode: imu | optical_flow (use_camera:=true) | none
+correction_mode: imu | none
 
 Dynamicka rekonf.:
   ros2 param set /lidar_wander_node enabled false
@@ -16,13 +16,11 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    pkg = get_package_share_directory("waverower")
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
@@ -55,12 +53,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "correction_mode",
             default_value="imu",
-            description="imu | optical_flow | none",
-        ),
-        DeclareLaunchArgument(
-            "use_camera",
-            default_value="false",
-            description="camera_ros pre optical_flow",
+            description="imu | none",
         ),
         Node(
             package="waverower",
@@ -104,38 +97,6 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(ld19_launch),
         ),
 
-        Node(
-            package="waverower",
-            executable="optical_flow",
-            name="optical_flow_node",
-            output="screen",
-            condition=IfCondition(
-                PythonExpression(['"', correction_mode, '" == "optical_flow"'])
-            ),
-            parameters=[{
-                "image_topic": "/camera/camera_node/image_raw/compressed",
-                "correction_gain": 1.5,
-                "max_correction": 0.3,
-                "forward_threshold": 0.05,
-                "steer_deadzone": 0.12,
-                "min_features": 15,
-                "teleop_topic": "/cmd_vel_raw",
-                "output_topic": "/cmd_vel",
-            }],
-        ),
-        Node(
-            package="camera_ros",
-            executable="camera_node",
-            name="camera_node",
-            namespace="camera",
-            output="screen",
-            condition=IfCondition(LaunchConfiguration("use_camera")),
-            parameters=[{"camera": "0"}],
-            remappings=[
-                ("image_raw", "/camera/image_raw"),
-                ("camera_info", "/camera/camera_info"),
-            ],
-        ),
 
         Node(
             package="waverower",
@@ -148,9 +109,7 @@ def generate_launch_description():
                 "forward_speed": LaunchConfiguration("forward_speed"),
                 "turn_speed": LaunchConfiguration("turn_speed"),
                 "lidar_rotation_deg": LaunchConfiguration("lidar_rotation_deg"),
-                "cmd_topic": PythonExpression([
-                    '"/cmd_vel_raw" if "', correction_mode, '" == "optical_flow" else "/cmd_vel"',
-                ]),
+                "cmd_topic": "/cmd_vel",
             }],
         ),
     ])
