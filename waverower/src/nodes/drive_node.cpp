@@ -135,9 +135,10 @@ void DriveNode::teleop_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   const double fb = std::clamp(lx / max_lin, -1.0, 1.0);
   const double tr = std::clamp(az / max_ang, -1.0, 1.0);
 
+  // Tank mix pre tento podvozok: oproti štandardnému (L=fb−tr, R=fb+tr) sú oba smery prehodené.
   std::lock_guard<std::mutex> lk(mu_);
-  target_l_  = std::clamp(fb - tr, -1.0, 1.0);
-  target_r_  = std::clamp(fb + tr, -1.0, 1.0);
+  target_l_  = std::clamp(-fb + tr, -1.0, 1.0);
+  target_r_  = std::clamp(-fb - tr, -1.0, 1.0);
   last_cmd_  = std::chrono::steady_clock::now();
   have_cmd_  = true;
 }
