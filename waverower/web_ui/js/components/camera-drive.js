@@ -199,6 +199,8 @@ function DrivePanel({ ros, connected }) {
       linear: { x: lx * lin, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: az * ang },
     };
+    // Publish immediately on press to avoid startup hiccup
+    cmdRef.current?.publish(new ROSLIB.Message(twistRef.current));
   };
 
   const dBtnClass = "aspect-square w-full rounded-xl font-bold text-slate-200 border border-white/5 " +

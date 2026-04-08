@@ -1,8 +1,12 @@
-# Sledovanie lopty — goal/result/feedback pre ActionServer + BT (Nav2 BtActionNode)
+# Sledovanie lopty — goal/result/feedback pre ActionServer + BT
 # ball_color: "" = parameter uzla follow_ball_action
 # max_duration_sec: 0 = bez casoveho limitu
+# stop_when_found: True = SUCCESS hned ako je lopta deteknovana (pre FindBall fazu)
+# fail_on_lost_sec: >0 = FAILURE ked lopta stratena pocas sledovania tuto dobu [s]
 string ball_color
 float64 max_duration_sec
+bool stop_when_found
+float64 fail_on_lost_sec
 ---
 bool success
 uint8 reason_code

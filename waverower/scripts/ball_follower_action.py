@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """FollowBall ActionServer - logika ako ball_follower, len pocas goal (cancel = stop).
 
-success_hold_ticks: kolko po sebe iducich kontrol (~0.08 s) musi byt r >= stop_radius a cerstva detekcia,
-  aby goal uspel (jednoduchy debounce bez YOLO).
+Podporuje dva rezimy cez goal polia:
+  stop_when_found=True  → SUCCESS hned ako je lopta deteknovana (FindBall faza BT)
+  fail_on_lost_sec>0    → FAILURE ked lopta stratena pocas sledovania (FollowBall faza BT)
 """
 
+import collections
 import time
 
 import rclpy
@@ -18,14 +20,14 @@ from waverower.action import FollowBall
 
 
 class BallFollowerActionNode(BallFollowerBase):
-    RC_OK, RC_CANCEL, RC_TIMEOUT, RC_ABORT = 0, 1, 2, 3
+    RC_OK, RC_CANCEL, RC_TIMEOUT, RC_ABORT, RC_LOST = 0, 1, 2, 3, 4
 
     def __init__(self) -> None:
         super().__init__()
-        # Koľkokrát po sebe (sleep v slučke ~0.08 s) musí platiť „dosť blízko“ pred success — proti náhodnej ruke
         self.declare_parameter("success_hold_ticks", 8)
         self._following_active = False
         self._goal_in_progress = False
+        self._active_goal_handle = None
         self._cbg = ReentrantCallbackGroup()
         self._server = ActionServer(
             self,
@@ -36,12 +38,17 @@ class BallFollowerActionNode(BallFollowerBase):
             cancel_callback=self._cancel_cb,
             callback_group=self._cbg,
         )
-        self.get_logger().info("FollowBall action server /follow_ball (py_trees BT, ball_follow_bt_runner, ...)")
+        self.get_logger().info("FollowBall action server /follow_ball ready")
 
     def _goal_cb(self, goal_request):
         if self._goal_in_progress:
-            self.get_logger().warn("Novy goal odmietnuty - uz bezi iny.")
-            return GoalResponse.REJECT
+            # Ak predosly goal handle uz nie je aktivny, resetujeme flag
+            if self._active_goal_handle is not None and not self._active_goal_handle.is_active:
+                self.get_logger().warn("Reset staleho _goal_in_progress flagu.")
+                self._goal_in_progress = False
+            else:
+                self.get_logger().warn("Novy goal odmietnuty - uz bezi iny.")
+                return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
     def _cancel_cb(self, cancel_request):
@@ -50,15 +57,26 @@ class BallFollowerActionNode(BallFollowerBase):
     def _execute_cb(self, goal_handle):
         req = goal_handle.request
         self._goal_in_progress = True
-        stop_r_override = float(req.stop_radius_px) if hasattr(req, "stop_radius_px") and req.stop_radius_px > 0 else None
-
+        self._active_goal_handle = goal_handle
         self._following_active = True
+
+        stop_r_override = float(req.stop_radius_px) if hasattr(req, "stop_radius_px") and req.stop_radius_px > 0 else None
+        stop_when_found = bool(req.stop_when_found)
+        fail_on_lost    = float(req.fail_on_lost_sec)
+
         deadline = None
         if float(req.max_duration_sec) > 0.0:
             deadline = time.monotonic() + float(req.max_duration_sec)
 
-        hold_need = max(1, int(self.get_parameter("success_hold_ticks").get_parameter_value().integer_value))
-        close_ticks = 0
+        # success: aspon success_count_per_sec detekci v okne success_window_sec
+        success_count  = max(1, int(self.get_parameter("success_hold_ticks").get_parameter_value().integer_value))
+        success_window = 1.0   # [s] okno
+        close_times: collections.deque = collections.deque()
+
+        # stav pre fail_on_lost
+        entered_track    = False
+        track_lost_start = None
+
         try:
             while rclpy.ok():
                 if goal_handle.is_cancel_requested:
@@ -73,22 +91,50 @@ class BallFollowerActionNode(BallFollowerBase):
                     goal_handle.abort(FollowBall.Result(success=False, reason_code=self.RC_TIMEOUT, message="timeout"))
                     return FollowBall.Result(success=False, reason_code=self.RC_TIMEOUT, message="timeout")
 
-                stop_r = stop_r_override or self.get_parameter("stop_radius_px").get_parameter_value().double_value
-                fresh_close = (
-                    self._ever_seen
-                    and self._last_radius >= stop_r
-                    and (time.monotonic() - self._last_det_time < 0.3)
+                lost_timeout = self.get_parameter("detection_lost_sec").get_parameter_value().double_value
+                is_fresh = (
+                    self._last_det_time > 0.0
+                    and (time.monotonic() - self._last_det_time) < lost_timeout
                 )
-                if fresh_close:
-                    close_ticks += 1
-                    if close_ticks >= hold_need:
+
+                # --- FindBall rezim: SUCCESS hned ako lopta videna ---
+                if stop_when_found and is_fresh:
+                    self._following_active = False
+                    self._pub.publish(Twist())
+                    res = FollowBall.Result(success=True, reason_code=self.RC_OK, message="ball_found")
+                    goal_handle.succeed(res)
+                    return res
+
+                # --- FollowBall rezim: FAILURE ked lopta stratena pocas sledovania ---
+                if fail_on_lost > 0.0:
+                    if is_fresh:
+                        entered_track    = True
+                        track_lost_start = None
+                    elif entered_track:
+                        if track_lost_start is None:
+                            track_lost_start = time.monotonic()
+                        elif time.monotonic() - track_lost_start > fail_on_lost:
+                            self._following_active = False
+                            self._pub.publish(Twist())
+                            res = FollowBall.Result(success=False, reason_code=self.RC_LOST, message="ball_lost")
+                            goal_handle.abort(res)
+                            return res
+
+                # --- Standardny SUCCESS: lopta dost blizko aspon success_count za 1s ---
+                if not stop_when_found:
+                    stop_r = stop_r_override or self.get_parameter("stop_radius_px").get_parameter_value().double_value
+                    now_t  = time.monotonic()
+                    if self._ever_seen and self._last_radius >= stop_r and is_fresh:
+                        close_times.append(now_t)
+                    # vyrad stare zaznamy mimo okna
+                    while close_times and (now_t - close_times[0]) > success_window:
+                        close_times.popleft()
+                    if len(close_times) >= success_count:
                         self._following_active = False
                         self._pub.publish(Twist())
                         res = FollowBall.Result(success=True, reason_code=self.RC_OK, message="close_enough")
                         goal_handle.succeed(res)
                         return res
-                else:
-                    close_ticks = 0
 
                 fb = FollowBall.Feedback()
                 fb.x_error   = float(self._last_x_err)

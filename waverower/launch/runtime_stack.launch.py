@@ -98,7 +98,7 @@ def _opaque(context, *args, **kwargs):
         "max_wheel_speed":    0.4,
         "wheel_base":         0.20,
         "cmd_vel_invert_linear": True,
-        "cmd_vel_timeout_ms": 300,
+        "cmd_vel_timeout_ms": 600,
         # IMU korekcia
         "imu_correction":     use_imu_corr,
         "imu_kp":             0.30,

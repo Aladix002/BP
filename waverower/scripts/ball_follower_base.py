@@ -30,8 +30,15 @@ class BallFollowerBase(Node):
         self.declare_parameter("image_topic", "/camera/camera_node/image_raw")
         self.declare_parameter("cmd_topic", "/cmd_vel")
         self.declare_parameter("ball_color", "orange")
-        self.declare_parameter("forward_speed", 0.20)
-        self.declare_parameter("angular_speed", 0.65)
+        # HSV range for orange ball; tuned for bright tangerine-like orange.
+        self.declare_parameter("orange_h_min", 10)
+        self.declare_parameter("orange_h_max", 24)
+        self.declare_parameter("orange_s_min", 90)
+        self.declare_parameter("orange_s_max", 255)
+        self.declare_parameter("orange_v_min", 90)
+        self.declare_parameter("orange_v_max", 255)
+        self.declare_parameter("forward_speed", 0.75)
+        self.declare_parameter("angular_speed", 2.0)
         self.declare_parameter("stop_radius_px", 100.0)
         self.declare_parameter("min_radius_px", 15.0)
         self.declare_parameter("max_radius_px", 110.0)
@@ -44,18 +51,30 @@ class BallFollowerBase(Node):
         self.declare_parameter("min_solidity", 0.82)
         self.declare_parameter("min_fill_ratio", 0.58)
         self.declare_parameter("min_detection_confidence", 0.80)
-        self.declare_parameter("forward_confirm_sec", 2.0)
-        self.declare_parameter("forward_speed_scale_after_detect", 0.75)
+        self.declare_parameter("forward_confirm_sec", 0.0)
+        self.declare_parameter("forward_speed_scale_after_detect", 1.0)
+        # PID regulacia pre sledovanie lopty (angular.z)
+        self.declare_parameter("pid_kp", 1.5)
+        self.declare_parameter("pid_ki", 0.05)
+        self.declare_parameter("pid_kd", 0.15)
+        self.declare_parameter("pid_error_exponent", 0.75)
+        self.declare_parameter("pid_min_turn_abs", 0.30)
+        # IBVS adaptivny zisk: kp sa skalie podla radius_px / pid_radius_ref
+        # Vacsí radius (lopta blizko) → vácsí gain → prudsie zatacanie
+        self.declare_parameter("pid_radius_ref",  30.0)   # [px] referencia kde gain = kp
+        self.declare_parameter("pid_radius_scale_min", 1.0)  # spodny limit skalovania
+        self.declare_parameter("pid_radius_scale_max", 2.0)  # horny limit skalovania
         self.declare_parameter("subscribe_compressed", False)
         self.declare_parameter("image_use_best_effort_qos", True)
         self.declare_parameter("auto_switch_image_topic", True)
         self.declare_parameter("no_frame_stop_only", True)
         self.declare_parameter("control_rate_hz", 20.0)
-        self.declare_parameter("search_burst_speed", 1.0)
-        self.declare_parameter("burst_on_sec", 0.10)
+        self.declare_parameter("search_burst_speed", 10.0)
+        self.declare_parameter("burst_on_sec", 0.15)
         self.declare_parameter("burst_off_sec", 0.90)
         self.declare_parameter("detection_max_center_jump_frac", 0.28)
         self.declare_parameter("jump_reset_lost_sec", 0.45)
+        self.declare_parameter("detection_lost_sec", 0.6)
 
         image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
         cmd_topic   = self.get_parameter("cmd_topic").get_parameter_value().string_value
@@ -74,7 +93,7 @@ class BallFollowerBase(Node):
         self._last_confidence = 0.0
         self._prev_radius = 0.0
         self._ever_seen = False
-        self._search_dir = 1.0  # +1 vlavo, -1 vpravo pri hlade
+        self._search_dir = 1.0  # +1 vpravo, -1 vlavo pri hlade
         self._last_accept_cx: float | None = None  # px, naposledy akceptovaný stred X (pre filter skokov)
         self._seen_streak_start: float | None = None
         self._image_sub = None
@@ -86,6 +105,12 @@ class BallFollowerBase(Node):
         self._following_active = True
         self._burst_phase_start = time.monotonic()
         self._burst_spinning = True
+
+        # PID stav pre angular regulaciu
+        self._pid_integral: float = 0.0
+        self._pid_last_err: float = 0.0
+        self._pid_last_tick_time: float | None = None
+        self._pid_reset: bool = True  # True = resetni integral pri dalsom TRACK tiku
 
         use_be = self.get_parameter("image_use_best_effort_qos").get_parameter_value().bool_value
         qos = rclpy.qos.qos_profile_sensor_data if use_be else QoSProfile(
@@ -181,10 +206,22 @@ class BallFollowerBase(Node):
     def _hsv_mask(self, hsv: np.ndarray, color: str) -> np.ndarray:
         c = (color or "white").strip().lower()
         if c == "orange":
+            oh_min = int(np.clip(self.get_parameter("orange_h_min").get_parameter_value().integer_value, 0, 179))
+            oh_max = int(np.clip(self.get_parameter("orange_h_max").get_parameter_value().integer_value, 0, 179))
+            os_min = int(np.clip(self.get_parameter("orange_s_min").get_parameter_value().integer_value, 0, 255))
+            os_max = int(np.clip(self.get_parameter("orange_s_max").get_parameter_value().integer_value, 0, 255))
+            ov_min = int(np.clip(self.get_parameter("orange_v_min").get_parameter_value().integer_value, 0, 255))
+            ov_max = int(np.clip(self.get_parameter("orange_v_max").get_parameter_value().integer_value, 0, 255))
+            if oh_min > oh_max:
+                oh_min, oh_max = oh_max, oh_min
+            if os_min > os_max:
+                os_min, os_max = os_max, os_min
+            if ov_min > ov_max:
+                ov_min, ov_max = ov_max, ov_min
             return cv2.inRange(
                 hsv,
-                np.array([8, 120, 80], dtype=np.uint8),
-                np.array([30, 255, 255], dtype=np.uint8),
+                np.array([oh_min, os_min, ov_min], dtype=np.uint8),
+                np.array([oh_max, os_max, ov_max], dtype=np.uint8),
             )
         if c == "pink":
             return cv2.inRange(
@@ -371,7 +408,7 @@ class BallFollowerBase(Node):
         self._ever_seen     = True
         self._conf_pub.publish(Float32(data=float(conf)))
         if abs(x_err) > 0.05:
-            self._search_dir = -1.0 if x_err > 0 else 1.0
+            self._search_dir = 1.0 if x_err > 0 else -1.0
 
     def _tick(self) -> None:
         if not self._following_active:
@@ -383,7 +420,8 @@ class BallFollowerBase(Node):
         stop_r  = self.get_parameter("stop_radius_px").get_parameter_value().double_value
 
         now   = time.monotonic()
-        fresh = self._last_det_time > 0.0 and (now - self._last_det_time < 0.3)
+        lost_timeout = self.get_parameter("detection_lost_sec").get_parameter_value().double_value
+        fresh = self._last_det_time > 0.0 and (now - self._last_det_time < lost_timeout)
         has_frames = self._last_frame_time > 0.0 and (now - self._last_frame_time < 1.0)
 
         cmd = Twist()
@@ -412,18 +450,72 @@ class BallFollowerBase(Node):
                 return
             if stop_r > 0 and self._last_radius >= stop_r:
                 state = "STOP"
+                self._pid_reset = True
             else:
                 fwd_scale = float(np.clip(
                     self.get_parameter("forward_speed_scale_after_detect").get_parameter_value().double_value,
                     0.10,
                     1.0,
                 ))
-                cmd.linear.x  = fwd_spd * fwd_scale
-                cmd.angular.z = float(np.clip(-ang_spd * self._last_x_err, -ang_spd, ang_spd))
+                # Pri vacsej bocnej chybe mierne spomal dopredny pohyb,
+                # aby robot stihol zatocit na loptu namiesto "rovno dopredu".
+                err_abs = float(np.clip(abs(self._last_x_err), 0.0, 1.0))
+                turn_slowdown = float(np.clip(1.0 - 0.85 * err_abs, 0.25, 1.0))
+                cmd.linear.x = -(fwd_spd * fwd_scale * turn_slowdown)
+
+                # PID angular regulacia podla x_err (vzdialenost lopty od stredu)
+                tick_now = time.monotonic()
+                if self._pid_reset or self._pid_last_tick_time is None:
+                    dt = 0.0
+                    self._pid_integral = 0.0
+                    self._pid_last_err = self._last_x_err
+                    self._pid_reset = False
+                else:
+                    dt = tick_now - self._pid_last_tick_time
+                self._pid_last_tick_time = tick_now
+
+                err = self._last_x_err
+                # Nelinearne zosilnenie chyby: male odchylky sa dotocuju raznejsie.
+                exp = float(np.clip(
+                    self.get_parameter("pid_error_exponent").get_parameter_value().double_value,
+                    0.45, 1.2
+                ))
+                err_shaped = float(np.sign(err) * (abs(err) ** exp))
+                if dt > 0.0:
+                    self._pid_integral = float(np.clip(
+                        self._pid_integral + err_shaped * dt, -1.0, 1.0
+                    ))
+                    d_err = (err_shaped - self._pid_last_err) / dt
+                else:
+                    d_err = 0.0
+                self._pid_last_err = err_shaped
+
+                kp = self.get_parameter("pid_kp").get_parameter_value().double_value
+                ki = self.get_parameter("pid_ki").get_parameter_value().double_value
+                kd = self.get_parameter("pid_kd").get_parameter_value().double_value
+
+                # IBVS adaptivny zisk: vacsí radius = lopta blizko = prudsie zatacanie
+                r_ref  = max(1.0, self.get_parameter("pid_radius_ref").get_parameter_value().double_value)
+                r_smin = self.get_parameter("pid_radius_scale_min").get_parameter_value().double_value
+                r_smax = self.get_parameter("pid_radius_scale_max").get_parameter_value().double_value
+                radius_scale = float(np.clip(self._last_radius / r_ref, r_smin, r_smax))
+                effective_kp = kp * radius_scale
+
+                pid_out = effective_kp * err_shaped + ki * self._pid_integral + kd * d_err
+                cmd.angular.z = float(np.clip(pid_out, -ang_spd, ang_spd))
+                # Pri jasnej odchylke vynut minimalny turn, aby robot nezostal "rovno".
+                min_turn_abs = max(0.0, self.get_parameter("pid_min_turn_abs").get_parameter_value().double_value)
+                if abs(err_shaped) > 0.06 and min_turn_abs > 0.0:
+                    cmd.angular.z = float(np.sign(cmd.angular.z if cmd.angular.z != 0.0 else err_shaped) *
+                                          max(abs(cmd.angular.z), min(min_turn_abs, ang_spd)))
                 state = "TRACK"
             self._prev_radius = self._last_radius
         else:
             self._seen_streak_start = None
+            # Reset PID - loptu sme stratili
+            self._pid_reset = True
+            self._pid_integral = 0.0
+            self._pid_last_tick_time = None
             burst_spd = self.get_parameter("search_burst_speed").get_parameter_value().double_value
             on_sec    = self.get_parameter("burst_on_sec").get_parameter_value().double_value
             off_sec   = self.get_parameter("burst_off_sec").get_parameter_value().double_value

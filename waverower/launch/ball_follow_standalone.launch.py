@@ -30,8 +30,13 @@ def _setup(context, *args, **kwargs):
             name="motor_hat_node",
             output="screen",
             parameters=[{
-                "mode": "manual",
-                "manual_twist_topic": cmd_topic,
+                "control_mode":          "auto",
+                "cmd_vel_invert_linear": True,
+                "invert_linear":         True,
+                "wheel_base":            2.0,
+                "pwm_min":               400,
+                "pwm_max":               4095,
+                "smooth_alpha":          0.20,
             }],
         ),
         Node(
@@ -80,7 +85,7 @@ def _setup(context, *args, **kwargs):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("profile", default_value="indoor"),  # indoor|daylight
-        DeclareLaunchArgument("image_topic", default_value="/camera/camera_node/image_raw"),
+        DeclareLaunchArgument("image_topic", default_value="/camera/image_raw"),
         DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
         DeclareLaunchArgument("ball_color", default_value="orange"),
         DeclareLaunchArgument("run_bt", default_value="true"),

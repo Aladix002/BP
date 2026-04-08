@@ -45,7 +45,7 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<bool>("invert_angular", false);
 
   // Automatický režim – diferenciálna kinematika
-  declare_parameter<int>("cmd_vel_timeout_ms", 300);
+  declare_parameter<int>("cmd_vel_timeout_ms", 600);
   declare_parameter<double>("max_wheel_speed", 0.4);  // fyzická max. rýchlosť kolesa [m/s]
   declare_parameter<double>("wheel_base",      0.20); // rozchod kolies [m]
   // Wander / ball_follow / Nav2: ak +linear.x ide fyzicky vzad, zapni true

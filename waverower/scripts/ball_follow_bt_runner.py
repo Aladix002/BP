@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""py_trees BT runner -> /follow_ball ActionServer.
+"""BT runner pre sledovanie lopty.
 
-Terminal 1: ros2 launch waverower ball_follower_action.launch.py
-Terminal 2: ros2 run waverower ball_follow_bt_runner.py
+Strom (jednorazovy):
+  Sequence (memory=True)
+    ├── FindBall    → bursts/search, SUCCESS ked lopta videna
+    ├── FollowBall  → PID sledovanie + hladanie pri strate, SUCCESS ked blizko
+    └── Celebrate   → kratke otocenie
 
-Zavislost: ros-jazzy-py-trees
+Spustenie:
+  ros2 run waverower ball_follow_bt_runner.py --ros-args -p ball_color:=orange
 """
 
 import sys
@@ -12,6 +16,7 @@ import time
 
 import py_trees
 import rclpy
+from geometry_msgs.msg import Twist
 from rclpy.action import ActionClient
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
@@ -19,43 +24,46 @@ from rclpy.node import Node
 from waverower.action import FollowBall
 
 
-class FollowBallBehaviour(py_trees.behaviour.Behaviour):
-    """py_trees uzol: goal na /follow_ball, caka na vysledok."""
+class ActionBehaviour(py_trees.behaviour.Behaviour):
+    """Posle FollowBall goal a caka na vysledok."""
 
-    def __init__(self, node: Node, ball_color: str, max_duration_sec: float):
-        super().__init__("FollowBall")
-        self._node        = node
-        self._client      = ActionClient(node, FollowBall, "follow_ball")
-        self._ball_color  = ball_color
-        self._max_dur     = max_duration_sec
-        self._goal_handle = None
-        self._result = None
-        self._sent        = False
+    def __init__(self, name: str, node: Node, ball_color: str,
+                 max_duration_sec: float, stop_when_found: bool, fail_on_lost_sec: float):
+        super().__init__(name)
+        self._node            = node
+        self._ball_color      = ball_color
+        self._max_dur         = max_duration_sec
+        self._stop_when_found = stop_when_found
+        self._fail_on_lost    = fail_on_lost_sec
+        self._client          = ActionClient(node, FollowBall, "follow_ball")
+        self._goal_handle     = None
+        self._result          = None
+        self._sent            = False
 
     def setup(self, **kwargs):
-        self._node.get_logger().info("Cakam na /follow_ball server...")
         if not self._client.wait_for_server(timeout_sec=10.0):
-            raise RuntimeError(
-                "/follow_ball nedostupny - spusti: ros2 launch waverower ball_follower_action.launch.py"
-            )
-        self._node.get_logger().info("Server /follow_ball OK")
+            raise RuntimeError("/follow_ball server nedostupny")
 
     def initialise(self):
-        self._sent        = False
+        self._sent = False
         self._goal_handle = None
-        self._result      = None
+        self._result = None
 
     def update(self) -> py_trees.common.Status:
         if not self._sent:
             goal = FollowBall.Goal(
                 ball_color=self._ball_color,
                 max_duration_sec=float(self._max_dur),
+                stop_when_found=self._stop_when_found,
+                fail_on_lost_sec=float(self._fail_on_lost),
             )
             fut = self._client.send_goal_async(goal, feedback_callback=self._on_feedback)
             fut.add_done_callback(self._on_goal_response)
             self._sent = True
             self._node.get_logger().info(
-                f"Goal odoslany color='{self._ball_color}' max_dur={self._max_dur}s"
+                f"[{self.name}] Goal odoslany"
+                f" stop_when_found={self._stop_when_found}"
+                f" fail_on_lost={self._fail_on_lost}s"
             )
             return py_trees.common.Status.RUNNING
 
@@ -63,36 +71,57 @@ class FollowBallBehaviour(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.RUNNING
 
         if self._result.success:
-            self._node.get_logger().info(f"[BT] SUCCESS - {self._result.message}")
+            self._node.get_logger().info(f"[{self.name}] SUCCESS: {self._result.message}")
             return py_trees.common.Status.SUCCESS
 
-        self._node.get_logger().warn(
-            f"[BT] FAILURE - {self._result.message} code={self._result.reason_code}"
-        )
+        self._node.get_logger().warn(f"[{self.name}] FAILURE: {self._result.message}")
         return py_trees.common.Status.FAILURE
 
     def terminate(self, new_status: py_trees.common.Status):
         if new_status == py_trees.common.Status.INVALID and self._goal_handle is not None:
-            self._node.get_logger().info("[BT] terminate -> cancel goal")
             self._goal_handle.cancel_goal_async()
 
     def _on_goal_response(self, future):
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
-            self._node.get_logger().error("Goal odmietnuty!")
+            self._node.get_logger().error(f"[{self.name}] Goal odmietnuty!")
             self._result = FollowBall.Result(success=False, reason_code=3, message="rejected")
             return
-        self._goal_handle.get_result_async().add_done_callback(self._on_result)
-
-    def _on_result(self, future):
-        self._result = future.result().result
+        self._goal_handle.get_result_async().add_done_callback(
+            lambda f: setattr(self, "_result", f.result().result)
+        )
 
     def _on_feedback(self, fb_msg):
         fb = fb_msg.feedback
         self._node.get_logger().info(
-            f"  [feedback] x_err={fb.x_error:+.2f}  r={fb.radius_px:.0f}px",
+            f"  [{self.name}] x_err={fb.x_error:+.2f}  r={fb.radius_px:.0f}px",
             throttle_duration_sec=1.0,
         )
+
+
+class CelebrateBehaviour(py_trees.behaviour.Behaviour):
+    def __init__(self, node: Node, spin_sec: float = 1.2):
+        super().__init__("Celebrate")
+        self._node     = node
+        self._spin_sec = spin_sec
+        self._pub      = node.create_publisher(Twist, "/cmd_vel", 10)
+        self._start    = None
+
+    def initialise(self):
+        self._start = time.monotonic()
+        self._node.get_logger().info("[Celebrate] Nasiel som loptu!")
+
+    def update(self) -> py_trees.common.Status:
+        if time.monotonic() - self._start < self._spin_sec:
+            cmd = Twist()
+            cmd.angular.z = 2.0
+            self._pub.publish(cmd)
+            return py_trees.common.Status.RUNNING
+        self._pub.publish(Twist())
+        return py_trees.common.Status.SUCCESS
+
+    def terminate(self, new_status: py_trees.common.Status):
+        self._pub.publish(Twist())
 
 
 def main():
@@ -100,22 +129,29 @@ def main():
     node = Node("ball_follow_bt_runner")
 
     node.declare_parameter("ball_color",       "orange")
-    node.declare_parameter("max_duration_sec", 0.0)
     node.declare_parameter("tick_rate_hz",     10.0)
+    node.declare_parameter("find_timeout_sec", 30.0)
+    # 0.0 => nikdy nefailne na "ball_lost"; bude hladat az do manualneho stopu alebo SUCCESS.
+    node.declare_parameter("fail_on_lost_sec", 0.0)
 
-    ball_color  = node.get_parameter("ball_color").get_parameter_value().string_value
-    max_dur     = node.get_parameter("max_duration_sec").get_parameter_value().double_value
-    tick_hz     = max(node.get_parameter("tick_rate_hz").get_parameter_value().double_value, 1.0)
-    tick_period = 1.0 / tick_hz
+    color        = node.get_parameter("ball_color").get_parameter_value().string_value
+    tick_hz      = max(node.get_parameter("tick_rate_hz").get_parameter_value().double_value, 1.0)
+    find_timeout = node.get_parameter("find_timeout_sec").get_parameter_value().double_value
+    fail_on_lost = max(0.0, node.get_parameter("fail_on_lost_sec").get_parameter_value().double_value)
 
     executor = SingleThreadedExecutor()
     executor.add_node(node)
 
-    root = py_trees.composites.Sequence(name="BallFollowSeq", memory=True)
-    root.add_child(FollowBallBehaviour(node, ball_color, max_dur))
-    tree = py_trees.trees.BehaviourTree(root)
+    # memory=True: ked FindBall uspeje, na dalsom tiku sa uz nerestartuje
+    sequence = py_trees.composites.Sequence(name="BallFollowSeq", memory=True)
+    sequence.add_children([
+        ActionBehaviour("FindBall",   node, color, find_timeout, stop_when_found=True,  fail_on_lost_sec=0.0),
+        ActionBehaviour("FollowBall", node, color, 0.0,          stop_when_found=False, fail_on_lost_sec=fail_on_lost),
+        CelebrateBehaviour(node),
+    ])
 
-    py_trees.logging.level = py_trees.logging.Level.DEBUG
+    tree = py_trees.trees.BehaviourTree(sequence)
+    py_trees.logging.level = py_trees.logging.Level.INFO
 
     try:
         tree.setup(timeout=15)
@@ -125,7 +161,9 @@ def main():
         rclpy.shutdown()
         return
 
-    node.get_logger().info(f"BT startuje tick {tick_hz:.0f} Hz")
+    node.get_logger().info(
+        f"BT start  tick={tick_hz:.0f}Hz  color={color}  fail_on_lost_sec={fail_on_lost:.1f}"
+    )
     print(py_trees.display.ascii_tree(tree.root))
 
     try:
@@ -133,14 +171,13 @@ def main():
             tree.tick()
             st = tree.root.status
             if st == py_trees.common.Status.SUCCESS:
-                node.get_logger().info("=== BT: SUCCESS ===")
+                node.get_logger().info("=== USPECH - lopta dosiahnutá ===")
                 break
             if st == py_trees.common.Status.FAILURE:
-                node.get_logger().warn("=== BT: FAILURE ===")
+                node.get_logger().warn("=== ZLYHANIE ===")
                 break
-            executor.spin_once(timeout_sec=tick_period)
+            executor.spin_once(timeout_sec=1.0 / tick_hz)
     except KeyboardInterrupt:
-        print("Ctrl-C -> cancel + stop")
         tree.root.stop(py_trees.common.Status.INVALID)
 
     node.destroy_node()

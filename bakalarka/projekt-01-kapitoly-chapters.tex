@@ -789,6 +789,67 @@ V README autora je uvedené, že \textbf{červená} farba je v HSV problematick�
 
 Pred alternatívnou vetvou s ESP32 dáva zmysel \textbf{zhrnúť uzly} jednou schémou: nasledujúca sekcia je preto prehľadná (bloková) doplnok k podrobnému rozboru vyššie.
 
+\subsection*{Vlastná implementácia sledovania lopty s adaptívnym PID regulátorom}
+
+V tejto práci bolo sledovanie lopty implementované vlastným spôsobom ako ROS~2 balík \texttt{waverower}, pričom oproti referenčnému príkladu (\texttt{ball\_tracker}) boli zavedené viaceré vylepšenia: stavový automat s fázami hľadania a sledovania, akciový server (\texttt{FollowBall}) s podporou strom správania (Behavior Tree), a predovšetkým \textbf{adaptívne riadenie uhlovej rýchlosti} odvodzujúce zosilnenie regulátora od zdanlivej veľkosti lopty v obraze.
+
+\paragraph{Motivácia: obmedzenia konštantného zosilnenia.}
+Klasický proporcionálny regulátor s konštantným zosilnením $K_p$ používa horizontálnu polohovú chybu $e$ (normalizovanú odchýlku stredu lopty od stredu obrazu) priamo ako vstup:
+\begin{equation}
+    \omega_z = K_p \cdot e
+\end{equation}
+Tento prístup má praktické nedostatky: pri \textbf{veľkej vzdialenosti} (malý obraz lopty) je reakcia príliš pomalá a robot nestíha sledovať pohybujúci sa objekt, zatiaľ čo pri \textbf{malej vzdialenosti} (veľký obraz) môže byť reakcia agresívna a spôsobovať oscilácie alebo nežiaducu reverziu kolies.
+
+\paragraph{Teoretický základ: interakčná matica IBVS.}
+Riešenie vychádza z teórie obrazového sérvoriadenia (\emph{Image-Based Visual Servoing}, IBVS). Interakčná matica (Jacobian obrazu) popisuje vzťah medzi pohybom bodu v obrazovej rovine a rýchlosťami kamery~\cite{chaumette2006visual}. Pre horizontálnu súradnicu bodu $x$ v normalizovaných súradniciach platí:
+\begin{equation}
+    \dot{x} = -\frac{v_x}{Z} + \frac{x\, v_z}{Z} + x y\,\omega_x - (1 + x^2)\,\omega_z + y\,\omega_y
+\end{equation}
+kde $Z$ je hĺbka objektu od kamery. Pre čistú rotáciu okolo zvislej osi $\omega_z$ dominuje člen $-(1+x^2)\,\omega_z$. Keďže zdanlivý polomer lopty $r_{px}$ v obraze je nepriamo úmerný vzdialenosti:
+\begin{equation}
+    r_{px} \propto \frac{1}{Z}
+\end{equation}
+vyplýva, že pri väčšej vzdialenosti (menší $r_{px}$) treba väčší zosilňovací koeficient, aby sa dosiahol rovnaký uhlovú rýchlosti sledovania. Inými slovami, \textbf{adaptívny zisk by mal rásť so zdanlivou veľkosťou lopty}.
+
+\paragraph{Implementácia adaptívneho ziskového koeficientu.}
+Adaptívne zosilnenie je realizované škálovaním proporcionálnej zložky $K_p$ podľa pomeru aktuálneho polomeru $r_{px}$ ku referenčnému polomeru $r_{ref}$ (polomer pri nominálnej vzdialenosti):
+\begin{equation}
+    K_{eff} = K_p \cdot \text{clip}\!\left(\frac{r_{px}}{r_{ref}},\; s_{\min},\; s_{\max}\right)
+\end{equation}
+kde $s_{\min}$ a $s_{\max}$ sú dolná a horná hranica škálovania (ochrana pred extrémami). Výsledný PID regulátor pre uhlovú rýchlosť má tvar:
+\begin{equation}
+    \omega_z = K_{eff} \cdot e + K_i \int e\, \mathrm{d}t + K_d \frac{\mathrm{d}e}{\mathrm{d}t}
+\end{equation}
+kde $e = \frac{c_x - w/2}{w/2}$ je normalizovaná horizontálna odchýlka ($c_x$ -- x-súradnica stredu lopty, $w$ -- šírka obrazu v pixeloch). V implementácii sú použité parametre $K_p = 0{,}5$, $K_i = 0{,}02$, $K_d = 0{,}05$, $r_{ref} = 30\,\text{px}$, $s_{\min} = 0{,}2$, $s_{\max} = 2{,}0$.
+
+\paragraph{Správanie pri rôznych vzdialenostiach.}
+Tabuľka~\ref{tab:pid-radius} uvádza efektívny zisk pre rôzne zdanlivé polomery lopty:
+
+\begin{table}[h]
+\centering
+\caption{Adaptívny efektívny zisk PID regulátora v závislosti od zdanlivého polomeru lopty}
+\label{tab:pid-radius}
+\begin{tabular}{cccc}
+\hline
+$r_{px}$ [px] & Vzdialenosť & Škálovací faktor & $K_{eff}$ \\
+\hline
+10 & veľmi ďaleko & 0{,}33 $\to$ clip 0{,}20 & 0{,}10 \\
+30 & stredná (ref.) & 1{,}00 & 0{,}50 \\
+50 & blízko         & 1{,}67 & 0{,}83 \\
+60 & veľmi blízko   & 2{,}00 (cap) & 1{,}00 \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Stavový automat a Behavior Tree.}
+Sledovanie je organizované do dvoch fáz riadených stromom správania (\emph{Behavior Tree}) implementovaným pomocou knižnice \texttt{py\_trees}:
+\begin{itemize}
+    \item \textbf{FindBall} -- robot vykonáva smerové výkyvy (\emph{bursty}) v smere kde naposledy videl loptu; fáza končí úspechom (\texttt{SUCCESS}) pri prvej platnej detekcii.
+    \item \textbf{FollowBall} -- robot sleduje loptu s PID reguláciou; fáza končí úspechom pri dosiahnutí dostatočnej blízkosti ($r_{px} \geq r_{stop}$) alebo zlyhaním (\texttt{FAILURE}) pri strate lopty na viac ako 1{,}5~s.
+    \item \textbf{Celebrate} -- krátke otočenie na mieste ako vizuálna spätná väzba po dosiahnutí cieľa.
+\end{itemize}
+Pri zlyhaní fázy \texttt{FollowBall} (strata lopty) \texttt{Sequence} zlyhá a \texttt{Repeat} dekorátor reštartuje strom od fázy \texttt{FindBall}, pričom si robot pamätá stranu, kde loptu videl naposledy.
+
 \section{Návrh uzlov systému pre ROS2}
 \label{sec:navrh-uzlov}
 

@@ -1,20 +1,26 @@
 /**:
   ros__parameters:
     ball_color: orange
+    orange_h_min: 10
+    orange_h_max: 24
+    orange_s_min: 90
+    orange_s_max: 255
+    orange_v_min: 90
+    orange_v_max: 255
     image_use_best_effort_qos: true
     auto_switch_image_topic: true
     no_frame_stop_only: true
 
     min_radius_px: 10.0
     max_radius_px: 145.0
-    stop_radius_px: 74.0
-    min_circularity: 0.77
+    stop_radius_px: 50.0
+    min_circularity: 0.84
     max_contour_area_ratio: 0.10
-    max_bbox_aspect_ratio: 1.32
-    min_solidity: 0.85
-    min_fill_ratio: 0.66
+    max_bbox_aspect_ratio: 1.20
+    min_solidity: 0.90
+    min_fill_ratio: 0.72
     min_detection_confidence: 0.78
-    forward_confirm_sec: 2.0
+    forward_confirm_sec: 0.0
 
     gaussian_blur_ksize: 9
     mask_erode_iters: 2
@@ -22,11 +28,20 @@
 
     detection_max_center_jump_frac: 0.24
     jump_reset_lost_sec: 0.40
-    success_hold_ticks: 7
+    detection_lost_sec: 1.5
+    success_hold_ticks: 1
 
-    forward_speed: 0.12
-    forward_speed_scale_after_detect: 0.75
-    angular_speed: 0.62
-    search_burst_speed: 0.95
-    burst_on_sec: 0.10
+    forward_speed: 0.45
+    forward_speed_scale_after_detect: 1.0
+    angular_speed: 2.20
+    pid_kp: 2.20
+    pid_ki: 0.01
+    pid_kd: 0.10
+    pid_error_exponent: 0.85
+    pid_min_turn_abs: 0.18
+    pid_radius_ref: 30.0
+    pid_radius_scale_min: 1.0
+    pid_radius_scale_max: 1.8
+    search_burst_speed: 10.00
+    burst_on_sec: 0.45
     burst_off_sec: 0.90
