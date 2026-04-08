@@ -291,7 +291,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
         DeclareLaunchArgument("imu_frame_id", default_value="imu_link"),
-        DeclareLaunchArgument("threshold_m", default_value="0.30"),
+        DeclareLaunchArgument(
+            "threshold_m",
+            default_value="0.30",
+            description="LiDAR wander: ak je predok blizsie ako tato vzdialenost [m], zastavi a zacne otacanie",
+        ),
         DeclareLaunchArgument(
             "teleop_max_linear",
             default_value="1.0",

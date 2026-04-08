@@ -2,17 +2,26 @@
 """Arduino USB -> sensor_msgs/Imu (CSV MPU6050, 15 alebo 20 poli).
 
 20-polovy format: roll_f, pitch_f, yaw_gyro [deg] -> quaternion.
+
+zero_yaw_on_start: prvý yaw -> 0 v orientácii.
+zero_gyro_on_start: z prvých N vzoriek sa odhadne gyro bias; angular_velocity je potom
+  okolo 0 pri pokoji (MEMS gyro má inak offset). Prvé N správ sa nepublikujú.
+
+scan_serial_ports: skúša serial_port, potom /dev/serial/by-id/*arduino*, všetky /dev/ttyACM*
+  (0,1,2,…), potom ttyUSB* — prvý port, z ktorého príde platný IMU CSV riadok.
 """
 
 import math
 import os
 import queue
+import re
+import select
 import subprocess
 import sys
 import termios
 import threading
 from glob import glob
-from typing import BinaryIO, List, Optional
+from typing import BinaryIO, List, Optional, Tuple
 
 import rclpy
 from rcl_interfaces.msg import ParameterType
@@ -51,31 +60,118 @@ def _quaternion_from_rpy_deg(roll_deg: float, pitch_deg: float, yaw_deg: float) 
     return (x, yq, z, w)
 
 
-def _resolve_serial_port(requested_port: str) -> str:
-    """
-    Resolve serial device path robustly.
-    - If requested exists, use it.
-    - If requested is missing (/dev/ttyACM0), try Arduino by-id first, then ttyACM*.
-    """
-    if requested_port and os.path.exists(requested_port):
-        return requested_port
+def _sorted_tty_acm() -> List[str]:
+    """ttyACM0, ttyACM1, … (číselne), nie lexikograficky."""
+    paths = glob("/dev/ttyACM*")
 
-    by_id_candidates = sorted(
-        p for p in glob("/dev/serial/by-id/*") if "arduino" in os.path.basename(p).lower()
+    def sort_key(p: str) -> tuple:
+        m = re.search(r"ACM(\d+)$", p)
+        return (int(m.group(1)) if m else 9999, p)
+
+    return sorted(paths, key=sort_key)
+
+
+def _csv_line_looks_like_imu(line: str) -> bool:
+    """Rovnaká logika ako _parse_line (15/16/20 číselných polí)."""
+    if not line or line.startswith("ERR") or "READ_FAIL" in line:
+        return False
+    parts = [p.strip() for p in line.split(",")]
+    n = len(parts)
+    if n not in (15, 16, 20):
+        return False
+    if len(parts) > 0 and parts[0].isalpha():
+        return False
+    try:
+        f = [float(x) for x in parts]
+    except ValueError:
+        return False
+    if any(f[i] == -1.0 for i in range(1, min(8, len(f)))):
+        return False
+    return True
+
+
+def _build_imu_port_candidates(requested: str) -> List[str]:
+    """Poradie: explicitný port → by-id Arduino → všetky ttyACM* → ttyUSB*."""
+    seen = set()
+    out: List[str] = []
+
+    def add(p: str) -> None:
+        if p and os.path.exists(p) and p not in seen:
+            seen.add(p)
+            out.append(p)
+
+    req = (requested or "").strip()
+    if req:
+        add(req)
+    for p in sorted(glob("/dev/serial/by-id/*"), key=lambda x: os.path.basename(x).lower()):
+        if "arduino" in os.path.basename(p).lower():
+            add(p)
+    for p in _sorted_tty_acm():
+        add(p)
+    for p in sorted(glob("/dev/ttyUSB*")):
+        add(p)
+    return out
+
+
+def _open_imu_serial_probed(
+    candidates: List[str],
+    baud: int,
+    run_stty: bool,
+    log_warn,
+) -> Tuple[BinaryIO, str]:
+    """Otvorí prvý port, z ktorého do ~0,4 s príde platný IMU CSV riadok."""
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        fp: Optional[BinaryIO] = None
+        try:
+            if run_stty:
+                subprocess.run(
+                    ["stty", "-F", path, str(baud), "raw", "-echo"],
+                    check=False,
+                    capture_output=True,
+                )
+            fp = open(path, "rb")
+            try:
+                termios.tcflush(fp.fileno(), termios.TCIFLUSH)
+            except (OSError, termios.error):
+                pass
+            for _ in range(24):
+                r, _, _ = select.select([fp], [], [], 0.4)
+                if not r:
+                    log_warn(f"IMU scan: {path} — čakanie na riadok (timeout)")
+                    break
+                raw = fp.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="ignore").strip()
+                if _csv_line_looks_like_imu(line):
+                    out_fp = fp
+                    fp = None  # nezatvarat v finally — vraciame otvoreny port
+                    return out_fp, path
+        except OSError as ex:
+            log_warn(f"IMU scan: {path} — {ex}")
+        finally:
+            if fp is not None:
+                try:
+                    fp.close()
+                except OSError:
+                    pass
+    raise OSError(
+        "Ziaden z kandidatskych portov neposlal platny IMU CSV (15/16/20 poli). "
+        f"Skontroluj: {', '.join(candidates[:6])}{'…' if len(candidates) > 6 else ''}"
     )
-    for path in by_id_candidates:
-        if os.path.exists(path):
-            return path
 
-    acm_candidates = sorted(glob("/dev/ttyACM*"))
-    if acm_candidates:
-        return acm_candidates[0]
 
-    usb_candidates = sorted(glob("/dev/ttyUSB*"))
-    if usb_candidates:
-        return usb_candidates[0]
-
-    return requested_port
+def _open_imu_serial_simple(path: str, baud: int, run_stty: bool) -> BinaryIO:
+    """Bez próby — len otvorenie (legacy)."""
+    if run_stty:
+        subprocess.run(
+            ["stty", "-F", path, str(baud), "raw", "-echo"],
+            check=False,
+            capture_output=True,
+        )
+    return open(path, "rb")
 
 
 class ImuSerialFusionBridge(Node):
@@ -92,9 +188,14 @@ class ImuSerialFusionBridge(Node):
         self.declare_parameter("extra_topic", "/imu/arduino_extra")
         self.declare_parameter("fill_orientation_from_fusion", True)
         self.declare_parameter("zero_yaw_on_start", True)
+        # Gyro (rad/s): odčíta priem z prvých N vzoriek pri pokoji — ω≈0 v /imu ako pri „vynulovaní“
+        self.declare_parameter("zero_gyro_on_start", True)
+        self.declare_parameter("gyro_zero_warmup_samples", 25)
+        # True: vyskusa kandidatov (serial_port, by-id Arduino, ttyACM0..N, ttyUSB*) kym nepride IMU CSV
+        self.declare_parameter("scan_serial_ports", True)
 
         requested_port = self.get_parameter("serial_port").get_parameter_value().string_value
-        port = _resolve_serial_port(requested_port)
+        scan = self.get_parameter("scan_serial_ports").get_parameter_value().bool_value
         baud = _baud_from_param(self)
         self._frame_id = self.get_parameter("frame_id").get_parameter_value().string_value
         topic = self.get_parameter("topic").get_parameter_value().string_value
@@ -104,24 +205,40 @@ class ImuSerialFusionBridge(Node):
         extra_topic = self.get_parameter("extra_topic").get_parameter_value().string_value
         self._fill_ori = self.get_parameter("fill_orientation_from_fusion").get_parameter_value().bool_value
         self._zero_yaw = self.get_parameter("zero_yaw_on_start").get_parameter_value().bool_value
-        self._yaw_offset: Optional[float] = None
-
-        if port != requested_port:
-            self.get_logger().warn(
-                f"Port {requested_port} nedostupny, pouzivam {port}"
-            )
-
-        if run_stty:
-            subprocess.run(
-                ["stty", "-F", port, str(baud), "raw", "-echo"],
-                check=False,
-                capture_output=True,
-            )
-
+        self._zero_gyro = self.get_parameter("zero_gyro_on_start").get_parameter_value().bool_value
+        gw_pv = self.get_parameter("gyro_zero_warmup_samples").get_parameter_value()
         try:
-            self._fp: BinaryIO = open(port, "rb")
+            self._gyro_warmup = max(1, int(gw_pv.integer_value))
+        except Exception:
+            self._gyro_warmup = 25
+        self._yaw_offset: Optional[float] = None
+        self._gyro_sum = [0.0, 0.0, 0.0]
+        self._gyro_n = 0
+        self._gyro_bias: Optional[tuple] = None  # (bx,by,bz) rad/s po warmupe
+
+        port: str
+        try:
+            if scan:
+                candidates = _build_imu_port_candidates(requested_port)
+                if not candidates:
+                    raise OSError(
+                        "Nenasiel som ziadny seriovy port "
+                        "(serial_port /dev/serial/by-id /dev/ttyACM* /dev/ttyUSB*)."
+                    )
+                self.get_logger().info(
+                    "IMU scan: skusam porty: " + ", ".join(candidates[:8])
+                    + (" …" if len(candidates) > 8 else "")
+                )
+                self._fp, port = _open_imu_serial_probed(
+                    candidates, baud, run_stty, self.get_logger().warn
+                )
+            else:
+                port = requested_port.strip() or "/dev/ttyACM0"
+                if not os.path.exists(port):
+                    raise OSError(f"Port neexistuje: {port}")
+                self._fp = _open_imu_serial_simple(port, baud, run_stty)
         except OSError as ex:
-            self.get_logger().fatal(f"Nepodarilo otvorit {port}: {ex}")
+            self.get_logger().fatal(f"Seriovy port IMU: {ex}")
             raise
 
         try:
@@ -147,6 +264,11 @@ class ImuSerialFusionBridge(Node):
         self.get_logger().info(
             f"IMU fusion serial -> {topic} ({port} @ {baud}, 15/20 CSV, frame_id={self._frame_id})"
         )
+        if self._zero_gyro:
+            self.get_logger().info(
+                f"zero_gyro_on_start: prvych {self._gyro_warmup} vzoriek sa nepublikuje "
+                "(robot nech je v pokoji), potom sa odhadne bias gyro."
+            )
 
     def _flush_publish(self) -> None:
         for _ in range(64):
@@ -229,9 +351,36 @@ class ImuSerialFusionBridge(Node):
         out.linear_acceleration.y = ay_g * GRAVITY
         out.linear_acceleration.z = az_g * GRAVITY
 
-        out.angular_velocity.x = gx_dps * DEG2RAD
-        out.angular_velocity.y = gy_dps * DEG2RAD
-        out.angular_velocity.z = gz_dps * DEG2RAD
+        gx_rad = gx_dps * DEG2RAD
+        gy_rad = gy_dps * DEG2RAD
+        gz_rad = gz_dps * DEG2RAD
+
+        if self._zero_gyro:
+            if self._gyro_bias is None:
+                self._gyro_sum[0] += gx_rad
+                self._gyro_sum[1] += gy_rad
+                self._gyro_sum[2] += gz_rad
+                self._gyro_n += 1
+                if self._gyro_n >= self._gyro_warmup:
+                    n = float(self._gyro_n)
+                    self._gyro_bias = (
+                        self._gyro_sum[0] / n,
+                        self._gyro_sum[1] / n,
+                        self._gyro_sum[2] / n,
+                    )
+                    self.get_logger().info(
+                        "Gyro bias odhad (priemer z %d vzoriek, rad/s): "
+                        "wx=%.5f wy=%.5f wz=%.5f"
+                        % (self._gyro_n, self._gyro_bias[0], self._gyro_bias[1], self._gyro_bias[2])
+                    )
+            if self._gyro_bias is not None:
+                gx_rad -= self._gyro_bias[0]
+                gy_rad -= self._gyro_bias[1]
+                gz_rad -= self._gyro_bias[2]
+
+        out.angular_velocity.x = gx_rad
+        out.angular_velocity.y = gy_rad
+        out.angular_velocity.z = gz_rad
 
         extra_msg: Optional[Float64MultiArray] = None
 
@@ -261,6 +410,10 @@ class ImuSerialFusionBridge(Node):
                 out.orientation_covariance[i] = 0.05  # len yaw
         else:
             out.orientation_covariance[0] = -1.0
+
+        # Počas warm-upu ešte nemáme bias — neposielame /imu (inak by ω ukazovalo surový offset)
+        if self._zero_gyro and self._gyro_bias is None:
+            return None
 
         return (out, extra_msg)
 

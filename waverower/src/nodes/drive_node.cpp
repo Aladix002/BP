@@ -167,7 +167,7 @@ void DriveNode::apply_manual_twist(const geometry_msgs::msg::Twist& msg) {
 }
 
 // ---------------------------------------------------------------------------
-// cmd_vel_cb – automatický režim (nav2, ball_follower, wander)
+// cmd_vel_cb – automatický režim (ball_follower, wander, …)
 //
 // Diferenciálna kinematika (unicycle → tank), výsledok v [-1, 1].
 // Delíme teleop_max_linear (nie max_wheel_speed): Twist.linear.x je v m/s rovnako

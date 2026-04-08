@@ -183,4 +183,4 @@ ros2 param dump /wasd_motor_hat_node
 1. **IMU yaw korekcia** – pri priamej jazde číta gyro Z a upravuje PWM:
    `l -= Kp·ω_z`, `r += Kp·ω_z`.
    Ladenie: začni s `imu_yaw_kp=0.10`, príliš vysoká hodnota = oscilácie.
-2. Pre mapovanie / navigáciu môžeš neskôr doplniť externé balíky (napr. slam_toolbox, Nav2) a ponechať `waverower` v `control_mode:=auto` s `/cmd_vel`.
+2. Pre mapovanie / navigáciu môžeš neskôr doplniť externé balíky (napr. slam_toolbox) a ponechať `waverower` v `control_mode:=auto` s `/cmd_vel`.

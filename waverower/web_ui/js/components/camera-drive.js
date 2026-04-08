@@ -114,6 +114,12 @@ function DrivePanel({ ros, connected }) {
       : 0.45;
   });
   const [teleopMax, setTeleopMax] = React.useState({ lin: 0.5, ang: 1.8 });
+  const [wanderThresholdM, setWanderThresholdM] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem("waverower_wander_threshold_m"));
+    return Number.isFinite(v)
+      ? WR.snap(WR.clamp(v, WR.WANDER_THRESHOLD_RANGE.min, WR.WANDER_THRESHOLD_RANGE.max), WR.WANDER_THRESHOLD_RANGE.step)
+      : 0.30;
+  });
   const teleopMaxRef = React.useRef({ lin: 0.5, ang: 1.8 });
   const twistRef = React.useRef({ linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 } });
   const pubRef = React.useRef(null);
@@ -147,6 +153,17 @@ function DrivePanel({ ros, connected }) {
         setTeleopMax(next);
       } catch (_) {}
     })();
+    (async () => {
+      try {
+        const r = await WR.rosGetParams(ros, WR.WANDER_NODE, ["threshold_m"]);
+        if (cancelled || !r?.values?.[0] || r.values[0].type !== WR.PTYPE_DOUBLE) return;
+        const t = r.values[0].double_value;
+        if (t >= WR.WANDER_THRESHOLD_RANGE.min && t <= WR.WANDER_THRESHOLD_RANGE.max) {
+          const snapped = WR.snap(t, WR.WANDER_THRESHOLD_RANGE.step);
+          setWanderThresholdM(snapped);
+        }
+      } catch (_) {}
+    })();
     return () => { cancelled = true; };
   }, [ros, connected]);
 
@@ -174,6 +191,7 @@ function DrivePanel({ ros, connected }) {
         await WR.rosSetParams(ros, WR.WANDER_NODE, [
           WR.makeParam("forward_speed", wanderFwd),
           WR.makeParam("turn_speed", wanderTurn),
+          WR.makeParam("threshold_m", wanderThresholdM),
         ]);
       } catch (_) {}
       syncRef.current = null;
@@ -184,7 +202,7 @@ function DrivePanel({ ros, connected }) {
         syncRef.current = null;
       }
     };
-  }, [linScale, ros, connected, teleopMax.lin, teleopMax.ang]);
+  }, [linScale, wanderThresholdM, ros, connected, teleopMax.lin, teleopMax.ang]);
 
   const stop = () => {
     twistRef.current = { linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 } };
@@ -227,6 +245,12 @@ function DrivePanel({ ros, connected }) {
     setAngScale(v);
     localStorage.setItem("waverower_web_speed_scale_ang", String(v));
   };
+  const onWanderThrSlider = e => {
+    const R = WR.WANDER_THRESHOLD_RANGE;
+    const v = WR.snap(WR.clamp(parseFloat(e.target.value), R.min, R.max), R.step);
+    setWanderThresholdM(v);
+    localStorage.setItem("waverower_wander_threshold_m", String(v));
+  };
 
   const maxLin = linScale * teleopMax.lin;
   const maxAng = angScale * teleopMax.ang;
@@ -267,6 +291,23 @@ function DrivePanel({ ros, connected }) {
         <div className="flex items-center justify-between">
           <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Effective <span className="normal-case font-normal">lin/ang</span></span>
           <span className="text-xs text-slate-500 tabular-nums">{maxLin.toFixed(2)} / {maxAng.toFixed(2)}</span>
+        </div>
+        <div className="pt-2 border-t border-slate-800">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Wander LiDAR stop</span>
+            <span className="text-xs font-semibold text-amber-400/90 tabular-nums">{wanderThresholdM.toFixed(2)} m</span>
+          </div>
+          <input
+            type="range"
+            min={WR.WANDER_THRESHOLD_RANGE.min}
+            max={WR.WANDER_THRESHOLD_RANGE.max}
+            step={WR.WANDER_THRESHOLD_RANGE.step}
+            value={wanderThresholdM}
+            onChange={onWanderThrSlider}
+            className="w-full"
+            aria-label="LiDAR distance threshold for wander stop and turn"
+          />
+          <p className="text-[0.58rem] text-slate-600 mt-1 leading-snug">Ak je prekážka bližšie, wander zastaví a otočí sa.</p>
         </div>
       </div>
     </div>

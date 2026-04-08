@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Minimalny standalone ball-follow stack: motor + kamera + action + (volitelne) BT."""
+"""Minimalny standalone ball-follow stack: motor + kamera + action + behavior tree (vzdy)."""
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -74,7 +73,6 @@ def _setup(context, *args, **kwargs):
             executable="ball_follow_bt_runner.py",
             name="ball_follow_bt_runner",
             output="screen",
-            condition=IfCondition(LaunchConfiguration("run_bt")),
             parameters=[{
                 "ball_color": color,
             }],
@@ -88,6 +86,5 @@ def generate_launch_description():
         DeclareLaunchArgument("image_topic", default_value="/camera/image_raw"),
         DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
         DeclareLaunchArgument("ball_color", default_value="orange"),
-        DeclareLaunchArgument("run_bt", default_value="true"),
         OpaqueFunction(function=_setup),
     ])

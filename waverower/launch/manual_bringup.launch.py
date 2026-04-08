@@ -27,7 +27,7 @@ from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-# camera_ros: jednotné rozlíšenie vo všetkých bringupoch (manual / runtime / ball follow)
+# camera_ros: jednotné rozlíšenie vo všetkých bringupoch (manual / runtime)
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 CAMERA_FORMAT = "XRGB8888"
@@ -125,26 +125,6 @@ def _slam_stack(context, *args, **kwargs):
     return actions
 
 
-def _ball_follow_stack(context, *args, **kwargs):
-    if LaunchConfiguration("use_ball_follow").perform(context) != "true":
-        return []
-    pkg = get_package_share_directory("waverower")
-    profile = LaunchConfiguration("ball_profile").perform(context).strip().lower()
-    color   = LaunchConfiguration("ball_color").perform(context)
-    yaml    = os.path.join(pkg, "config",
-              "ball_follow_white_daylight.yaml" if profile == "daylight"
-              else "ball_follow_white_indoor.yaml")
-    return [
-        Node(
-            package="waverower",
-            executable="ball_follower_action.py",
-            name="ball_follower",
-            output="screen",
-            parameters=[yaml, {"ball_color": color, "cmd_topic": "/cmd_vel"}],
-        ),
-    ]
-
-
 def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
     camera_id = LaunchConfiguration("camera_id")
@@ -158,9 +138,7 @@ def generate_launch_description():
     use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom")
     teleop_max_linear = LaunchConfiguration("teleop_max_linear")
     teleop_max_angular = LaunchConfiguration("teleop_max_angular")
-    use_ball_follow = LaunchConfiguration("use_ball_follow")
-    ball_color = LaunchConfiguration("ball_color")
-    ball_profile = LaunchConfiguration("ball_profile")
+    control_mode = LaunchConfiguration("control_mode")
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
@@ -257,7 +235,6 @@ def generate_launch_description():
         ]
 
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
-    motor_control_mode = PythonExpression(['"auto" if "', use_ball_follow, '" == "true" else "manual"'])
 
     motor_twist_topic = "/teleop_cmd_vel"
 
@@ -359,7 +336,7 @@ def generate_launch_description():
                 name="motor_hat_node",
                 output="screen",
                 parameters=[{
-                    "control_mode":        motor_control_mode,
+                    "control_mode":        control_mode,
                     "i2c_bus":             LaunchConfiguration("i2c_bus"),
                     "i2c_address":         LaunchConfiguration("i2c_address"),
                     # PWM rozsah: pwm_min = minimum kedy sa motor pohne, pwm_max = maximum
@@ -438,18 +415,9 @@ def generate_launch_description():
                     }
                 ],
             ),
-            DeclareLaunchArgument(
-                "use_ball_follow",
-                default_value="false",
-                description="Spusti ball_follower_action server a prepne motor do auto rezimu",
-            ),
-            DeclareLaunchArgument("ball_color",   default_value="orange"),
-            DeclareLaunchArgument("ball_profile", default_value="indoor",
-                                  description="indoor | daylight -> vyber yaml profilu detekcie"),
             lidar_include,
             *camera_stack,
             *robot_model_stack,
             OpaqueFunction(function=_slam_stack),
-            OpaqueFunction(function=_ball_follow_stack),
         ]
     )

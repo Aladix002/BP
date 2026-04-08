@@ -18,6 +18,8 @@ Object.assign(window.WR, {
   PUBLISH_HZ: 30,
   SLIDER_SCALE: { min: 0.0, max: 1.0, step: 0.01 },
   WANDER_TURN_RATIO: 18.0,
+  /** LiDAR wander: min vzdialenost prekazky [m], pod nou sa zastavi a otoci */
+  WANDER_THRESHOLD_RANGE: { min: 0.05, max: 1.5, step: 0.01 },
   IMU_DEFAULTS: {
     imu_correction: true,
     imu_kp: 0.30,
