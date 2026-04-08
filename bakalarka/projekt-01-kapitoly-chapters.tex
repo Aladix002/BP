@@ -764,6 +764,26 @@ sudo systemctl start  ld19-lidar.service waverower.service
 
 Okrem systemd ochrany obsahuje aj spúšťací skript \texttt{waverower\_manual\_teleop.sh} vlastnú obranu pred neporiadnym stavom prostredia. Na začiatku skript ukončí všetky prípadne bežiace inštancie uzlov rovnakých mien (\texttt{pkill -f}) -- zamedzí tak situácii, keď predchádzajúce spustenie ostalo viset v pamäti. Pre bezpečné čistenie pri ukončení je zaregistrovaná Bash trap na signály \texttt{EXIT}, \texttt{INT} a \texttt{TERM}: \texttt{cleanup()} zabije \texttt{teleop\_twist\_keyboard} aj motorový uzol (uložené PID v premennej \texttt{WAVER\_PID}) a počká na ich ukončenie -- robot tak nezostane nekontrolovateľne pohybovať sa po prerušení SSH spojenia alebo Ctrl+C.
 
+\subsection*{Integrita súborového systému pri výpadku napájania, kontajnery a súvis so zadaním}
+\label{sec:fs-ro-fit}
+
+Oficiálne zadanie bakalárskej práce (formulácia v češtine) okrem iného uvádza:
+\begin{quote}
+\textit{Posledním problémem k řešení je zajistit, aby při vypnutí RPi (bez regulérního shutdownu) nedošlo k porušení integrity filesystemu (read-only fs plus vhodné použití kontejneru), případně hardwarově zajistit regulérní shutdown při požadavku na vypnutí.}
+\end{quote}
+
+\paragraph{Regulérny shutdown na požiadanie.}
+Túto časť zadania adresuje \textbf{softvér} v tomto projekte: služba \texttt{/waverower/shutdown} (uzol \texttt{robot\_mode\_switch}, sek.~\ref{sec:mode-switch}; ovládanie z Web UI vyššie) po krátkom oneskorení zavolá \texttt{sudo systemctl poweroff}, čo predstavuje \textbf{regulérny shutdown} operačného systému, ak ho operátor použije pred odpojením napájania. Hardvérové riešenie (UPS, GPIO tlačidlo, HAT s riadením napájania) v repozitári nie je implementované; slovo \emph{případně} ho ponecháva ako voliteľné rozšírenie.
+
+\paragraph{Read-only súborový systém a náhle vypnutie.}
+Ochrana integrity koreňového súborového systému pri úplnom výpadku napätia (bez shutdownu) sa v praxi rieši \textbf{konfiguráciou OS} na Raspberry Pi (napr.\ režim Overlay v Raspberry Pi OS, prípadne obdobné opatrenie na Ubuntu), nie zdrojovým kódom uzlov ROS\,2. Bez takejto konfigurácie zostáva riziko poškodenia oddielu pri odpojení kábla; používanie regulérneho vypnutia ho znižuje, ale nenahrádza read-only ani overlay. Podrobný návod, tabuľka možností a mapovanie jednotlivých viet zadania na riešenie sú v súbore \texttt{waverower/docs/fs-a-kontejnery.md} v balíku \texttt{waverower}; po \texttt{colcon build} a inštalácii je k dispozícii aj pod \texttt{install/share/waverower/docs/}.
+
+\paragraph{Kontajnery (Docker / Podman).}
+ROS\,2 stack na robote s prístupom k I\textsuperscript{2}C (Motor HAT), USB sériovým rozhraniam (LiDAR, IMU) a kamere je v projekte prevádzkovaný \textbf{natívne}. Kontajnery sú pre túto platformu vhodnejšie napr.\ na vývojársky počítač (oficiálne obrazy ROS) alebo voliteľné izolované služby; nie sú povinnou formou nasadenia na RPi. Tým je splnený zmysel požiadavky na \emph{vhodné použití kontejneru} vo forme \textbf{odôvodnenej voľby} prostredia (Pi\,=\,natívne beh, PC\,=\,voliteľné kontajnery), nie nutne beh celého stacku v kontajneri na robotovi.
+
+\paragraph{Zhrnutie pre obhajobu.}
+Splnenie tejto časti zadania spočíva v kombinácii: \,(1)~aplikovaná stratégia read-only/overlay \textbf{na cieľovom Raspberry Pi} (mimo samotného git repozitára) a jej stručný popis v texte práce; \,(2)~uvedená argumentácia kontajnerov; \,(3)~regulérne vypnutie cez \texttt{/waverower/shutdown} a overené právo spustiť \texttt{poweroff} (napr.\ \texttt{sudoers}).
+
 \subsection*{Prepojenie s mapovaním (SLAM)}
 
 Pre režim SLAM (\texttt{slam.launch.py}) sa okrem vyššie uvedených uzlov spúšťa \texttt{slam\_toolbox} s parametrami z \texttt{slam.yaml}; voliteľne \texttt{robot\_localization} (EKF) podľa \texttt{ekf.yaml}. Tu LiDAR slúži na \textbf{celý $360^\circ$ scan} pre výstavbu mapy, zatiaľ čo logika \texttt{lidar\_wander} používa ten istý \texttt{/scan}, ale len agregáciu do troch sektorov pre rozhodovanie o smere -- ide o \textbf{dva rôzne účely} jedného senzorového toku.
