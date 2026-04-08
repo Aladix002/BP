@@ -31,6 +31,10 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
 
   // Režim: "manual" počúva /teleop_cmd_vel, "auto" počúva /cmd_vel
   declare_parameter<std::string>("control_mode", "manual");
+  // Zdroj manuálneho riadenia:
+  // imu          -> /teleop_cmd_vel
+  // optical_flow -> /teleop_cmd_vel_corrected
+  declare_parameter<std::string>("correction_mode", "imu");
 
   // Manuálny režim – normalizácia teleopu
   // Nastav teleop_max_linear na maximálnu rýchlosť ktorú teleop_twist_keyboard posiela
@@ -65,6 +69,10 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   sub_teleop_ = create_subscription<geometry_msgs::msg::Twist>(
       "teleop_cmd_vel", rclcpp::QoS(10),
       std::bind(&DriveNode::teleop_cb, this, std::placeholders::_1));
+
+  sub_teleop_corrected_ = create_subscription<geometry_msgs::msg::Twist>(
+      "teleop_cmd_vel_corrected", rclcpp::QoS(10),
+      std::bind(&DriveNode::teleop_corrected_cb, this, std::placeholders::_1));
 
   sub_cmd_ = create_subscription<geometry_msgs::msg::Twist>(
       "cmd_vel", rclcpp::QoS(10),
@@ -130,12 +138,22 @@ uint16_t DriveNode::to_duty(double cmd) const {
 // ---------------------------------------------------------------------------
 void DriveNode::teleop_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   if (get_parameter("control_mode").as_string() != "manual") return;
+  if (get_parameter("correction_mode").as_string() == "optical_flow") return;
+  apply_manual_twist(*msg);
+}
 
+void DriveNode::teleop_corrected_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
+  if (get_parameter("control_mode").as_string() != "manual") return;
+  if (get_parameter("correction_mode").as_string() != "optical_flow") return;
+  apply_manual_twist(*msg);
+}
+
+void DriveNode::apply_manual_twist(const geometry_msgs::msg::Twist& msg) {
   const double max_lin = std::max(get_parameter("teleop_max_linear").as_double(),  0.01);
   const double max_ang = std::max(get_parameter("teleop_max_angular").as_double(), 0.01);
 
-  const double lx = get_parameter("invert_linear").as_bool()  ? -msg->linear.x  : msg->linear.x;
-  const double az = get_parameter("invert_angular").as_bool() ? -msg->angular.z : msg->angular.z;
+  const double lx = get_parameter("invert_linear").as_bool()  ? -msg.linear.x  : msg.linear.x;
+  const double az = get_parameter("invert_angular").as_bool() ? -msg.angular.z : msg.angular.z;
 
   const double fb = std::clamp(lx / max_lin, -1.0, 1.0);
   const double tr = std::clamp(az / max_ang, -1.0, 1.0);

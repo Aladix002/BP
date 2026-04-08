@@ -26,12 +26,15 @@ private:
 
   void timer_cb();
   void teleop_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void teleop_corrected_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
   void imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg);
+  void apply_manual_twist(const geometry_msgs::msg::Twist& msg);
 
   std::unique_ptr<Pca9685> hat_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_teleop_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_teleop_corrected_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_debug_;

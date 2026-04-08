@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Prepinanie manual <-> wander (parametre motor_hat_node, lidar_wander_node)."""
 
+import subprocess
+import threading
 import time
 
 import rclpy
@@ -36,8 +38,12 @@ class RobotModeSwitch(Node):
             Trigger, "/waverower/switch_to_wander", self._on_wander,
             callback_group=self._cb_group,
         )
+        self._srv_shutdown = self.create_service(
+            Trigger, "/waverower/shutdown", self._on_shutdown,
+            callback_group=self._cb_group,
+        )
         self.get_logger().info(
-            "Sluzby: /waverower/switch_to_manual, /waverower/switch_to_wander"
+            "Sluzby: /waverower/switch_to_manual, /waverower/switch_to_wander, /waverower/shutdown"
         )
 
     def _wait_clients(self) -> bool:
@@ -115,6 +121,15 @@ class RobotModeSwitch(Node):
         )
         resp.success = ok
         resp.message = "wander" if ok else "set_parameters failed"
+        return resp
+
+
+    def _on_shutdown(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
+        self.get_logger().info("Shutdown requested via /waverower/shutdown")
+        resp.success = True
+        resp.message = "Shutting down"
+        # Odpoved odoslana pred vypnutim (1 s delay)
+        threading.Timer(1.0, lambda: subprocess.run(["sudo", "systemctl", "poweroff"], check=False)).start()
         return resp
 
 

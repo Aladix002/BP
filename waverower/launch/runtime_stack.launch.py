@@ -61,8 +61,6 @@ def _opaque(context, *args, **kwargs):
     except PackageNotFoundError:
         have_cam = False
 
-    motor_twist_topic = "/teleop_cmd_vel_corrected" if use_flow else "/teleop_cmd_vel"
-
     wander_cmd_topic = "/cmd_vel"
 
     invert_ang = mode == "manual"
@@ -85,6 +83,7 @@ def _opaque(context, *args, **kwargs):
 
     motor_params = {
         "control_mode":       ctrl,
+        "correction_mode":    correction_mode,
         "i2c_bus":            int(LaunchConfiguration("i2c_bus").perform(context)),
         "i2c_address":        int(LaunchConfiguration("i2c_address").perform(context)),
         # PWM rozsah
@@ -196,10 +195,8 @@ def _opaque(context, *args, **kwargs):
     elif use_camera and not have_cam:
         actions.append(LogInfo(msg="use_camera:=true vyzaduje balik camera_ros."))
 
-    if use_flow:
-        if not (have_cam and use_camera):
-            actions.append(LogInfo(msg="correction_mode:=optical_flow vyzaduje use_camera:=true a camera_ros."))
-        elif flow_algo == "lk":
+    if have_cam and use_camera:
+        if flow_algo == "lk":
             actions.append(
                 Node(
                     package="waverower",
@@ -207,8 +204,9 @@ def _opaque(context, *args, **kwargs):
                     name="optical_flow_node",
                     output="screen",
                     parameters=[{
-                        "correction_gain": 1.5,
-                        "max_correction": 0.3,
+                        "enabled": use_flow,
+                        "correction_gain": 2.4,
+                        "max_correction": 0.45,
                         "forward_threshold": 0.05,
                         "steer_deadzone": 0.12,
                         "min_features": 15,
@@ -226,8 +224,9 @@ def _opaque(context, *args, **kwargs):
                     name="optical_flow_node",
                     output="screen",
                     parameters=[{
-                        "correction_gain": 1.5,
-                        "max_correction": 0.3,
+                        "enabled": use_flow,
+                        "correction_gain": 2.4,
+                        "max_correction": 0.45,
                         "forward_threshold": 0.05,
                         "steer_deadzone": 0.12,
                         "image_topic": "/camera/camera_node/image_raw/compressed",
@@ -236,6 +235,8 @@ def _opaque(context, *args, **kwargs):
                     }],
                 )
             )
+    elif use_flow:
+        actions.append(LogInfo(msg="correction_mode:=optical_flow vyzaduje use_camera:=true a camera_ros."))
 
     if use_teleop:
         actions.append(

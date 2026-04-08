@@ -14,16 +14,16 @@ const IMU_DBG_TOPIC  = "/motor_hat_node/drive_debug";
 const IMU_DBG_TYPE   = "std_msgs/msg/Float64MultiArray";
 const MOTOR_NODE     = "/motor_hat_node";
 const WANDER_NODE    = "/lidar_wander_node";
+const OPTICAL_NODE   = "/optical_flow_node";
 // Teleop publish rate (vyššie = hladšie ovládanie; zvyšuje traffic cez rosbridge)
 const PUBLISH_HZ     = 30;
 // Plna skala: 0..100% z toho, co ma motor_hat_node ako teleop_max_* (fetch pri connect).
 const SLIDER_SCALE   = { min: 0.0, max: 1.0, step: 0.01 };
-const TURN_LIN_RATIO = 2.0;
 // Zhoda s waverower/launch/runtime_stack.launch.py (WANDER_TURN_RATIO)
 const WANDER_TURN_RATIO = 18.0;
 
 const IMU_DEFAULTS = {
-  imu_correction: false,
+  imu_correction: true,
   imu_kp:         0.30,
   imu_ki:         0.05,
   imu_kd:         0.01,
@@ -59,6 +59,11 @@ const rosSetParams = (ros, node, parameters) =>
   new Promise((ok, err) =>
     new ROSLIB.Service({ ros, name: `${node}/set_parameters`, serviceType: "rcl_interfaces/srv/SetParameters" })
       .callService(new ROSLIB.ServiceRequest({ parameters }), ok, err));
+
+const rosTrigger = (ros, service) =>
+  new Promise((ok, err) =>
+    new ROSLIB.Service({ ros, name: service, serviceType: "std_srvs/srv/Trigger" })
+      .callService(new ROSLIB.ServiceRequest({}), ok, err));
 
 // ─── Hook: useRos ─────────────────────────────────────────────────────────────
 function useRos() {
@@ -117,7 +122,24 @@ function Header({ connected }) {
 }
 
 // ─── ConnectionCard ───────────────────────────────────────────────────────────
-function ConnectionCard({ wsUrl, setWsUrl, connected, connect, disconnect }) {
+function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }) {
+  const [shutdownBusy, setShutdownBusy] = useState(false);
+  const [shutdownMsg,  setShutdownMsg]  = useState("");
+
+  async function requestShutdown() {
+    if (!connected || shutdownBusy) return;
+    if (!window.confirm("Vypnúť Raspberry Pi? (sudo systemctl poweroff)")) return;
+    setShutdownBusy(true); setShutdownMsg("Vypínam…");
+    try {
+      const r = await rosTrigger(ros, "/waverower/shutdown");
+      setShutdownMsg(r?.success ? "Vypínanie…" : ("Chyba: " + (r?.message || "?")));
+    } catch (e) {
+      setShutdownMsg("Chyba: " + e);
+    } finally {
+      setShutdownBusy(false);
+    }
+  }
+
   return (
     <Card className="p-3">
       <SectionLabel>WebSocket</SectionLabel>
@@ -144,8 +166,21 @@ function ConnectionCard({ wsUrl, setWsUrl, connected, connect, disconnect }) {
             className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300
                        border border-slate-700 hover:bg-slate-700 active:scale-95 transition-all touch-manipulation"
           >Disconnect</button>
+          <button
+            onClick={requestShutdown}
+            disabled={!connected || shutdownBusy}
+            title="Regulárny shutdown RPi (systemctl poweroff)"
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-900/60 text-red-400
+                       border border-red-800/50 hover:bg-red-900 active:scale-95 disabled:opacity-40
+                       transition-all touch-manipulation"
+          >{shutdownBusy ? "…" : "Shutdown"}</button>
         </div>
       </div>
+      {shutdownMsg && (
+        <p className={`mt-1.5 text-xs ${shutdownMsg.startsWith("Chyba") ? "text-red-400" : "text-amber-400"}`}>
+          {shutdownMsg}
+        </p>
+      )}
     </Card>
   );
 }
@@ -290,11 +325,17 @@ function CameraPanel({ ros, connected }) {
 
 // ─── DrivePanel ───────────────────────────────────────────────────────────────
 function DrivePanel({ ros, connected }) {
-  const [speedScale, setSpeedScale] = useState(() => {
-    const v = parseFloat(localStorage.getItem("waverower_web_speed_scale"));
+  const [linScale, setLinScale] = useState(() => {
+    const v = parseFloat(localStorage.getItem("waverower_web_speed_scale_lin"));
     return Number.isFinite(v)
       ? snap(clamp(v, SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step)
       : 0.5;
+  });
+  const [angScale, setAngScale] = useState(() => {
+    const v = parseFloat(localStorage.getItem("waverower_web_speed_scale_ang"));
+    return Number.isFinite(v)
+      ? snap(clamp(v, SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step)
+      : 0.45;
   });
   /** Musi sediet s /motor_hat_node teleop_max_* — inak sa skala „zasekne“ (napr. max uz pri 50 %). */
   const [teleopMax, setTeleopMax] = useState({ lin: 0.5, ang: 1.8 });
@@ -302,9 +343,11 @@ function DrivePanel({ ros, connected }) {
   const twistRef    = useRef({ linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } });
   const pubRef      = useRef(null);
   const cmdRef      = useRef(null);
-  const scaleRef    = useRef(speedScale);
+  const linScaleRef = useRef(linScale);
+  const angScaleRef = useRef(angScale);
   const syncRef     = useRef(null);
-  scaleRef.current = speedScale;
+  linScaleRef.current = linScale;
+  angScaleRef.current = angScale;
   teleopMaxRef.current = teleopMax;
 
   useEffect(() => {
@@ -350,7 +393,7 @@ function DrivePanel({ ros, connected }) {
     if (syncRef.current) clearTimeout(syncRef.current);
     syncRef.current = setTimeout(async () => {
       try {
-        const wanderFwd = scaleRef.current * teleopMaxRef.current.lin;
+        const wanderFwd = linScaleRef.current * teleopMaxRef.current.lin;
         const wanderTurn = wanderFwd * WANDER_TURN_RATIO;
         await rosSetParams(ros, WANDER_NODE, [
           makeParam("forward_speed", wanderFwd),
@@ -367,7 +410,7 @@ function DrivePanel({ ros, connected }) {
         syncRef.current = null;
       }
     };
-  }, [speedScale, ros, connected, teleopMax.lin, teleopMax.ang]);
+  }, [linScale, ros, connected, teleopMax.lin, teleopMax.ang]);
 
   const stop = () => {
     twistRef.current = { linear: { x:0,y:0,z:0 }, angular: { x:0,y:0,z:0 } };
@@ -375,10 +418,9 @@ function DrivePanel({ ros, connected }) {
   };
 
   const drive = (lx, az) => {
-    const s = scaleRef.current;
     const { lin: maxL, ang: maxA } = teleopMaxRef.current;
-    const lin = s * maxL;
-    const ang = s * maxA;
+    const lin = linScaleRef.current * maxL;
+    const ang = angScaleRef.current * maxA;
     twistRef.current = {
       linear:  { x: lx * lin, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: az * ang },
@@ -399,15 +441,21 @@ function DrivePanel({ ros, connected }) {
     >{children}</button>
   );
 
-  const onSlider = e => {
+  const onLinSlider = e => {
     const v = snap(clamp(parseFloat(e.target.value), SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step);
-    setSpeedScale(v);
-    localStorage.setItem("waverower_web_speed_scale", String(v));
+    setLinScale(v);
+    localStorage.setItem("waverower_web_speed_scale_lin", String(v));
+  };
+  const onAngSlider = e => {
+    const v = snap(clamp(parseFloat(e.target.value), SLIDER_SCALE.min, SLIDER_SCALE.max), SLIDER_SCALE.step);
+    setAngScale(v);
+    localStorage.setItem("waverower_web_speed_scale_ang", String(v));
   };
 
-  const maxLin = speedScale * teleopMax.lin;
-  const maxAng = speedScale * teleopMax.ang;
-  const speedPct = Math.round(speedScale * 100);
+  const maxLin = linScale * teleopMax.lin;
+  const maxAng = angScale * teleopMax.ang;
+  const linPct = Math.round(linScale * 100);
+  const angPct = Math.round(angScale * 100);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-lg shadow-black/40 flex flex-col">
@@ -430,11 +478,19 @@ function DrivePanel({ ros, connected }) {
       <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Speed scale</span>
-            <span className="text-xs font-semibold text-blue-400 tabular-nums">{speedPct}%</span>
+            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Linear scale</span>
+            <span className="text-xs font-semibold text-blue-400 tabular-nums">{linPct}%</span>
           </div>
           <input type="range" min={SLIDER_SCALE.min} max={SLIDER_SCALE.max} step={SLIDER_SCALE.step}
-            value={speedScale} onChange={onSlider} className="w-full" />
+            value={linScale} onChange={onLinSlider} className="w-full" />
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Angular scale</span>
+            <span className="text-xs font-semibold text-blue-400 tabular-nums">{angPct}%</span>
+          </div>
+          <input type="range" min={SLIDER_SCALE.min} max={SLIDER_SCALE.max} step={SLIDER_SCALE.step}
+            value={angScale} onChange={onAngSlider} className="w-full" />
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[0.6rem] font-bold uppercase tracking-wider text-slate-500">Effective <span className="normal-case font-normal">lin/ang</span></span>
@@ -459,8 +515,10 @@ function ImuPanel({ ros, connected }) {
   const dbgSubRef         = useRef(null);
 
   const [pid, setPid]               = useState({ ...IMU_DEFAULTS });
+  const [correctionMode, setCorrectionMode] = useState("imu");
   const [fetchMsg, setFetchMsg]     = useState("");
   const [applyMsg, setApplyMsg]     = useState("");
+  const [modeBusy, setModeBusy]     = useState(false);
   const [fetchBusy, setFetchBusy]   = useState(false);
   const [applyBusy, setApplyBusy]   = useState(false);
 
@@ -510,13 +568,17 @@ function ImuPanel({ ros, connected }) {
     if (!connected || fetchBusy) return;
     setFetchBusy(true); setFetchMsg("Fetching…"); setApplyMsg("");
     try {
-      const names = Object.keys(IMU_DEFAULTS);
+      const names = Object.keys(IMU_DEFAULTS).concat(["correction_mode"]);
       const r = await rosGetParams(ros, MOTOR_NODE, names);
       if (!r?.values) throw new Error("No response");
       const upd = { ...pid };
       names.forEach((name, i) => {
         const v = r.values[i];
         if (!v) return;
+        if (name === "correction_mode" && v.type === PTYPE_STRING) {
+          setCorrectionMode(v.string_value === "optical_flow" ? "optical_flow" : "imu");
+          return;
+        }
         if (v.type === PTYPE_BOOL)   upd[name] = v.bool_value;
         if (v.type === PTYPE_DOUBLE) upd[name] = v.double_value;
       });
@@ -534,6 +596,40 @@ function ImuPanel({ ros, connected }) {
       setApplyMsg(r?.results?.every(x => x.successful) ? "Applied OK" : "Partial error");
     } catch (e) { setApplyMsg("Error: " + (e.message ?? e)); }
     finally { setApplyBusy(false); }
+  }
+
+  async function switchCorrectionMode(nextMode) {
+    if (!connected || modeBusy || nextMode === correctionMode) return;
+    setModeBusy(true); setApplyMsg("Switching mode…"); setFetchMsg("");
+    try {
+      const enableImu = nextMode === "imu";
+      const motorRes = await rosSetParams(ros, MOTOR_NODE, [
+        makeStringParam("correction_mode", nextMode),
+        makeParam("imu_correction", enableImu),
+      ]);
+      if (!motorRes?.results?.every(x => x.successful)) {
+        const why = motorRes?.results?.find(r => !r.successful)?.reason || "motor set_parameters failed";
+        throw new Error(why);
+      }
+
+      try {
+        const flowRes = await rosSetParams(ros, OPTICAL_NODE, [makeParam("enabled", !enableImu)]);
+        if (!flowRes?.results?.every(x => x.successful)) {
+          const why = flowRes?.results?.find(r => !r.successful)?.reason || "optical flow set_parameters failed";
+          throw new Error(why);
+        }
+      } catch (e) {
+        if (!enableImu) throw e;
+      }
+
+      setCorrectionMode(nextMode);
+      setPid(p => ({ ...p, imu_correction: enableImu }));
+      setApplyMsg(nextMode === "imu" ? "IMU correction active" : "Optical flow active");
+    } catch (e) {
+      setApplyMsg("Error: " + (e.message ?? e));
+    } finally {
+      setModeBusy(false);
+    }
   }
 
   const ST_STYLE = {
@@ -637,22 +733,24 @@ function ImuPanel({ ros, connected }) {
       {/* PID header */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-500">PID Parameters</span>
-        {/* Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <span className="text-sm text-slate-300">IMU Correction</span>
-          <div className="relative w-9 h-5 shrink-0">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={pid.imu_correction}
-              onChange={e => setPid(p => ({ ...p, imu_correction: e.target.checked }))}
-            />
-            <div className="absolute inset-0 rounded-full bg-slate-700 border border-slate-600 transition-all
-                            peer-checked:bg-emerald-950/60 peer-checked:border-emerald-500" />
-            <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-slate-400 pointer-events-none
-                            transition-transform peer-checked:translate-x-4 peer-checked:bg-emerald-400" />
-          </div>
-        </label>
+        <div className="flex rounded-lg overflow-hidden border border-slate-700 shrink-0">
+          {[
+            ["imu", "IMU"],
+            ["optical_flow", "Optical Flow"],
+          ].map(([key, label], i) => (
+            <button
+              key={key}
+              onClick={() => switchCorrectionMode(key)}
+              disabled={!connected || modeBusy}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors touch-manipulation disabled:opacity-40
+                ${i > 0 ? "border-l border-slate-700" : ""}
+                ${correctionMode === key
+                  ? "bg-emerald-950/60 text-emerald-400"
+                  : "bg-slate-800/50 text-slate-400 hover:bg-slate-800"
+                }`}
+            >{label}</button>
+          ))}
+        </div>
       </div>
 
       {/* PID inputs */}
@@ -695,7 +793,7 @@ function App() {
   return (
     <div className="max-w-[960px] mx-auto px-3 sm:px-5 py-4 pb-10">
       <Header connected={connected} />
-      <ConnectionCard wsUrl={wsUrl} setWsUrl={setWsUrl} connected={connected} connect={connect} disconnect={disconnect} />
+      <ConnectionCard ros={ros} wsUrl={wsUrl} setWsUrl={setWsUrl} connected={connected} connect={connect} disconnect={disconnect} />
       <ModeCard ros={ros} connected={connected} />
       <div className="grid grid-cols-2 gap-2 mb-2">
         <CameraPanel ros={ros} connected={connected} />

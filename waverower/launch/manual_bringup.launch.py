@@ -23,8 +23,9 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 # camera_ros: jednotné rozlíšenie vo všetkých bringupoch (manual / runtime / ball follow)
 CAMERA_WIDTH = 320
@@ -35,6 +36,7 @@ CAMERA_FORMAT = "XRGB8888"
 def _slam_stack(context, *args, **kwargs):
     use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
     use_lidar = LaunchConfiguration("use_lidar").perform(context) == "true"
+    use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom").perform(context) == "true"
     if not use_slam:
         return []
     pkg = get_package_share_directory("waverower")
@@ -52,7 +54,7 @@ def _slam_stack(context, *args, **kwargs):
             ),
         ]
     actions = []
-    if not use_ekf:
+    if not use_ekf and not use_cmd_vel_odom:
         actions.append(
             Node(
                 package="tf2_ros",
@@ -126,12 +128,15 @@ def _slam_stack(context, *args, **kwargs):
 def generate_launch_description():
     use_camera = LaunchConfiguration("use_camera")
     camera_id = LaunchConfiguration("camera_id")
+    use_robot_model = LaunchConfiguration("use_robot_model")
+    robot_model_file = LaunchConfiguration("robot_model_file")
     use_imu    = LaunchConfiguration("use_imu")
     use_imu_kalman = LaunchConfiguration("use_imu_kalman")
     use_lidar  = LaunchConfiguration("use_lidar")
     use_teleop = LaunchConfiguration("use_teleop")
     correction_mode = LaunchConfiguration("correction_mode")
     use_ball_follow = LaunchConfiguration("use_ball_follow")
+    use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom")
     teleop_max_linear = LaunchConfiguration("teleop_max_linear")
     teleop_max_angular = LaunchConfiguration("teleop_max_angular")
 
@@ -182,6 +187,53 @@ def generate_launch_description():
             )
         ]
 
+    try:
+        waver_sim_share = get_package_share_directory("waver_sim")
+        have_waver_sim = True
+    except PackageNotFoundError:
+        waver_sim_share = ""
+        have_waver_sim = False
+
+    robot_model_stack = []
+    if have_waver_sim:
+        default_robot_model = os.path.join(waver_sim_share, "description", "robot.urdf.xacro")
+        robot_description = ParameterValue(
+            Command(["xacro ", robot_model_file]),
+            value_type=str,
+        )
+        robot_model_stack = [
+            DeclareLaunchArgument(
+                "robot_model_file",
+                default_value=default_robot_model,
+                description="cesta k URDF/Xacro modelu robota pre robot_state_publisher",
+            ),
+            Node(
+                package="robot_state_publisher",
+                executable="robot_state_publisher",
+                name="robot_state_publisher",
+                output="screen",
+                condition=IfCondition(use_robot_model),
+                parameters=[{
+                    "robot_description": robot_description,
+                }],
+            ),
+        ]
+    else:
+        robot_model_stack = [
+            DeclareLaunchArgument(
+                "robot_model_file",
+                default_value="",
+                description="cesta k URDF/Xacro modelu robota pre robot_state_publisher",
+            ),
+            LogInfo(
+                condition=IfCondition(use_robot_model),
+                msg=(
+                    "use_robot_model:=true vyzaduje nainstalovany balik waver_sim "
+                    "(obsahuje robot.urdf.xacro)."
+                ),
+            ),
+        ]
+
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
 
     motor_twist_topic = "/teleop_cmd_vel"
@@ -200,9 +252,19 @@ def generate_launch_description():
                 description="camera parameter pre camera_ros: index alebo /dev/video0",
             ),
             DeclareLaunchArgument(
+                "use_robot_model",
+                default_value="true",
+                description="spusti robot_state_publisher a publikuj robot_description",
+            ),
+            DeclareLaunchArgument(
                 "use_imu",
                 default_value="false",
                 description="Arduino USB -> imu_serial_fusion_bridge (CSV 15/20 poli) -> /imu",
+            ),
+            DeclareLaunchArgument(
+                "use_cmd_vel_odom",
+                default_value="true",
+                description="fallback odometria z /teleop_cmd_vel (odom->base_link) pre RViz pohyb modelu",
             ),
             DeclareLaunchArgument("imu_serial_port", default_value="/dev/serial/by-id/usb-Arduino_Nano_R4_3501110A36313236694133344B573230-if00"),
             DeclareLaunchArgument("imu_baud_rate", default_value="115200"),
@@ -340,6 +402,24 @@ def generate_launch_description():
             ),
             Node(
                 package="waverower",
+                executable="cmd_vel_odom.py",
+                name="cmd_vel_odom",
+                output="screen",
+                condition=IfCondition(use_cmd_vel_odom),
+                parameters=[
+                    {
+                        "cmd_topic": "/teleop_cmd_vel",
+                        "odom_topic": "/odom",
+                        "odom_frame": "odom",
+                        "base_frame": "base_link",
+                        "publish_tf": True,
+                        "timeout_sec": 0.4,
+                        "update_rate_hz": 30.0,
+                    }
+                ],
+            ),
+            Node(
+                package="waverower",
                 executable="imu_kalman_filter.py",
                 name="imu_kalman_filter",
                 output="screen",
@@ -353,6 +433,7 @@ def generate_launch_description():
             ),
             lidar_include,
             *camera_stack,
+            *robot_model_stack,
             OpaqueFunction(function=_slam_stack),
         ]
     )

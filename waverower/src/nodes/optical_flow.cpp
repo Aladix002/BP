@@ -11,6 +11,7 @@ OpticalFlowNode::OpticalFlowNode() : Node("optical_flow_node") {
     declare_parameter<double>("forward_threshold", 0.05);
     declare_parameter<double>("steer_deadzone",    0.12);
     declare_parameter<int>   ("min_features",      15);
+    declare_parameter<bool>  ("enabled",           false);
     declare_parameter<std::string>("image_topic",  "/camera/camera_node/image_raw/compressed");
     declare_parameter<std::string>("teleop_topic", "/teleop_cmd_vel");
     declare_parameter<std::string>("output_topic", "/teleop_cmd_vel_corrected");
@@ -45,6 +46,13 @@ OpticalFlowNode::OpticalFlowNode() : Node("optical_flow_node") {
 }
 
 void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPtr msg) {
+    if (!get_parameter("enabled").as_bool()) {
+        std::lock_guard<std::mutex> lock(mu_);
+        prev_gray_.release();
+        flow_correction_ = 0.0;
+        return;
+    }
+
     // JPEG decode
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_GRAYSCALE);
     if (frame.empty()) return;
@@ -110,6 +118,11 @@ void OpticalFlowNode::timer_cb() {
         std::lock_guard<std::mutex> lock(mu_);
         out = latest_teleop_;
         correction = flow_correction_;
+    }
+
+    if (!get_parameter("enabled").as_bool()) {
+        pub_cmd_->publish(out);
+        return;
     }
 
     // korekcia len pri jazde vpred, bez aktivneho zatacania
