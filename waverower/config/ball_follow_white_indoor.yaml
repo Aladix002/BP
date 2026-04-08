@@ -14,12 +14,12 @@
     min_radius_px: 10.0
     max_radius_px: 145.0
     stop_radius_px: 50.0
-    min_circularity: 0.84
+    min_circularity: 0.76
     max_contour_area_ratio: 0.12
     max_bbox_aspect_ratio: 1.20
-    min_solidity: 0.90
-    min_fill_ratio: 0.72
-    min_detection_confidence: 0.76
+    min_solidity: 0.84
+    min_fill_ratio: 0.64
+    min_detection_confidence: 0.70
     forward_confirm_sec: 0.0
 
     gaussian_blur_ksize: 11
@@ -31,13 +31,25 @@
     detection_lost_sec: 1.5
     success_hold_ticks: 1
 
-    forward_speed: 0.45
+    forward_speed: 0.72
     forward_speed_scale_after_detect: 1.0
-    angular_speed: 2.20
-    pid_kp: 2.20
+    angular_speed: 2.75
+    pid_kp: 2.45
     pid_ki: 0.01
-    pid_kd: 0.10
+    pid_kd: 0.08
     pid_error_exponent: 0.85
+    cmd_smooth_alpha: 0.36
+    approach_brake_band_px: 14.0
+    approach_turn_blend_min: 0.45
+    use_differential_track_cmd: true
+    wheel_base_cmd: 2.0
+    teleop_max_linear_cmd: 1.0
+    cmd_vel_invert_linear: true
+    differential_side_gain: 1.02
+    differential_mix_max: 0.68
+    min_wheel_forward_norm: 0.12
+    side_error_slowdown_gain: 0.50
+    side_error_slowdown_min: 0.40
     pid_min_turn_abs: 0.18
     pid_radius_ref: 30.0
     pid_radius_scale_min: 1.0

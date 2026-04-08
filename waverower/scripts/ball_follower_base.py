@@ -23,6 +23,11 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Float32
 
 
+def _smoothstep01(t: float) -> float:
+    t = float(np.clip(t, 0.0, 1.0))
+    return t * t * (3.0 - 2.0 * t)
+
+
 class BallFollowerBase(Node):
     def __init__(self) -> None:
         super().__init__("ball_follower")
@@ -37,7 +42,7 @@ class BallFollowerBase(Node):
         self.declare_parameter("orange_s_max", 255)
         self.declare_parameter("orange_v_min", 90)
         self.declare_parameter("orange_v_max", 255)
-        self.declare_parameter("forward_speed", 0.75)
+        self.declare_parameter("forward_speed", 0.72)
         self.declare_parameter("angular_speed", 2.0)
         self.declare_parameter("stop_radius_px", 100.0)
         self.declare_parameter("min_radius_px", 15.0)
@@ -75,6 +80,23 @@ class BallFollowerBase(Node):
         self.declare_parameter("detection_max_center_jump_frac", 0.28)
         self.declare_parameter("jump_reset_lost_sec", 0.45)
         self.declare_parameter("detection_lost_sec", 0.6)
+        # Plynulost: EMA na cmd_vel (0.2–0.45 typicky; 1.0 = bez filtra)
+        self.declare_parameter("cmd_smooth_alpha", 0.30)
+        # Pred dosiahnutim stop_radius: v tomto pásme [px] zmierni dopredu + mierne aj zatocenie
+        self.declare_parameter("approach_brake_band_px", 14.0)
+        # Pri plnom priblizeni (koniec pasma) ostane tato cast otacania (0.35–0.55)
+        self.declare_parameter("approach_turn_blend_min", 0.45)
+        # Diferencial L/R (obe kolesa dopredu) — musi sediet s motorom (drive_node)
+        self.declare_parameter("use_differential_track_cmd", True)
+        self.declare_parameter("wheel_base_cmd", 2.0)
+        self.declare_parameter("teleop_max_linear_cmd", 1.0)
+        self.declare_parameter("cmd_vel_invert_linear", True)
+        self.declare_parameter("differential_side_gain", 0.92)
+        self.declare_parameter("differential_mix_max", 0.58)
+        self.declare_parameter("min_wheel_forward_norm", 0.10)
+        # Pri velkej bocnej chybe zmierni base: gain * |x_err|; min = spodna hranica (vyssie = citatelnejsie)
+        self.declare_parameter("side_error_slowdown_gain", 0.52)
+        self.declare_parameter("side_error_slowdown_min", 0.38)
 
         image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
         cmd_topic   = self.get_parameter("cmd_topic").get_parameter_value().string_value
@@ -111,6 +133,9 @@ class BallFollowerBase(Node):
         self._pid_last_err: float = 0.0
         self._pid_last_tick_time: float | None = None
         self._pid_reset: bool = True  # True = resetni integral pri dalsom TRACK tiku
+        self._cmd_lin_f: float = 0.0
+        self._cmd_ang_f: float = 0.0
+        self._had_fresh_track: bool = False  # predchadzajuci tick mal platnu detekciu
 
         use_be = self.get_parameter("image_use_best_effort_qos").get_parameter_value().bool_value
         qos = rclpy.qos.qos_profile_sensor_data if use_be else QoSProfile(
@@ -457,60 +482,161 @@ class BallFollowerBase(Node):
                     0.10,
                     1.0,
                 ))
-                # Pri vacsej bocnej chybe mierne spomal dopredny pohyb,
-                # aby robot stihol zatocit na loptu namiesto "rovno dopredu".
                 err_abs = float(np.clip(abs(self._last_x_err), 0.0, 1.0))
-                turn_slowdown = float(np.clip(1.0 - 0.85 * err_abs, 0.25, 1.0))
-                cmd.linear.x = -(fwd_spd * fwd_scale * turn_slowdown)
-
-                # PID angular regulacia podla x_err (vzdialenost lopty od stredu)
-                tick_now = time.monotonic()
-                if self._pid_reset or self._pid_last_tick_time is None:
-                    dt = 0.0
-                    self._pid_integral = 0.0
-                    self._pid_last_err = self._last_x_err
-                    self._pid_reset = False
-                else:
-                    dt = tick_now - self._pid_last_tick_time
-                self._pid_last_tick_time = tick_now
-
-                err = self._last_x_err
-                # Nelinearne zosilnenie chyby: male odchylky sa dotocuju raznejsie.
-                exp = float(np.clip(
-                    self.get_parameter("pid_error_exponent").get_parameter_value().double_value,
-                    0.45, 1.2
+                sd_gain = float(np.clip(
+                    self.get_parameter("side_error_slowdown_gain").get_parameter_value().double_value,
+                    0.0,
+                    1.2,
                 ))
-                err_shaped = float(np.sign(err) * (abs(err) ** exp))
-                if dt > 0.0:
-                    self._pid_integral = float(np.clip(
-                        self._pid_integral + err_shaped * dt, -1.0, 1.0
+                sd_min = float(np.clip(
+                    self.get_parameter("side_error_slowdown_min").get_parameter_value().double_value,
+                    0.08,
+                    1.0,
+                ))
+                turn_slowdown = float(np.clip(1.0 - sd_gain * err_abs, sd_min, 1.0))
+                use_diff = self.get_parameter("use_differential_track_cmd").get_parameter_value().bool_value
+
+                if use_diff:
+                    # Obe kolesa dopredu: v_l/v_r v [0,1] ako v drive_node; lopta vpravo (x_err>0) -> vacsie v_r.
+                    base = float(np.clip(fwd_spd * fwd_scale * turn_slowdown, 0.08, 1.0))
+                    exp = float(np.clip(
+                        self.get_parameter("pid_error_exponent").get_parameter_value().double_value,
+                        0.45,
+                        1.2,
                     ))
-                    d_err = (err_shaped - self._pid_last_err) / dt
+                    err_raw = self._last_x_err
+                    err_shaped = float(np.sign(err_raw) * (abs(err_raw) ** exp))
+                    sg = float(np.clip(
+                        self.get_parameter("differential_side_gain").get_parameter_value().double_value,
+                        0.0,
+                        2.5,
+                    ))
+                    mm = float(np.clip(
+                        self.get_parameter("differential_mix_max").get_parameter_value().double_value,
+                        0.05,
+                        0.85,
+                    ))
+                    mix = float(np.clip(sg * err_shaped, -mm, mm))
+                    v_ln = base * (1.0 - mix)
+                    v_rn = base * (1.0 + mix)
+                    mwf = float(np.clip(
+                        self.get_parameter("min_wheel_forward_norm").get_parameter_value().double_value,
+                        0.0,
+                        0.5,
+                    ))
+                    mn = min(v_ln, v_rn)
+                    if mn < mwf:
+                        dlt = mwf - mn
+                        v_ln += dlt
+                        v_rn += dlt
+                    mxw = max(v_ln, v_rn)
+                    if mxw > 1.0:
+                        s = 1.0 / mxw
+                        v_ln *= s
+                        v_rn *= s
+
+                    state = "TRACK"
+                    brake_band = max(0.0, self.get_parameter("approach_brake_band_px").get_parameter_value().double_value)
+                    if stop_r > 0.0 and brake_band > 0.0 and self._last_radius < stop_r:
+                        low = stop_r - brake_band
+                        if self._last_radius >= low:
+                            t = (self._last_radius - low) / brake_band
+                            sm = _smoothstep01(t)
+                            blend_lin = 1.0 - sm
+                            tmin = float(np.clip(
+                                self.get_parameter("approach_turn_blend_min").get_parameter_value().double_value,
+                                0.15,
+                                1.0,
+                            ))
+                            blend_ang = tmin + (1.0 - tmin) * (1.0 - sm)
+                            v_ln *= blend_lin
+                            v_rn *= blend_lin
+                            vm = 0.5 * (v_ln + v_rn)
+                            vd = 0.5 * (v_ln - v_rn)
+                            vd *= blend_ang
+                            v_ln = vm + vd
+                            v_rn = vm - vd
+                            state = "APPROACH"
+
+                    max_v = max(0.05, self.get_parameter("teleop_max_linear_cmd").get_parameter_value().double_value)
+                    wb = max(0.05, self.get_parameter("wheel_base_cmd").get_parameter_value().double_value)
+                    invert_lin = self.get_parameter("cmd_vel_invert_linear").get_parameter_value().bool_value
+                    v_c = max_v * (v_ln + v_rn) * 0.5
+                    w_c = max_v * (v_rn - v_ln) / wb
+                    cmd.linear.x = -v_c if invert_lin else v_c
+                    cmd.angular.z = w_c
+                    self._pid_reset = True
                 else:
-                    d_err = 0.0
-                self._pid_last_err = err_shaped
+                    cmd.linear.x = -(fwd_spd * fwd_scale * turn_slowdown)
+                    tick_now = time.monotonic()
+                    if self._pid_reset or self._pid_last_tick_time is None:
+                        dt = 0.0
+                        self._pid_integral = 0.0
+                        self._pid_last_err = self._last_x_err
+                        self._pid_reset = False
+                    else:
+                        dt = tick_now - self._pid_last_tick_time
+                    self._pid_last_tick_time = tick_now
 
-                kp = self.get_parameter("pid_kp").get_parameter_value().double_value
-                ki = self.get_parameter("pid_ki").get_parameter_value().double_value
-                kd = self.get_parameter("pid_kd").get_parameter_value().double_value
+                    err = self._last_x_err
+                    exp = float(np.clip(
+                        self.get_parameter("pid_error_exponent").get_parameter_value().double_value,
+                        0.45,
+                        1.2,
+                    ))
+                    err_shaped = float(np.sign(err) * (abs(err) ** exp))
+                    if dt > 0.0:
+                        self._pid_integral = float(np.clip(
+                            self._pid_integral + err_shaped * dt, -1.0, 1.0
+                        ))
+                        d_err = (err_shaped - self._pid_last_err) / dt
+                    else:
+                        d_err = 0.0
+                    self._pid_last_err = err_shaped
 
-                # IBVS adaptivny zisk: vacsí radius = lopta blizko = prudsie zatacanie
-                r_ref  = max(1.0, self.get_parameter("pid_radius_ref").get_parameter_value().double_value)
-                r_smin = self.get_parameter("pid_radius_scale_min").get_parameter_value().double_value
-                r_smax = self.get_parameter("pid_radius_scale_max").get_parameter_value().double_value
-                radius_scale = float(np.clip(self._last_radius / r_ref, r_smin, r_smax))
-                effective_kp = kp * radius_scale
+                    kp = self.get_parameter("pid_kp").get_parameter_value().double_value
+                    ki = self.get_parameter("pid_ki").get_parameter_value().double_value
+                    kd = self.get_parameter("pid_kd").get_parameter_value().double_value
+                    r_ref = max(1.0, self.get_parameter("pid_radius_ref").get_parameter_value().double_value)
+                    r_smin = self.get_parameter("pid_radius_scale_min").get_parameter_value().double_value
+                    r_smax = self.get_parameter("pid_radius_scale_max").get_parameter_value().double_value
+                    radius_scale = float(np.clip(self._last_radius / r_ref, r_smin, r_smax))
+                    effective_kp = kp * radius_scale
+                    pid_out = effective_kp * err_shaped + ki * self._pid_integral + kd * d_err
+                    cmd.angular.z = -float(np.clip(pid_out, -ang_spd, ang_spd))
+                    min_turn_abs = max(0.0, self.get_parameter("pid_min_turn_abs").get_parameter_value().double_value)
+                    if abs(err_shaped) > 0.06 and min_turn_abs > 0.0:
+                        turn_dir = -1.0 if err_shaped > 0 else 1.0
+                        cmd.angular.z = float(
+                            turn_dir * max(abs(cmd.angular.z), min(min_turn_abs, ang_spd))
+                        )
 
-                pid_out = effective_kp * err_shaped + ki * self._pid_integral + kd * d_err
-                cmd.angular.z = float(np.clip(pid_out, -ang_spd, ang_spd))
-                # Pri jasnej odchylke vynut minimalny turn, aby robot nezostal "rovno".
-                min_turn_abs = max(0.0, self.get_parameter("pid_min_turn_abs").get_parameter_value().double_value)
-                if abs(err_shaped) > 0.06 and min_turn_abs > 0.0:
-                    cmd.angular.z = float(np.sign(cmd.angular.z if cmd.angular.z != 0.0 else err_shaped) *
-                                          max(abs(cmd.angular.z), min(min_turn_abs, ang_spd)))
-                state = "TRACK"
+                    brake_band = max(0.0, self.get_parameter("approach_brake_band_px").get_parameter_value().double_value)
+                    if stop_r > 0.0 and brake_band > 0.0 and self._last_radius < stop_r:
+                        low = stop_r - brake_band
+                        if self._last_radius >= low:
+                            t = (self._last_radius - low) / brake_band
+                            sm = _smoothstep01(t)
+                            blend_lin = 1.0 - sm
+                            tmin = float(np.clip(
+                                self.get_parameter("approach_turn_blend_min").get_parameter_value().double_value,
+                                0.15,
+                                1.0,
+                            ))
+                            blend_ang = tmin + (1.0 - tmin) * (1.0 - sm)
+                            cmd.linear.x *= blend_lin
+                            cmd.angular.z *= blend_ang
+                            state = "APPROACH"
+                        else:
+                            state = "TRACK"
+                    else:
+                        state = "TRACK"
             self._prev_radius = self._last_radius
         else:
+            if self._had_fresh_track:
+                self._cmd_lin_f = 0.0
+                self._cmd_ang_f = 0.0
+            self._had_fresh_track = False
             self._seen_streak_start = None
             # Reset PID - loptu sme stratili
             self._pid_reset = True
@@ -536,6 +662,20 @@ class BallFollowerBase(Node):
             if self._burst_spinning:
                 cmd.angular.z = direction * burst_spd
             state = f"{'SEARCH_D' if self._ever_seen else 'SEARCH_R'} {'ON' if self._burst_spinning else 'off'}"
+
+        if fresh:
+            self._had_fresh_track = True
+
+        # EMA na cmd_vel — plynulejsia jazda; po prechode na SEARCH vyssie reset filtrov
+        alpha = float(np.clip(
+            self.get_parameter("cmd_smooth_alpha").get_parameter_value().double_value,
+            0.05,
+            1.0,
+        ))
+        self._cmd_lin_f += alpha * (cmd.linear.x - self._cmd_lin_f)
+        self._cmd_ang_f += alpha * (cmd.angular.z - self._cmd_ang_f)
+        cmd.linear.x = self._cmd_lin_f
+        cmd.angular.z = self._cmd_ang_f
 
         self._pub.publish(cmd)
         self.get_logger().info(
