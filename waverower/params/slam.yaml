@@ -1,3 +1,4 @@
+# slam_toolbox async: mapovanie z /scan, TF map->odom. Hodnoty ladenie pre LD19 + maly robot.
 slam_toolbox:
   ros__parameters:
     solver_plugin: solver_plugins::CeresSolver

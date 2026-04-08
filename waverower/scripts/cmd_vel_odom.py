@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Simple fallback odometry integrator from cmd_vel for manual bringup."""
+# Fiktivna odometria: integruje /teleop_cmd_vel do x,y,yaw a publikuje /odom + TF odom->base_link.
+# Bez enkoderov je to len vizualizacia v RViz, nie pravdiva poloha.
 
 import math
 
@@ -56,12 +57,14 @@ class CmdVelOdom(Node):
 
         cmd_age = (now - self.last_cmd_time).nanoseconds * 1e-9
         if cmd_age > self.timeout_sec:
+            # Ak neprisiel novy prikaz (Wi-Fi lag), netlacime stare velocity do integracie
             vx = 0.0
             wz = 0.0
         else:
             vx = float(self.latest_cmd.linear.x)
             wz = float(self.latest_cmd.angular.z)
 
+        # Jednoduchy unicycle model v 2D (bez slipu kolies)
         self.yaw += wz * dt
         self.x += vx * math.cos(self.yaw) * dt
         self.y += vx * math.sin(self.yaw) * dt

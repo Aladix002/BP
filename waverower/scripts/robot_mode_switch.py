@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Prepinanie manual <-> wander (parametre motor_hat_node, lidar_wander_node)."""
+# Sluzby Trigger na prepnutie rezimu: manual = motor pocuva teleop, wander = motor auto + lidar_wander zapnuty.
+# Pouziva AsyncParameterClient na vzdialene set_parameters (nie ros2 param z CLI).
 
 import subprocess
 import threading
@@ -10,7 +11,6 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-# Jazzy+: AsyncParameterClient; Humble: AsyncParametersClient
 try:
     from rclpy.parameter_client import AsyncParameterClient as _RemoteParamClient
 except ImportError:  # pragma: no cover
@@ -23,10 +23,9 @@ class RobotModeSwitch(Node):
     def __init__(self) -> None:
         super().__init__("robot_mode_switch")
 
-        # ReentrantCallbackGroup: service callback moze cakat na parameter response bez deadlocku
+        # Reentrant: v service callbacku cakame na future z param clienta - default skupina by deadlockla
         self._cb_group = ReentrantCallbackGroup()
 
-        # FQN uzlov
         self._motor = _RemoteParamClient(self, "/motor_hat_node", callback_group=self._cb_group)
         self._wander = _RemoteParamClient(self, "/lidar_wander_node", callback_group=self._cb_group)
 
@@ -47,7 +46,6 @@ class RobotModeSwitch(Node):
         )
 
     def _wait_clients(self) -> bool:
-        # Jazzy: wait_for_services; Humble (AsyncParametersClient): wait_for_service
         if hasattr(self._motor, "wait_for_services"):
             ok_m = self._motor.wait_for_services(timeout_sec=5.0)
             ok_w = self._wander.wait_for_services(timeout_sec=5.0)
@@ -61,7 +59,7 @@ class RobotModeSwitch(Node):
         return ok_m and ok_w
 
     def _wait_future(self, future, timeout_sec: float = 10.0) -> bool:
-        """Busy-wait (volane z ReentrantCallbackGroup)."""
+        # Jednoduche busy wait - executor moze obsluzit ine callbacky v tom istom vlakne
         t0 = time.monotonic()
         while not future.done() and (time.monotonic() - t0) < timeout_sec:
             time.sleep(0.005)
@@ -72,6 +70,7 @@ class RobotModeSwitch(Node):
             resp.success = False
             resp.message = "parameter services not ready"
             return resp
+        # Motor: manual -> /teleop_cmd_vel; wander: vypnut aby nesiel do /cmd_vel sutok s teleopom
         fut_m = self._motor.set_parameters([
             Parameter("control_mode", Parameter.Type.STRING, "manual"),
         ])
@@ -123,12 +122,11 @@ class RobotModeSwitch(Node):
         resp.message = "wander" if ok else "set_parameters failed"
         return resp
 
-
     def _on_shutdown(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
         self.get_logger().info("Shutdown requested via /waverower/shutdown")
         resp.success = True
         resp.message = "Shutting down"
-        # Odpoved odoslana pred vypnutim (1 s delay)
+        # Timer: odpoved sa posle klientovi skor nez systemctl vypne stroj
         threading.Timer(1.0, lambda: subprocess.run(["sudo", "systemctl", "poweroff"], check=False)).start()
         return resp
 
@@ -136,7 +134,7 @@ class RobotModeSwitch(Node):
 def main() -> None:
     rclpy.init()
     node = RobotModeSwitch()
-    # MultiThreadedExecutor kvoli set_parameters z service callbacku
+    # Viac vlakien: service + async param futures naraz
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(node)
     try:

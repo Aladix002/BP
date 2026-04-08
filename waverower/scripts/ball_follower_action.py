@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-"""FollowBall ActionServer - logika ako ball_follower, len pocas goal (cancel = stop).
-
-Podporuje dva rezimy cez goal polia:
-  stop_when_found=True  → SUCCESS hned ako je lopta deteknovana (FindBall faza BT)
-  fail_on_lost_sec>0    → FAILURE ked lopta stratena pocas sledovania (FollowBall faza BT)
-"""
+# Action server FollowBall: rovnaka detekcia ako BallFollowerBase, ale riadenie len pocas aktivneho goal.
+# Cancel = zastav a nuluj cmd_vel. Jeden goal naraz (dalsi REJECT kym bezi execute).
 
 import collections
 import time
@@ -42,7 +38,6 @@ class BallFollowerActionNode(BallFollowerBase):
 
     def _goal_cb(self, goal_request):
         if self._goal_in_progress:
-            # Ak predosly goal handle uz nie je aktivny, resetujeme flag
             if self._active_goal_handle is not None and not self._active_goal_handle.is_active:
                 self.get_logger().warn("Reset staleho _goal_in_progress flagu.")
                 self._goal_in_progress = False
@@ -58,9 +53,9 @@ class BallFollowerActionNode(BallFollowerBase):
         req = goal_handle.request
         self._goal_in_progress = True
         self._active_goal_handle = goal_handle
+        # Base._tick kontroluje tuto flag - ked True, publikuje cmd_vel z PID
         self._following_active = True
 
-        stop_r_override = float(req.stop_radius_px) if hasattr(req, "stop_radius_px") and req.stop_radius_px > 0 else None
         stop_when_found = bool(req.stop_when_found)
         fail_on_lost    = float(req.fail_on_lost_sec)
 
@@ -68,12 +63,11 @@ class BallFollowerActionNode(BallFollowerBase):
         if float(req.max_duration_sec) > 0.0:
             deadline = time.monotonic() + float(req.max_duration_sec)
 
-        # success: aspon success_count_per_sec detekci v okne success_window_sec
+        # Blizko ciela: musi platit N krat v case success_window (anti nahodny flash detekcie)
         success_count  = max(1, int(self.get_parameter("success_hold_ticks").get_parameter_value().integer_value))
-        success_window = 1.0   # [s] okno
+        success_window = 1.0
         close_times: collections.deque = collections.deque()
 
-        # stav pre fail_on_lost
         entered_track    = False
         track_lost_start = None
 
@@ -97,7 +91,7 @@ class BallFollowerActionNode(BallFollowerBase):
                     and (time.monotonic() - self._last_det_time) < lost_timeout
                 )
 
-                # --- FindBall rezim: SUCCESS hned ako lopta videna ---
+                # FindBall (BT prva faza): staci vidiet loptu -> SUCCESS, netreba dojazd
                 if stop_when_found and is_fresh:
                     self._following_active = False
                     self._pub.publish(Twist())
@@ -105,7 +99,7 @@ class BallFollowerActionNode(BallFollowerBase):
                     goal_handle.succeed(res)
                     return res
 
-                # --- FollowBall rezim: FAILURE ked lopta stratena pocas sledovania ---
+                # FollowBall + fail_on_lost: ak sme uz sledovali a lopta zmizela dlhsie ako fail_on_lost -> ABORT
                 if fail_on_lost > 0.0:
                     if is_fresh:
                         entered_track    = True
@@ -120,13 +114,12 @@ class BallFollowerActionNode(BallFollowerBase):
                             goal_handle.abort(res)
                             return res
 
-                # --- Standardny SUCCESS: lopta dost blizko aspon success_count za 1s ---
+                # Normalny koniec: polomer v px >= stop_radius_px drzane success_count-krat v okne 1s
                 if not stop_when_found:
-                    stop_r = stop_r_override or self.get_parameter("stop_radius_px").get_parameter_value().double_value
+                    stop_r = self.get_parameter("stop_radius_px").get_parameter_value().double_value
                     now_t  = time.monotonic()
                     if self._ever_seen and self._last_radius >= stop_r and is_fresh:
                         close_times.append(now_t)
-                    # vyrad stare zaznamy mimo okna
                     while close_times and (now_t - close_times[0]) > success_window:
                         close_times.popleft()
                     if len(close_times) >= success_count:

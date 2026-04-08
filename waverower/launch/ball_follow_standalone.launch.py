@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimalny standalone ball-follow stack: motor + kamera + action + behavior tree (vzdy)."""
+# Minimalny stack len na sledovanie lopty: motor v auto, kamera, FollowBall server, behavior tree runner.
 
 import os
 
@@ -12,15 +12,10 @@ from launch_ros.actions import Node
 
 def _setup(context, *args, **kwargs):
     pkg = get_package_share_directory("waverower")
-    profile = LaunchConfiguration("profile").perform(context).strip().lower()
+    params_file = os.path.join(pkg, "config", "ball_follow.yaml")
     image_topic = LaunchConfiguration("image_topic").perform(context)
     cmd_topic = LaunchConfiguration("cmd_topic").perform(context)
     color = LaunchConfiguration("ball_color").perform(context)
-
-    if profile == "daylight":
-        profile_file = os.path.join(pkg, "config", "ball_follow_white_daylight.yaml")
-    else:
-        profile_file = os.path.join(pkg, "config", "ball_follow_white_indoor.yaml")
 
     return [
         Node(
@@ -29,6 +24,7 @@ def _setup(context, *args, **kwargs):
             name="motor_hat_node",
             output="screen",
             parameters=[{
+                # auto: motor pocuva /cmd_vel z ball_follower (nie teleop)
                 "control_mode":          "auto",
                 "cmd_vel_invert_linear": True,
                 "invert_linear":         True,
@@ -60,7 +56,7 @@ def _setup(context, *args, **kwargs):
             name="ball_follower",
             output="screen",
             parameters=[
-                profile_file,
+                params_file,
                 {
                     "image_topic": image_topic,
                     "cmd_topic": cmd_topic,
@@ -82,7 +78,6 @@ def _setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("profile", default_value="indoor"),  # indoor|daylight
         DeclareLaunchArgument("image_topic", default_value="/camera/image_raw"),
         DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
         DeclareLaunchArgument("ball_color", default_value="orange"),

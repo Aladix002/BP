@@ -1,5 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
+// WebSocket URL + connect/disconnect; shutdown vola /waverower/shutdown (systemctl poweroff na RPi).
 
 var WR = window.WR;
 
@@ -9,12 +10,12 @@ function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }
 
   async function requestShutdown() {
     if (!connected || shutdownBusy) return;
-    if (!window.confirm("Vypnúť Raspberry Pi? (sudo systemctl poweroff)")) return;
+    if (!window.confirm("Vypnut Raspberry Pi? (sudo systemctl poweroff)")) return;
     setShutdownBusy(true);
-    setShutdownMsg("Vypínam…");
+    setShutdownMsg("Vypinam...");
     try {
       const r = await WR.rosTrigger(ros, "/waverower/shutdown");
-      setShutdownMsg(r?.success ? "Vypínanie…" : ("Chyba: " + (r?.message || "?")));
+      setShutdownMsg(r?.success ? "Vypinanie..." : ("Chyba: " + (r?.message || "?")));
     } catch (e) {
       setShutdownMsg("Chyba: " + e);
     } finally {
@@ -51,11 +52,11 @@ function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }
           <button
             onClick={requestShutdown}
             disabled={!connected || shutdownBusy}
-            title="Regulárny shutdown RPi (systemctl poweroff)"
+            title="Regularny shutdown RPi (systemctl poweroff)"
             className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-900/60 text-red-400
                        border border-red-800/50 hover:bg-red-900 active:scale-95 disabled:opacity-40
                        transition-all touch-manipulation"
-          >{shutdownBusy ? "…" : "Shutdown"}</button>
+            >{shutdownBusy ? "..." : "Shutdown"}</button>
         </div>
       </div>
       {shutdownMsg && (
@@ -67,6 +68,7 @@ function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }
   );
 }
 
+// Prepinac manual/wander cez std_srvs Trigger (rovnake sluzby ako ros2 service call)
 function ModeCard({ ros, connected }) {
   const [mode, setMode] = React.useState("manual");
   const [status, setStatus] = React.useState("—");
@@ -75,7 +77,7 @@ function ModeCard({ ros, connected }) {
   async function switchMode(m) {
     if (!connected || busy) return;
     setBusy(true);
-    setStatus("Switching…");
+    setStatus("Switching...");
     const isWander = m === "wander";
     try {
       const mr = await WR.rosSetParams(ros, WR.MOTOR_NODE, [

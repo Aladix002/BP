@@ -1,15 +1,5 @@
-# Nav2 parametre pre waver_sim (ROS 2 Jazzy).
-# Tento subor je "centralny mozog" navigacie:
-# - lokalizacia (AMCL),
-# - behavior tree navigator,
-# - lokalny regulator (controller_server),
-# - costmapy (global/local),
-# - planner, smoother, behavior, waypoint, velocity_smoother.
-#
-# Prakticky dopad:
-# - ak robot zle zataca / osciluje: ladit controller_server/FolllowPath a costmap.
-# - ak robot nejde cez uzke pasaze: ladit robot_radius + inflation_radius.
-# - ak su problemy s cielom: ladit goal_checker tolerancie.
+# Nav2 pre waver_sim (Jazzy): AMCL, navigator BT, controller, costmapy, planner.
+# Oscilacie: controller + inflation; uzke miestnosti: robot_radius; ciel: goal_checker.
 
 amcl:
   ros__parameters:

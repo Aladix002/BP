@@ -1,11 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!--
-    Gazebo pluginy pre pohyb:
-    - DiffDrive cita /cmd_vel a toci vsetkymi 4 kolesami,
-    - JointStatePublisher publikuje stavy klbov.
-  -->
+  <!-- DiffDrive: 4 kolesa sparovane do 2 stran; JointStatePublisher posiela stavy do ROS. -->
   <gazebo>
     <plugin filename="gz-sim-diff-drive-system"
             name="gz::sim::systems::DiffDrive">
@@ -14,7 +10,7 @@
       <left_joint>wheel_back_left_joint</left_joint>
       <right_joint>wheel_back_right_joint</right_joint>
 
-      <!-- Musi sediet s geometriou v robot_core.xacro -->
+      <!-- wheel_sep / radius musia sediet s robot_core.xacro -->
       <wheel_separation>0.123</wheel_separation>
       <wheel_radius>0.0406</wheel_radius>
 

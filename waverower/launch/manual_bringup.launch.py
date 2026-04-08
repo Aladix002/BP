@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""Manualna jazda + kamera + volitelne IMU, LD19, teleop; predvolene SLAM (slam_toolbox).
-
-correction_mode: imu | none
-SLAM: use_slam:=true a use_lidar:=true -> /map. Vypnut: use_slam:=false.
-
-Ulozenie mapy: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/cesta/mapa'}}"
-
-"""
+# Bringup: motor (I2C HAT), volitelne kamera/IMU/LiDAR/teleop, SLAM (slam_toolbox).
+# Mapa: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/cesta/mapa'}}"
 
 import os
 
@@ -27,17 +21,19 @@ from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-# camera_ros: jednotné rozlíšenie vo všetkých bringupoch (manual / runtime)
+# Rozlisenie kamery musi sediet s ball follow / runtime_stack (jeden zdroj pravdy pre obraz)
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 CAMERA_FORMAT = "XRGB8888"
 
 
 def _slam_stack(context, *args, **kwargs):
+    # Vyhodnotenie argumentov az pri spusteni launchu (nie skor), aby sedeli override z CLI
     use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
     use_lidar = LaunchConfiguration("use_lidar").perform(context) == "true"
     use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom").perform(context) == "true"
     if not use_slam:
+        # Bez SLAM nic z tejto funkcie nepridavame (ziadny slam_toolbox, ziadna extra TF logika)
         return []
     pkg = get_package_share_directory("waverower")
     slam_params = os.path.join(pkg, "params", "slam.yaml")
@@ -45,6 +41,7 @@ def _slam_stack(context, *args, **kwargs):
     use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
     use_rviz = LaunchConfiguration("use_rviz").perform(context) == "true"
     if not use_lidar:
+        # SLAM z LiDAR scanu: bez /scan nema zmysel async_slam_toolbox spustat
         return [
             LogInfo(
                 msg=(
@@ -55,6 +52,8 @@ def _slam_stack(context, *args, **kwargs):
         ]
     actions = []
     if not use_ekf and not use_cmd_vel_odom:
+        # Ak nemame ani EKF ani integrator z teleopu, TF strom potrebuje aspon pevny odom->base_link,
+        # inak RViz/model nemaju vztah medzi mapou a robotom (slam_toolbox mapuje scan do map->odom)
         actions.append(
             Node(
                 package="tf2_ros",
@@ -64,6 +63,7 @@ def _slam_stack(context, *args, **kwargs):
                 arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
             )
         )
+    # IMU je fyzicky nad podvozkom: static TF len posun Z (5 cm), rotacia 0 (ak nemas kalibraciu nastrojov)
     actions.append(
         Node(
             package="tf2_ros",
@@ -74,6 +74,7 @@ def _slam_stack(context, *args, **kwargs):
         )
     )
     if use_ekf:
+        # EKF fuzuje IMU (a prip. ine senzory podla ekf.yaml) do odom; nahradza staticky odom->base_link vyssie
         actions.append(
             Node(
                 package="robot_localization",
@@ -85,6 +86,7 @@ def _slam_stack(context, *args, **kwargs):
         )
     actions.extend(
         [
+            # async_slam_toolbox: ziaden synchronny spin; mapuje sa na pozadi (vhodne pre RPi)
             Node(
                 package="slam_toolbox",
                 executable="async_slam_toolbox_node",
@@ -92,6 +94,7 @@ def _slam_stack(context, *args, **kwargs):
                 output="screen",
                 parameters=[slam_params],
             ),
+            # Lifecycle: node je najprv neaktivny; bez configure/activate neprijima ciele
             TimerAction(
                 period=2.0,
                 actions=[
@@ -113,6 +116,7 @@ def _slam_stack(context, *args, **kwargs):
         ]
     )
     if use_rviz:
+        # RViz na RPi je tazky; casto sa spusta na PC so rovnakym ROS_DOMAIN_ID
         actions.append(
             Node(
                 package="rviz2",
@@ -126,6 +130,7 @@ def _slam_stack(context, *args, **kwargs):
 
 
 def generate_launch_description():
+    # LaunchConfiguration sa pouziva v Node/conditions; hodnoty sa beru pri starte
     use_camera = LaunchConfiguration("use_camera")
     camera_id = LaunchConfiguration("camera_id")
     use_robot_model = LaunchConfiguration("use_robot_model")
@@ -140,6 +145,7 @@ def generate_launch_description():
     teleop_max_angular = LaunchConfiguration("teleop_max_angular")
     control_mode = LaunchConfiguration("control_mode")
 
+    # LD19 driver z balika ldlidar_ros2 (USB seriova linka nastavena v ich ld19.launch.py)
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
     ld19_launch = os.path.join(ldlidar_share, "launch", "ld19.launch.py")
 
@@ -156,6 +162,7 @@ def generate_launch_description():
 
     camera_stack = []
     if have_camera_ros:
+        # camera_node v namespace /camera; remap na globalne topic /camera/image_raw (jednoduchsie pre detekciu/web)
         camera_stack = [
             Node(
                 package="camera_ros",
@@ -177,6 +184,7 @@ def generate_launch_description():
             )
         ]
     else:
+        # Bez camera_ros netreba spustat uzol; ak user chce kameru, vypiseme co nainstalovat
         camera_stack = [
             LogInfo(
                 condition=IfCondition(use_camera),
@@ -196,6 +204,7 @@ def generate_launch_description():
 
     robot_model_stack = []
     if have_waver_sim:
+        # URDF z Gazebo balika: robot_state_publisher posiela joint_state -> TF pre vizualizaciu
         default_robot_model = os.path.join(waver_sim_share, "description", "robot.urdf.xacro")
         robot_description = ParameterValue(
             Command(["xacro ", robot_model_file]),
@@ -234,12 +243,14 @@ def generate_launch_description():
             ),
         ]
 
+    # PythonExpression: stringova kontrola parametru (correction_mode nie je vzdy C++ enum)
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
 
     motor_twist_topic = "/teleop_cmd_vel"
 
     return LaunchDescription(
         [
+            # Izolovat DDS traffic v LAN (default 0; rovnake cislo na RPi a PC s RViz)
             SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
             DeclareLaunchArgument(
                 "use_camera",
@@ -339,16 +350,15 @@ def generate_launch_description():
                     "control_mode":        control_mode,
                     "i2c_bus":             LaunchConfiguration("i2c_bus"),
                     "i2c_address":         LaunchConfiguration("i2c_address"),
-                    # PWM rozsah: pwm_min = minimum kedy sa motor pohne, pwm_max = maximum
+                    # pwm_min: prah kedy H-bridge zacne hybat motorom (anti-cvakanie); pwm_max plny vykon PCA9685
                     "pwm_min":             400,
                     "pwm_max":             4095,
-                    # Teleop normalizacia: teleop_max_linear = rychlost pri ktore motor ide naplno
-                    # Teleop klaves 'i' posiela linear.x = speed (napr 0.5 az 3.0 podla nastavenia q/z)
-                    # Nastav tuto hodnotu = maximalna rychlost ktoru chces pouzivat v teleop
+                    # teleop posiela "rychlost" v m/s zmysle az po deleni touto konstantou -> normalizacia na [-1,1]
                     "teleop_max_linear":   teleop_max_linear,
                     "teleop_max_angular":  teleop_max_angular,
                     "invert_linear":       True,
                     "cmd_vel_invert_linear": True,
+                    # wheel_base tu sluzi ako skala pre diferencial v cmd_vel vetve (zhoda s YAML ball follow)
                     "wheel_base":          2.0,
                     "smooth_alpha":        0.20,
                     "imu_correction":      use_imu_correction,
@@ -392,6 +402,7 @@ def generate_launch_description():
                 condition=IfCondition(use_cmd_vel_odom),
                 parameters=[
                     {
+                        # Integracia /teleop_cmd_vel -> fiktivna odometria (enkodery nemame)
                         "cmd_topic": "/teleop_cmd_vel",
                         "odom_topic": "/odom",
                         "odom_frame": "odom",

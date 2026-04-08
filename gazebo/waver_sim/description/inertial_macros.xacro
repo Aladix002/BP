@@ -1,14 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
-    <!--
-      Pomocne makra pre vypocet momentov zotrvacnosti.
-      Vdaka nim nemusime rucne pocitat ixx/iyy/izz pre kazdy tvar.
-      Pouzitie:
-        <xacro:inertial_box .../>
-        <xacro:inertial_cylinder .../>
-        <xacro:inertial_sphere .../>
-    -->
+    <!-- Makra: homogenna gula, homogenny kvader, homogenny valec (osy = symetria linku). -->
 
     <xacro:macro name="inertial_sphere" params="mass radius *origin">
         <inertial>
@@ -18,8 +11,9 @@
                     iyy="${(2/5) * mass * (radius*radius)}" iyz="0.0"
                     izz="${(2/5) * mass * (radius*radius)}" />
         </inertial>
-    </xacro:macro>  
+    </xacro:macro>
 
+    <!-- Strany x,y,z su plne dlzky boxu (nie polovicne). -->
 
     <xacro:macro name="inertial_box" params="mass x y z *origin">
         <inertial>
@@ -31,6 +25,7 @@
         </inertial>
     </xacro:macro>
 
+    <!-- Valec: os Z je os valca (dlzka length pozdlz Z v link frame). -->
 
     <xacro:macro name="inertial_cylinder" params="mass length radius *origin">
         <inertial>

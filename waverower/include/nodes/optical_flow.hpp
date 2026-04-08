@@ -9,13 +9,8 @@
 
 namespace nodes {
 
-/**
- * Optical flow node (Lucas-Kanade sparse).
- * Odbera /camera/camera_node/image_raw/compressed a /teleop_cmd_vel.
- * Publikuje korigovaný Twist na /teleop_cmd_vel_corrected.
- * Korekcia: ak kamera detekuje horizontálny drift scény, pridá korekciu angular.z.
- * Aktívna len keď robot ide dopredu a užívateľ aktívne nestočuje.
- */
+// Riedky Lucas-Kanade optical flow na JPEG obrazoch z kamery.
+// Odhad horizontalneho driftu sceny -> pridava angular.z k teleopu (ked ide vpred a netoci uzivatel).
 class OpticalFlowNode : public rclcpp::Node {
 public:
     OpticalFlowNode();
@@ -32,10 +27,9 @@ private:
 
     std::mutex mu_;
     cv::Mat prev_gray_;
-    double flow_correction_{0.0};   // angular.z korekcia [rad/s]
+    double flow_correction_{0.0};
     geometry_msgs::msg::Twist latest_teleop_;
 
-    // parametre
     double correction_gain_;
     double max_correction_;
     double forward_threshold_;

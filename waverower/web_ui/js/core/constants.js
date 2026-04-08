@@ -1,11 +1,13 @@
 /* global window */
 "use strict";
+// Centralne nazvy topicov a typov pre roslibjs; musia sediet s realnymi nazvami v ROS (camera namespace).
 
 window.WR = window.WR || {};
 
 Object.assign(window.WR, {
   TELEOP_TOPIC: "/teleop_cmd_vel",
   TWIST_TYPE: "geometry_msgs/msg/Twist",
+  // camera_ros + namespace: skutocny compressed topic (nie /camera/image_raw)
   CAMERA_TOPIC: "/camera/camera_node/image_raw/compressed",
   CAMERA_TYPE: "sensor_msgs/msg/CompressedImage",
   IMU_TOPIC: "/imu",
@@ -17,8 +19,8 @@ Object.assign(window.WR, {
   OPTICAL_NODE: "/optical_flow_node",
   PUBLISH_HZ: 30,
   SLIDER_SCALE: { min: 0.0, max: 1.0, step: 0.01 },
+  // Rovnaky pomer ako WANDER_TURN_RATIO v runtime_stack.launch.py
   WANDER_TURN_RATIO: 18.0,
-  /** LiDAR wander: min vzdialenost prekazky [m], pod nou sa zastavi a otoci */
   WANDER_THRESHOLD_RANGE: { min: 0.05, max: 1.5, step: 0.01 },
   IMU_DEFAULTS: {
     imu_correction: true,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rosbridge (WebSocket :9090) + HTTP server :8080 pre mobilne web UI."""
+# Rosbridge WebSocket (default 9090) pre roslibjs + volitelny HTTP server pre staticke subory web_ui (8080).
 
 import os
 
@@ -13,6 +13,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    # Cesta k nainstalovanemu share/waverower/web_ui (index.html, js)
     web_dir = os.path.join(get_package_share_directory("waverower"), "web_ui")
 
     rosbridge = IncludeLaunchDescription(
@@ -27,6 +28,7 @@ def generate_launch_description():
         )
     )
 
+    # Jednoduchy static server; pre produkciu by stacil nginx, tu staci na LAN vyvoj
     http_server = ExecuteProcess(
         cmd=[
             "python3",

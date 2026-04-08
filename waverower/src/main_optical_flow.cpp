@@ -1,3 +1,4 @@
+// Samostatny binarny uzol optical flow (CMake target optical_flow) - pouziva sa z runtime_stack.
 #include <rclcpp/rclcpp.hpp>
 #include "nodes/optical_flow.hpp"
 

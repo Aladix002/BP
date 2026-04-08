@@ -1,5 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
+// Panel: omega_z z /imu, drive_debug z motora, get/set PID a correction_mode na motor_hat_node cez roslib services.
 
 var WR = window.WR;
 
@@ -71,7 +72,7 @@ function ImuPanel({ ros, connected }) {
   async function fetchParams() {
     if (!connected || fetchBusy) return;
     setFetchBusy(true);
-    setFetchMsg("Fetching…");
+    setFetchMsg("Fetching...");
     setApplyMsg("");
     try {
       const names = Object.keys(WR.IMU_DEFAULTS).concat(["correction_mode"]);
@@ -100,7 +101,7 @@ function ImuPanel({ ros, connected }) {
   async function applyParams() {
     if (!connected || applyBusy) return;
     setApplyBusy(true);
-    setApplyMsg("Applying…");
+    setApplyMsg("Applying...");
     setFetchMsg("");
     try {
       const params = Object.entries(pid).map(([k, v]) => WR.makeParam(k, v));
@@ -116,7 +117,7 @@ function ImuPanel({ ros, connected }) {
   async function switchCorrectionMode(nextMode) {
     if (!connected || modeBusy || nextMode === correctionMode) return;
     setModeBusy(true);
-    setApplyMsg("Switching mode…");
+    setApplyMsg("Switching mode...");
     setFetchMsg("");
     try {
       const enableImu = nextMode === "imu";
@@ -155,7 +156,7 @@ function ImuPanel({ ros, connected }) {
     waiting: "text-slate-500",
     disconnected: "text-slate-600",
   };
-  const ST_LABEL = { ok: "OK", stale: "No /imu", waiting: "Waiting…", disconnected: "Disconnected" };
+  const ST_LABEL = { ok: "OK", stale: "No /imu", waiting: "Waiting...", disconnected: "Disconnected" };
 
   const NumField = ({ name, label, step }) => (
     <div>
@@ -278,12 +279,12 @@ function ImuPanel({ ros, connected }) {
             className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300
                        border border-slate-700 hover:bg-slate-700 active:scale-95 disabled:opacity-40
                        transition-all touch-manipulation"
-          >{fetchBusy ? "…" : "Fetch"}</button>
+          >{fetchBusy ? "..." : "Fetch"}</button>
           <button
             onClick={applyParams} disabled={!connected || applyBusy}
             className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-blue-500 text-white
                        hover:bg-blue-400 active:scale-95 disabled:opacity-40 transition-all touch-manipulation"
-          >{applyBusy ? "…" : "Apply"}</button>
+          >{applyBusy ? "..." : "Apply"}</button>
         </div>
       </div>
     </WR.Card>

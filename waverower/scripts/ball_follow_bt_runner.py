@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""BT runner pre sledovanie lopty.
-
-Strom (jednorazovy):
-  Sequence (memory=True)
-    ├── FindBall    → bursts/search, SUCCESS ked lopta videna
-    ├── FollowBall  → PID sledovanie + hladanie pri strate, SUCCESS ked blizko
-    └── Celebrate   → kratke otocenie
-
-Spustenie:
-  ros2 run waverower ball_follow_bt_runner.py --ros-args -p ball_color:=orange
-"""
+# Behavior tree (py_trees): sekvencia FindBall -> FollowBall -> Celebrate.
+# FindBall posle action goal s stop_when_found=True (kratky uspech). FollowBall plne sledovanie.
 
 import sys
 import time
@@ -25,8 +16,7 @@ from waverower.action import FollowBall
 
 
 class ActionBehaviour(py_trees.behaviour.Behaviour):
-    """Posle FollowBall goal a caka na vysledok."""
-
+    # Wrapper: async send_goal -> caka na result; py_trees vola update() dokym RUNNING
     def __init__(self, name: str, node: Node, ball_color: str,
                  max_duration_sec: float, stop_when_found: bool, fail_on_lost_sec: float):
         super().__init__(name)
@@ -78,6 +68,7 @@ class ActionBehaviour(py_trees.behaviour.Behaviour):
         return py_trees.common.Status.FAILURE
 
     def terminate(self, new_status: py_trees.common.Status):
+        # INVALID = strom zastaveny (Ctrl+C) -> zrus goal
         if new_status == py_trees.common.Status.INVALID and self._goal_handle is not None:
             self._goal_handle.cancel_goal_async()
 
@@ -100,6 +91,7 @@ class ActionBehaviour(py_trees.behaviour.Behaviour):
 
 
 class CelebrateBehaviour(py_trees.behaviour.Behaviour):
+    # Po uspechu kratke otocenie na mieste (vizualna "radost")
     def __init__(self, node: Node, spin_sec: float = 1.2):
         super().__init__("Celebrate")
         self._node     = node
@@ -131,7 +123,6 @@ def main():
     node.declare_parameter("ball_color",       "orange")
     node.declare_parameter("tick_rate_hz",     10.0)
     node.declare_parameter("find_timeout_sec", 30.0)
-    # 0.0 => nikdy nefailne na "ball_lost"; bude hladat az do manualneho stopu alebo SUCCESS.
     node.declare_parameter("fail_on_lost_sec", 0.0)
 
     color        = node.get_parameter("ball_color").get_parameter_value().string_value
@@ -142,7 +133,7 @@ def main():
     executor = SingleThreadedExecutor()
     executor.add_node(node)
 
-    # memory=True: ked FindBall uspeje, na dalsom tiku sa uz nerestartuje
+    # memory=True: po uspesnom FindBall sa uz nevracia na zaciatok sekvencie
     sequence = py_trees.composites.Sequence(name="BallFollowSeq", memory=True)
     sequence.add_children([
         ActionBehaviour("FindBall",   node, color, find_timeout, stop_when_found=True,  fail_on_lost_sec=0.0),
@@ -171,7 +162,7 @@ def main():
             tree.tick()
             st = tree.root.status
             if st == py_trees.common.Status.SUCCESS:
-                node.get_logger().info("=== USPECH - lopta dosiahnutá ===")
+                node.get_logger().info("=== USPECH - lopta dosiahnuta ===")
                 break
             if st == py_trees.common.Status.FAILURE:
                 node.get_logger().warn("=== ZLYHANIE ===")

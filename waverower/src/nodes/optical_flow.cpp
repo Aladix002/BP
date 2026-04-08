@@ -1,4 +1,3 @@
-// Optical flow LK + pyramidy - OpenCV tutorial optical flow
 #include "nodes/optical_flow.hpp"
 #include <algorithm>
 #include <cmath>
@@ -35,7 +34,7 @@ OpticalFlowNode::OpticalFlowNode() : Node("optical_flow_node") {
 
     pub_cmd_ = create_publisher<geometry_msgs::msg::Twist>(out_topic, rclcpp::QoS(10));
 
-    // 20 Hz
+    // 20 Hz: staci na korekciu; obraz moze byt 15-30 Hz
     timer_ = create_wall_timer(std::chrono::milliseconds(50),
                                std::bind(&OpticalFlowNode::timer_cb, this));
 
@@ -53,11 +52,10 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
         return;
     }
 
-    // JPEG decode
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_GRAYSCALE);
     if (frame.empty()) return;
 
-    // max sirka 320 px (RPi)
+    // Zmensenie sirky: menej CPU na RPi, staci na smer driftu
     if (frame.cols > 320) {
         cv::resize(frame, frame, cv::Size(320, frame.rows * 320 / frame.cols));
     }
@@ -69,7 +67,6 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
         return;
     }
 
-    // goodFeaturesToTrack na predchadzajuciom snimku
     std::vector<cv::Point2f> prev_pts;
     cv::goodFeaturesToTrack(prev_gray_, prev_pts, 100, 0.01, 10);
 
@@ -78,13 +75,12 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
         return;
     }
 
-    // Lucas-Kanade sledovanie
     std::vector<cv::Point2f> curr_pts;
     std::vector<uchar> status;
     std::vector<float> err;
     cv::calcOpticalFlowPyrLK(prev_gray_, frame, prev_pts, curr_pts, status, err);
 
-    // priemer dx z uspesnych trackov
+    // Priemer posunov dx: ak sa obraz posuva dolava, robot sa voci scene hybe doprava -> koriguj zatocenie
     double sum_dx = 0.0;
     int count = 0;
     for (size_t i = 0; i < status.size(); ++i) {
@@ -125,7 +121,6 @@ void OpticalFlowNode::timer_cb() {
         return;
     }
 
-    // korekcia len pri jazde vpred, bez aktivneho zatacania
     const bool moving_forward  = std::abs(out.linear.x) > forward_threshold_;
     const bool user_steering   = std::abs(out.angular.z) > steer_deadzone_;
 

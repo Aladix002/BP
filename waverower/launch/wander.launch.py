@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
-"""Autonomne bludenie: LiDAR + IMU + korekcia priamky. Bez mapy, bez Nav2.
-
-correction_mode: imu | none
-
-Dynamicka rekonf.:
-  ros2 param set /lidar_wander_node enabled false
-
-Spustenie: ros2 launch waverower wander.launch.py
-"""
+# Jednoduche bludenie: motor auto + IMU + LiDAR wander, bez SLAM/Nav2 (ziadna mapa).
+# Za behu: ros2 param set /lidar_wander_node enabled false
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.actions import IncludeLaunchDescription
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
@@ -65,11 +57,12 @@ def generate_launch_description():
                 "i2c_bus": LaunchConfiguration("i2c_bus"),
                 "i2c_address": LaunchConfiguration("i2c_address"),
                 "imu_correction": use_imu_correction,
-                "imu_yaw_kp": 0.15,
-                "imu_yaw_ki": 0.05,
-                "imu_yaw_kd": 0.01,
-                "imu_yaw_deadband": 0.02,
-                "imu_yaw_integral_limit": 0.3,
+                # Nazvy musia sediet s drive_node.cpp (imu_kp / imu_windup, nie imu_yaw_*)
+                "imu_kp": 0.15,
+                "imu_ki": 0.05,
+                "imu_kd": 0.01,
+                "imu_deadband": 0.02,
+                "imu_windup": 0.3,
             }],
         ),
 
@@ -96,7 +89,6 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(ld19_launch),
         ),
-
 
         Node(
             package="waverower",

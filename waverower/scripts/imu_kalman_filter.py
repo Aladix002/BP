@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""1D Kalman na zlozky Imu linear_acceleration a angular_velocity.
-
-Orientaciu kopiruje z poslednej spravy. Plny AHRS: madgwick / robot_localization.
-Q/R podla sumu senzora.
-"""
+# Sest nezavislych skalarnych Kalmanovcov (1D): ax,ay,az, gx,gy,gz.
+# Orientacia sa nefiltruje - kopiruje sa z vstupu (nie plny AHRS).
 
 from __future__ import annotations
 
@@ -28,8 +25,8 @@ def _double_param(node: Node, name: str, default: float) -> float:
 
 
 class ScalarKalman:
-    """Konstantny model stavu, meranie z = x + sum."""
-
+    # Konstantny model x_k = x_{k-1} + procesovy sum (Q), meranie z = x + sum merania (R)
+    # Predikcia: P += Q; Kalman gain K = P/(P+R); update x += K*(z-x); P *= (1-K)
     __slots__ = ("_x", "_p", "_q", "_r", "_has_state")
 
     def __init__(self, q: float, r: float) -> None:
@@ -82,7 +79,7 @@ class ImuKalmanFilter(Node):
         self._pub = self.create_publisher(Imu, out_topic, qos)
         self.create_subscription(Imu, in_topic, self._cb, qos)
 
-        self.get_logger().info(f"Kalman IMU: {in_topic} → {out_topic} (6× 1D Kalman na a, ω)")
+        self.get_logger().info(f"Kalman IMU: {in_topic} -> {out_topic} (6x 1D Kalman na a, omega)")
 
     def _cb(self, msg: Imu) -> None:
         out = Imu()

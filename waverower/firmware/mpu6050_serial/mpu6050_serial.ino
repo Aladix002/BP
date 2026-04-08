@@ -1,8 +1,8 @@
 /*
- * MPU6050 → USB CSV pre ROS 2 (imu_serial_fusion_bridge)
- * Formát 20 polí: pozri hlavičku v loop() po kalibrácii.
+ * MPU6050 -> USB CSV pre ROS 2 (imu_serial_fusion_bridge)
+ * Format 20 poli: pozri hlavicku v loop() po kalibracii.
  *
- * Otvor tento priečinok v Arduino IDE ako sketch "mpu6050_serial".
+ * Otvor tento priecinok v Arduino IDE ako sketch "mpu6050_serial".
  */
 
 #include <Wire.h>

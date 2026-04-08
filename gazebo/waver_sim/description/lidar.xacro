@@ -1,11 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!--
-    Lidar je fixne prichyteny na base_link.
-    Sensor typ gpu_lidar publikuje topic "scan" na Gazebo strane.
-    Cez ros_gz_bridge sa mapuje na ROS topic /scan.
-  -->
+  <!-- LD19 model: pevny na base_link; v Gazebo topic scan, bridge -> ROS /scan. -->
   <link name="lidar_link">
     <inertial>
       <mass value="0.046"/>

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Lidar wander: FWD a STOP (IMU integracia uhla otocenia).
-
-ros2 param set /lidar_wander_node enabled false
-"""
+# Jednoduche bludenie: z /scan vezme vzdialenosti v sektoroch, pri prekazke zastavi a otoci sa.
+# Uhol otocenia pocita z IMU (integracia omega_z), nie z encodera.
+# Vypnut: ros2 param set /lidar_wander_node enabled false
 
 import math
 
@@ -11,6 +10,7 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, LaserScan
 
+# Povolena odchylka od cieloveho uhla otocenia pred prechodom do jazdy vpred
 _TOLERANCE_RAD = math.radians(8.0)
 
 
@@ -61,6 +61,7 @@ class LidarWanderNode(Node):
 
     def _sector_min(self, ranges, angle_min, angle_inc,
                     lo_deg, hi_deg, rotation_rad) -> float:
+        # Najde minimalnu vzdialenost v useku uhlov (v ramci robota po odcitani rotacie lidaru)
         lo, hi = math.radians(lo_deg), math.radians(hi_deg)
         best = math.inf
         for i, d in enumerate(ranges):
@@ -146,6 +147,7 @@ class LidarWanderNode(Node):
                 self._turn_start = None
                 self.get_logger().info(f"Prekazka {self._d_front:.2f} m -> STOP")
             else:
+                # Zaporna linear.x: u tohto podvozku a drive_node znamena jazdu dopredu (zhoda s cmd_vel_invert)
                 cmd.linear.x = -fwd
 
         if self._state == self._STOP:

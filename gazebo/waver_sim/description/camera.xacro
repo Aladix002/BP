@@ -1,11 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!--
-    Kamera je fixny senzor vpredu na podvozku.
-    Gazebo publikuje "camera" a "camera/camera_info",
-    bridge ich mapuje na ROS /camera/image_raw a /camera/camera_info.
-  -->
+  <!-- CSI kamera model: Gazebo image + camera_info; bridge na ROS topic podla ros_gz_bridge.yaml. -->
   <link name="camera_link">
     <inertial>
       <mass value="0.0035"/>

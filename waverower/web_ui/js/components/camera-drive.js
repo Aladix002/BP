@@ -1,5 +1,7 @@
 /* global window, ROSLIB, React */
 "use strict";
+// Kamera: ROSLIB Topic subscribe na JPEG compressed -> Blob alebo base64 -> Image -> canvas (letterbox).
+// genRef zabranuje race pri reconnect (stary frame neskresli po novom spojeni).
 
 var WR = window.WR;
 
@@ -307,7 +309,7 @@ function DrivePanel({ ros, connected }) {
             className="w-full"
             aria-label="LiDAR distance threshold for wander stop and turn"
           />
-          <p className="text-[0.58rem] text-slate-600 mt-1 leading-snug">Ak je prekážka bližšie, wander zastaví a otočí sa.</p>
+          <p className="text-[0.58rem] text-slate-600 mt-1 leading-snug">Ak je prekazka blizsie, wander zastavi a otoci sa.</p>
         </div>
       </div>
     </div>

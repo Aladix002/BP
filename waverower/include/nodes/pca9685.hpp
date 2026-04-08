@@ -5,7 +5,8 @@
 
 namespace nodes {
 
-/** PCA9685 + TB6612 na Waveshare Motor Driver HAT (I2C). */
+// Ovladanie PCA9685 (PWM driver) + logika TB6612 kanalov na Waveshare Motor HAT (I2C).
+// Kanaly 0-2 = motor A (PWM + IN1 + IN2), 3-5 = motor B - pozri pca9685.cpp.
 class Pca9685 {
 public:
   explicit Pca9685(int i2c_bus, uint8_t addr7);

@@ -2,12 +2,9 @@
 <robot name="articubot_one" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!--
-    Korenny URDF xacro.
-    Tento subor iba sklada casti dokopy:
-    - inertial makra (pomocne vypocty),
-    - mechanicky core robota,
-    - Gazebo pluginy pre pohon a joint state,
-    - senzory (lidar, kamera).
+    Koren URDF pre simulaciu (Gazebo / RViz).
+    Poradie include: najprv makra (hmotnosti), potom geometria podvozku, Gazebo pluginy pre diff drive,
+    potom senzory (lidar, kamera) ako samostatne xacro subory.
   -->
   <xacro:include filename="inertial_macros.xacro"/>
   <xacro:include filename="robot_core.xacro"/>

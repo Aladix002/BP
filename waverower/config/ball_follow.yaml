@@ -1,6 +1,8 @@
+# Parametre uzla ball_follower (FollowBall action). Farba: ball_color + HSV nizsie.
 /**:
   ros__parameters:
     ball_color: orange
+    # HSV okno pre oranzovu loptu (OpenCV: H 0-180)
     orange_h_min: 10
     orange_h_max: 24
     orange_s_min: 90
@@ -8,26 +10,29 @@
     orange_v_min: 90
     orange_v_max: 255
     image_use_best_effort_qos: true
+    # Ak prvotny topic nejde, skusi kandidatov (raw/compressed)
     auto_switch_image_topic: true
+    # Bez obrazu len zastav, nehladaj naslepo
     no_frame_stop_only: true
 
+    # Filtre kontury: velkost, kruhovitost, nie prilis velka plocha (strop/stena)
     min_radius_px: 10.0
     max_radius_px: 145.0
-    stop_radius_px: 50.0
+    stop_radius_px: 40.0
     min_circularity: 0.76
-    max_contour_area_ratio: 0.10
+    max_contour_area_ratio: 0.12
     max_bbox_aspect_ratio: 1.20
     min_solidity: 0.84
     min_fill_ratio: 0.64
-    min_detection_confidence: 0.72
+    min_detection_confidence: 0.70
     forward_confirm_sec: 0.0
 
-    gaussian_blur_ksize: 9
+    gaussian_blur_ksize: 11
     mask_erode_iters: 2
     mask_dilate_iters: 2
 
-    detection_max_center_jump_frac: 0.24
-    jump_reset_lost_sec: 0.40
+    detection_max_center_jump_frac: 0.28
+    jump_reset_lost_sec: 0.45
     detection_lost_sec: 1.5
     success_hold_ticks: 1
 

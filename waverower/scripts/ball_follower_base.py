@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""Sledovanie lopty - stavovy automat (TRACK / SEARCH_*).
-
-Parametre: image_topic, cmd_topic, ball_color, forward_speed, angular_speed,
-stop_radius_px, min_radius_px, max_radius_px, min_circularity,
-max_contour_area_ratio, gaussian_blur_ksize, mask_erode_iters, mask_dilate_iters,
-max_bbox_aspect_ratio, min_solidity, subscribe_compressed, image_use_best_effort_qos,
-detection_max_center_jump_frac (0=vypnuté; zahodí skok stredu medzi snímkami), jump_reset_lost_sec.
-
-Maska inspirovana Shawn Hymel blob_tracker.
-"""
+# Detekcia farebnej gule: HSV maska, kontury, PID na uhol, volitelne diferencial L/R cez dva "virtualne" kolesa.
+# Stavovy automat: TRACK (sledovanie), SEARCH (rotacia pri strate), burst rezim pri dlhom hladani.
 
 import time
 
@@ -65,7 +57,7 @@ class BallFollowerBase(Node):
         self.declare_parameter("pid_error_exponent", 0.75)
         self.declare_parameter("pid_min_turn_abs", 0.30)
         # IBVS adaptivny zisk: kp sa skalie podla radius_px / pid_radius_ref
-        # Vacsí radius (lopta blizko) → vácsí gain → prudsie zatacanie
+        # Vacsi radius (lopta blizko) -> vacsi gain -> prudsie zatacanie
         self.declare_parameter("pid_radius_ref",  30.0)   # [px] referencia kde gain = kp
         self.declare_parameter("pid_radius_scale_min", 1.0)  # spodny limit skalovania
         self.declare_parameter("pid_radius_scale_max", 2.0)  # horny limit skalovania
@@ -82,7 +74,7 @@ class BallFollowerBase(Node):
         self.declare_parameter("detection_lost_sec", 0.6)
         # Plynulost: EMA na cmd_vel (0.2–0.45 typicky; 1.0 = bez filtra)
         self.declare_parameter("cmd_smooth_alpha", 0.30)
-        # Pred dosiahnutim stop_radius: v tomto pásme [px] zmierni dopredu + mierne aj zatocenie
+        # Pred dosiahnutim stop_radius: v tomto pasme [px] zmierni dopredu + mierne aj zatocenie
         self.declare_parameter("approach_brake_band_px", 14.0)
         # Pri plnom priblizeni (koniec pasma) ostane tato cast otacania (0.35–0.55)
         self.declare_parameter("approach_turn_blend_min", 0.45)
@@ -116,7 +108,7 @@ class BallFollowerBase(Node):
         self._prev_radius = 0.0
         self._ever_seen = False
         self._search_dir = 1.0  # +1 vpravo, -1 vlavo pri hlade
-        self._last_accept_cx: float | None = None  # px, naposledy akceptovaný stred X (pre filter skokov)
+        self._last_accept_cx: float | None = None  # px, naposledy akceptovany stred X (pre filter skokov)
         self._seen_streak_start: float | None = None
         self._image_sub = None
         self._current_image_topic = image_topic
@@ -157,6 +149,7 @@ class BallFollowerBase(Node):
             f"BallFollower ready: topic={self._current_image_topic} color={self.get_parameter('ball_color').get_parameter_value().string_value}"
         )
 
+    # Zoznam alternativnych topicov (raw vs compressed, camera vs camera/camera_node) pre auto_switch
     def _build_image_candidates(self, image_topic: str, use_comp: bool) -> list[str]:
         base = image_topic.rstrip("/")
         candidates: list[str] = []
@@ -228,6 +221,7 @@ class BallFollowerBase(Node):
         if self._frame_count == 0:
             self.get_logger().warn("Za 4s ziadny obrazok - skontroluj image_topic a QoS.")
 
+    # Pre vybranu farbu vrati binarnu masku v HSV priestore (OpenCV inRange)
     def _hsv_mask(self, hsv: np.ndarray, color: str) -> np.ndarray:
         c = (color or "white").strip().lower()
         if c == "orange":
@@ -282,7 +276,7 @@ class BallFollowerBase(Node):
         return cv2.bitwise_or(bright, shaded)
 
     def _binary_mask(self, frame: np.ndarray) -> tuple[np.ndarray, int, int]:
-        """Polovicne rozlisenie: blur, HSV, morfologia (blob_tracker styl)."""
+        # Polovicne rozlisenie = rychlost; open/close odstranuju sum a diery v maske
         h, w = frame.shape[:2]
         small = cv2.resize(frame, (w // 2, h // 2))
         kv = int(self.get_parameter("gaussian_blur_ksize").get_parameter_value().integer_value)
@@ -303,7 +297,7 @@ class BallFollowerBase(Node):
         return mask, w, h
 
     def _detect(self, frame: np.ndarray):
-        """Vrati (x_err, radius_px, confidence) alebo None."""
+        # Najlepsi kontur podla kruhovosti, solidity, fill; x_err je -1..1 od stredu obrazu
         h, w = frame.shape[:2]
         mask, _, _ = self._binary_mask(frame)
 
@@ -377,6 +371,7 @@ class BallFollowerBase(Node):
         return x_err, r_full, conf
 
     def _process(self, frame: np.ndarray) -> None:
+        # Volane z obrazoveho callbacku: detekcia + volitelny filter skoku stredu + debug publisher
         h, w = frame.shape[:2]
         now = time.monotonic()
         result = self._detect(frame)
@@ -436,6 +431,7 @@ class BallFollowerBase(Node):
             self._search_dir = 1.0 if x_err > 0 else -1.0
 
     def _tick(self) -> None:
+        # Perioda riadenia: stav TRACK/SEARCH, PID na uhol, diferencial alebo twist na cmd_topic
         if not self._following_active:
             self._pub.publish(Twist())
             return

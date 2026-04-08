@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""SLAM entrypoint: manual_bringup s LiDAR + IMU + SLAM.
-
-Plny stack: ros2 launch waverower manual_bringup.launch.py
-
-Priklady:
-  ros2 launch waverower slam.launch.py
-  ros2 launch waverower slam.launch.py use_rviz:=true
-
-Ulozenie mapy:
-  ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/home/user/mapa'}}"
-"""
+# Skrateny vstup: rovnaky stack ako manual_bringup, ale vynuti SLAM + LiDAR + IMU a vypne teleop.
+# Mapa: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap ...
 
 import os
 
@@ -58,7 +49,6 @@ def generate_launch_description():
                     ("use_imu", "true"),
                     ("control_mode", "manual"),
                     ("use_teleop", "false"),
-                    ("use_ball_follow", "false"),
                     ("use_imu_kalman", "false"),
                 ],
             ),

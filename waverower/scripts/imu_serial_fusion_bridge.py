@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""Arduino USB -> sensor_msgs/Imu (CSV MPU6050, 15 alebo 20 poli).
-
-20-polovy format: roll_f, pitch_f, yaw_gyro [deg] -> quaternion.
-
-zero_yaw_on_start: prvý yaw -> 0 v orientácii.
-zero_gyro_on_start: z prvých N vzoriek sa odhadne gyro bias; angular_velocity je potom
-  okolo 0 pri pokoji (MEMS gyro má inak offset). Prvé N správ sa nepublikujú.
-
-scan_serial_ports: skúša serial_port, potom /dev/serial/by-id/*arduino*, všetky /dev/ttyACM*
-  (0,1,2,…), potom ttyUSB* — prvý port, z ktorého príde platný IMU CSV riadok.
-"""
+# Arduino (MPU6050) posiela CSV po USB. Tento uzol parsuje riadky, plni sensor_msgs/Imu.
+# Vlakno cita seriu (neblokuje spin); spravy idu cez frontu do timeru co publikuje na /imu.
 
 import math
 import os
@@ -46,7 +37,7 @@ def _baud_from_param(node: Node) -> int:
 
 
 def _quaternion_from_rpy_deg(roll_deg: float, pitch_deg: float, yaw_deg: float) -> tuple:
-    """RPY [deg], ZYX, vrati quaternion (x,y,z,w)."""
+    # Euler ZYX v stupnoch -> kvaternion pre Imu.orientation (ROS konvencia)
     r = roll_deg * DEG2RAD
     p = pitch_deg * DEG2RAD
     y = yaw_deg * DEG2RAD
@@ -61,7 +52,7 @@ def _quaternion_from_rpy_deg(roll_deg: float, pitch_deg: float, yaw_deg: float) 
 
 
 def _sorted_tty_acm() -> List[str]:
-    """ttyACM0, ttyACM1, … (číselne), nie lexikograficky."""
+    # ttyACM10 pred ttyACM2 pri lex sorte - preto vlastne radenie podla cisla
     paths = glob("/dev/ttyACM*")
 
     def sort_key(p: str) -> tuple:
@@ -72,7 +63,7 @@ def _sorted_tty_acm() -> List[str]:
 
 
 def _csv_line_looks_like_imu(line: str) -> bool:
-    """Rovnaká logika ako _parse_line (15/16/20 číselných polí)."""
+    # Rychly test pred plnym parse (scan portov)
     if not line or line.startswith("ERR") or "READ_FAIL" in line:
         return False
     parts = [p.strip() for p in line.split(",")]
@@ -91,7 +82,7 @@ def _csv_line_looks_like_imu(line: str) -> bool:
 
 
 def _build_imu_port_candidates(requested: str) -> List[str]:
-    """Poradie: explicitný port → by-id Arduino → všetky ttyACM* → ttyUSB*."""
+    # Poradie skusania: uzivatelov port, potom stabilne by-id, potom vsetky ACM, USB
     seen = set()
     out: List[str] = []
 
@@ -119,7 +110,7 @@ def _open_imu_serial_probed(
     run_stty: bool,
     log_warn,
 ) -> Tuple[BinaryIO, str]:
-    """Otvorí prvý port, z ktorého do ~0,4 s príde platný IMU CSV riadok."""
+    # Pre kazdy kandidat: select caka na data, readline musi byt platny IMU CSV
     for path in candidates:
         if not os.path.exists(path):
             continue
@@ -139,7 +130,7 @@ def _open_imu_serial_probed(
             for _ in range(24):
                 r, _, _ = select.select([fp], [], [], 0.4)
                 if not r:
-                    log_warn(f"IMU scan: {path} — čakanie na riadok (timeout)")
+                    log_warn(f"IMU scan: {path} - cakanie na riadok (timeout)")
                     break
                 raw = fp.readline()
                 if not raw:
@@ -159,12 +150,12 @@ def _open_imu_serial_probed(
                     pass
     raise OSError(
         "Ziaden z kandidatskych portov neposlal platny IMU CSV (15/16/20 poli). "
-        f"Skontroluj: {', '.join(candidates[:6])}{'…' if len(candidates) > 6 else ''}"
+        f"Skontroluj: {', '.join(candidates[:6])}{'...' if len(candidates) > 6 else ''}"
     )
 
 
 def _open_imu_serial_simple(path: str, baud: int, run_stty: bool) -> BinaryIO:
-    """Bez próby — len otvorenie (legacy)."""
+    # Bez probe - ked scan_serial_ports:=false
     if run_stty:
         subprocess.run(
             ["stty", "-F", path, str(baud), "raw", "-echo"],
@@ -175,6 +166,8 @@ def _open_imu_serial_simple(path: str, baud: int, run_stty: bool) -> BinaryIO:
 
 
 class ImuSerialFusionBridge(Node):
+    # Datova draha: _read_loop (thread) -> fronta -> _flush_publish (1ms timer) -> publisher
+    # Ak je zero_gyro_on_start: prvy N vzoriek len na priemer biasu, /imu sa nepublikuje
     def __init__(self) -> None:
         super().__init__("imu_serial_fusion_bridge")
 
@@ -188,7 +181,7 @@ class ImuSerialFusionBridge(Node):
         self.declare_parameter("extra_topic", "/imu/arduino_extra")
         self.declare_parameter("fill_orientation_from_fusion", True)
         self.declare_parameter("zero_yaw_on_start", True)
-        # Gyro (rad/s): odčíta priem z prvých N vzoriek pri pokoji — ω≈0 v /imu ako pri „vynulovaní“
+        # Gyro (rad/s): odcita priemer z prvych N vzoriek pri pokoji; omega ~ 0 v /imu ako pri vynulovani
         self.declare_parameter("zero_gyro_on_start", True)
         self.declare_parameter("gyro_zero_warmup_samples", 25)
         # True: vyskusa kandidatov (serial_port, by-id Arduino, ttyACM0..N, ttyUSB*) kym nepride IMU CSV
@@ -227,7 +220,7 @@ class ImuSerialFusionBridge(Node):
                     )
                 self.get_logger().info(
                     "IMU scan: skusam porty: " + ", ".join(candidates[:8])
-                    + (" …" if len(candidates) > 8 else "")
+                    + (" ..." if len(candidates) > 8 else "")
                 )
                 self._fp, port = _open_imu_serial_probed(
                     candidates, baud, run_stty, self.get_logger().warn
@@ -259,6 +252,7 @@ class ImuSerialFusionBridge(Node):
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
+        # 1 kHz flush: z threadu do ROS bez blokovania read_loop
         self.create_timer(0.001, self._flush_publish)
 
         self.get_logger().info(
@@ -271,6 +265,7 @@ class ImuSerialFusionBridge(Node):
             )
 
     def _flush_publish(self) -> None:
+        # Omezene mnozstvo za tick aby spin nezastal pri zahlteni
         for _ in range(64):
             try:
                 msg = self._queue.get_nowait()
@@ -286,6 +281,7 @@ class ImuSerialFusionBridge(Node):
                 self._pub_ex.publish(ex)
 
     def _read_loop(self) -> None:
+        # Blokujuce readline z /dev; parse len platnych CSV
         while not self._stop.is_set() and rclpy.ok():
             try:
                 raw = self._fp.readline()
@@ -318,7 +314,7 @@ class ImuSerialFusionBridge(Node):
                     pass
 
     def _apply_yaw_offset(self, yaw_deg: float) -> float:
-        """Yaw offset pri prvom merani."""
+        # Od prveho yaw odcitame offset aby 0 bolo "startovacia orientacia"
         if not self._zero_yaw:
             return yaw_deg
         if self._yaw_offset is None:
@@ -327,6 +323,9 @@ class ImuSerialFusionBridge(Node):
         return yaw_deg - self._yaw_offset
 
     def _parse_line(self, line: str) -> Optional[tuple]:
+        # Format 15: akcelerometer g, gyro dps, bez plnej orientacie
+        # Format 16: ako 15 + yaw
+        # Format 20: fusion uhly + extra polia (quaternion z roll,pitch,yaw)
         parts = [p.strip() for p in line.split(",")]
         n = len(parts)
         if n not in (15, 16, 20):
@@ -411,7 +410,7 @@ class ImuSerialFusionBridge(Node):
         else:
             out.orientation_covariance[0] = -1.0
 
-        # Počas warm-upu ešte nemáme bias — neposielame /imu (inak by ω ukazovalo surový offset)
+        # Pocas warm-upu este nemame bias - neposielame /imu (inak by omega ukazovalo surovy offset)
         if self._zero_gyro and self._gyro_bias is None:
             return None
 

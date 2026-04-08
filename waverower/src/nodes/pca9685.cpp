@@ -17,6 +17,7 @@ constexpr uint8_t kPcaMode1 = 0x00;
 constexpr uint8_t kPcaPrescale = 0xFE;
 constexpr uint8_t kPcaLed0OnL = 0x06;
 
+// Mapovanie PCA9685 kanalov na TB6612: PWMA/AIN1/AIN2 = lava strana, PWMB/BIN1/BIN2 = prava
 constexpr int kPwma = 0;
 constexpr int kAin1 = 1;
 constexpr int kAin2 = 2;
@@ -68,6 +69,7 @@ uint8_t Pca9685::read_reg(uint8_t reg) {
 }
 
 void Pca9685::set_pwm_freq_hz(double freq) {
+  // Interny krystal PCA9685 25 MHz, 4096 krokov -> vypocet prescale podla datasheet
   double prescaleval = 25000000.0 / 4096.0 / freq - 1.0;
   auto prescale = static_cast<uint8_t>(std::floor(prescaleval + 0.5));
   if (prescale < 3) {
@@ -152,6 +154,7 @@ void Pca9685::apply_drive(uint16_t duty_left, bool fwd_left, uint16_t duty_right
   duty_left = std::min<uint16_t>(duty_left, 4095);
   duty_right = std::min<uint16_t>(duty_right, 4095);
 
+  // TB6612: IN1/IN2 urcuju smer, PWM je enable/rychlost
   if (duty_left == 0) {
     set_level(kAin1, false);
     set_level(kAin2, false);

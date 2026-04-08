@@ -14,14 +14,13 @@ namespace nodes {
 
 class Pca9685;
 
+// Uzol: I2C motorovy HAT, vstupy Twist (teleop / cmd_vel), volitelna IMU korekcia priamky
 class DriveNode : public rclcpp::Node {
 public:
   explicit DriveNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
   ~DriveNode() override;
 
 private:
-  // Prevedie normalizovaný príkaz [-1, 1] na PWM duty [0, 4095].
-  // Lineárne mapovanie: 0 → stop, pwm_min pri prvom pohybe, pwm_max pri plnom vstupe.
   uint16_t to_duty(double cmd) const;
 
   void timer_cb();
@@ -41,17 +40,17 @@ private:
 
   std::mutex mu_;
 
-  // Cieľové hodnoty (z callbackov)
+  // Cielove normalizovane prikazy -1..1 pre lave/prave koleso (po mixeri)
   double target_l_{0.0};
   double target_r_{0.0};
   std::chrono::steady_clock::time_point last_cmd_{};
   bool have_cmd_{false};
 
-  // Vyhladené hodnoty (aktualizované v timer_cb)
+  // Vyhladene hodnoty po EMA (smooth_alpha)
   double smooth_l_{0.0};
   double smooth_r_{0.0};
 
-  // IMU PID stav
+  // Stav PID pre gyro osu Z
   double imu_yaw_rate_{0.0};
   double imu_integral_{0.0};
   double imu_prev_error_{0.0};

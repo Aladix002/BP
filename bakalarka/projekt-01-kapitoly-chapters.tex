@@ -10,7 +10,9 @@
 
 Práca sa zaoberá výzvami mobilnej robotiky a teleprezencie, návrhom a implementáciou riadiaceho systému pre mobilného robota. Základnou platformou pre túto prácu je WAVE ROVER vybavený lidarom D300 LD19. Ako hlavný softvérový nástroj sa uvádza rámec ROS2 vzhľadom na to, že sa stal štandardom pri riadení a koordinácii robotických systémov. Cieľom tejto práce je nielen ukázať, čo všetko sa dá pomocou ROS2 na zvolenej hardvérovej platforme urobiť, ale navrhnúť systém, ktorý sa prispôsobí pri konfigurácii a experimentovaní s alternatívnymi komponentmi.
 
-S úlohou úzko súvisia dve príbuzné bakalárske práce z tej istej fakulty. Práca Skoleka~\cite{balancujici_robot} rieši balancujúceho dvoukolového robota s ROS2 na Raspberry Pi 4B: využíva PID regulátory na základe dát z IMU a enkodérov, dálkové ovládanie cez Bluetooth a autonómny pohyb s vyhýbaním sa prekážkam pomocou ultrazvukového senzora; dôležitá je modularita systému (balíčky pre senzory, riadenie, Bluetooth) a spúšťanie cez launch súbory. Práca Onderku~\cite{mobilni_kamera} implementuje systém riadenia mobilného robota Adeept AWR 4WD v ROS2 s teleprezenciou a prepínaním medzi manuálnym a autonómnym režimom; systém beží distribuovane na RPi4 na robotovi a na stacionárnom PC, využíva Gazebo na simuláciu, rozšírenia slam\_toolbox a Nav2 na mapovanie a navigáciu a ros2\_control na riadenie pohybu. Obe práce demonštrujú dynamickú rekonfiguráciu riadiaceho softvéru a možnosti ROS2, čo je v priamom súlade s cieľom tejto práce (WAVE ROVER, RPi5, lidar, kamera, teleprezencia a autonómny pohyb s vyhýbaním sa prekážkam).
+S úlohou úzko súvisia dve príbuzné bakalárske práce z tej istej fakulty. Práca Skoleka~\cite{balancujici_robot} rieši balancujúceho dvoukolového robota s ROS2 na Raspberry Pi 4B: využíva PID regulátory na základe dát z IMU a enkodérov, dálkové ovládanie cez Bluetooth a autonómny pohyb s vyhýbaním sa prekážkam pomocou ultrazvukového senzora; dôležitá je modularita systému (balíčky pre senzory, riadenie, Bluetooth) a spúšťanie cez launch súbory. Bakalárska práca Onderku \emph{Mobilní kamera realizovaná prostředky ROS2}~\cite{mobilni_kamera} (katalógový záznam FIT VUT) slúžila ako \textbf{orientačná inšpirácia} pri stavaní vlastného riešenia: kombinácia \textbf{teleprezencie} (kamera v ROS2), \textbf{prepínania medzi manuálnym a autonómnym správaním}, nasadenia \textbf{Gazebo} na overenie funkcionality v simulácii a integrácie \textbf{slam\_toolbox} a \textbf{Nav2} pre mapovanie a globálnu navigáciu. Onderka pracoval s platformou Adeept AWR 4WD a ROS2 na RPi4; táto práca prenáša podobnú myšlienku na WAVE ROVER, RPi5, LiDAR LD19 a vlastný webový teleop. Rozdiely: namiesto \texttt{ros2\_control} je u fyzického podvozku primárne priame riadenie motorov (Motor Driver HAT alebo alternatívne HTTP na ESP32); dynamické prepínanie režimov je riešené parametrami uzlov a službami (sek.~\ref{sec:mode-switch}).
+
+Obe referenčné práce demonštrujú možnosti ROS2 a zmysluplné rozdelenie uzlov; táto práca z nich čerpá najmä \textbf{architektonický vzor} (launch súbory, senzorové témy, rozšírenie o ďalší hardvér), nie kopírovanie konkrétneho kódu.
 
 V práci sa skúmajú metódy vývoja softvéru pre mobilné roboty, zoznamuje sa s možnosťami a obmedzeniami hardvéru WAVE ROVER a následne sa analyzuje použiteľnosť súčasných senzorov a riadiacich jednotiek motorov. V prípade potreby sú zapracované návrhy a implementácie týkajúce sa zmien v hardvéri vrátane výmeny motorov za motory s enkodérom pre schopné presné riadenie pohybu robota.
 
@@ -83,14 +85,17 @@ Konštrukcia zahŕňa stabilitu a odolnosť pri pohybe na rôznych typoch povrch
 
 \subsubsection*{Modularita a rozšíriteľnosť}
 Telo robota je navrhnuté tak, aby bolo možné ľahko pripojiť a vymeniť komponenty.
-nentov. V ráme sú štandardizované montážne body, ktoré umožňujú pripojenie ďalších
+V ráme sú štandardizované montážne body, ktoré umožňujú pripojenie ďalších
 ultrazvukové senzory, LIDAR alebo kamery a aktuátory. Rozšírenie:
 Rozširujúce piny GPIO a rozhrania ako I2C, SPI, UART a PWM umožňujú pripojenie ďalších
 zariadení a modulov.
 
+\subsubsection*{Arduino Nano ako doplnková jednotka pre IMU}
+Okrem Raspberry Pi a Motor Driver HAT je v realizačnej zostave použité \textbf{Arduino Nano} (alebo ekvivalent s rovnakým rozhraním) ako malý mikrokontrolér výhradne na čítanie MPU-6050 a streamovanie údajov po USB. Tým sa senzor \emph{nezdieľa} I\textsuperscript{2}C zbernicu s motorovým HATom na strane RPi; ide o zámerné oddelenie kvôli spoľahlivosti (viď sek.~\ref{sec:mpu6050-nano-usb}). Nano je napájané z rovnakého 5\,V logického prostredia ako bežné Arduino periférie; fyzické uchytenie zodpovedá montáži na podvozku (krátke I\textsuperscript{2}C vedenie medzi modulom MPU-6050 a Nanom).
+
 
 \subsection*{Inerciálny merací systém (IMU)}
-Wave Rover používa špecifický modul IMU, MPU-6050 integruje akcelerometer a gyroskop na jednom čipe; technické parametre rozsahov a rozhrania zodpovedajú dokumentácii čipu a komunite okolo knižníc pre MPU6050~\cite{mpu6050_electroniccats}. Hoci tento modul poskytuje informácie týkajúce sa pohybu a orientácie robota, je to dôležité pre veľmi presnú navigáciu a riadenie pohybu. Jednotlivé komponenty IMU a ich fungovanie.
+Wave Rover používa modul s čipom \textbf{MPU-6050}, ktorý integruje akcelerometer a gyroskop na jednom čipe; technické parametre rozsahov a rozhrania zodpovedajú dokumentácii čipu a komunite okolo knižníc pre MPU6050~\cite{mpu6050_electroniccats}. V \textbf{nasadenej zostave s Motor Driver HAT} na Raspberry Pi nie je senzor pripojený priamo na I\textsuperscript{2}C zbernicu počítača Raspberry Pi spolu s ovládačom motorov (PCA9685) -- namiesto toho slúži ako meracia hlava na samostatnom \textbf{Arduino Nano} s \textbf{vlastným firmwareom} a údaje prichádzajú na RPi cez USB sériový port (podrobnejšie odôvodnenie a popis firmwaru v sekcii~\ref{sec:mpu6050-nano-usb}). MPU-6050 poskytuje údaje o pohybe a orientácii potrebné pre korekciu driftu, otáčanie pri bludení a ďalšie vrstvy riadenia. Nižšie nasleduje stručný popis fyzikálneho princípu akcelerometra a gyroskopu a fúzie signálov.
 
 \subsubsection*{Akcelerometer}
 V module IMU MPU-6050 sa nachádza 3-osový akcelerometer, ktorý meria lineárne zrýchlenie
@@ -216,7 +221,7 @@ V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s t
 
 Na reálnom robote sa obraz z CSI kamery získava uzlami balíka \texttt{camera\_ros}, ktoré publikujú typicky témy \texttt{/camera/image\_raw} a \texttt{/camera/camera\_info}. Pre zníženie záťaže CPU a siete sa často používa komprimovaný obraz (\texttt{sensor\_msgs/msg/CompressedImage}) na príbuzných témach s príponou \texttt{/compressed}. V projekte je voliteľný uzol \texttt{waverower\_camera} (balík \texttt{waverower}), ktorý vie odoberať surový alebo komprimovaný vstup a poskytovať ďalšie výstupy (napr.\ detekcie); pre webové ovládanie sa obraz čerpá z komprimovaného topicu konfigurovateľného v rozhraní webovej aplikácie.
 
-Uzly \texttt{optical\_flow} a \texttt{optical\_flow\_dense} využívajú knižnicu OpenCV podľa oficiálneho tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}: \textbf{riedky tok} Lucas--Kanade hľadá posun vybraných bodov medzi dvoma snímkami (v implementácii cez pyramídy \texttt{calcOpticalFlowPyrLK}, aby sa zachytil aj väčší posun), \textbf{hustý tok} Farnebäck odhaduje posun pre každý pixel cez polynomiálnu expanziu okolia (\texttt{calcOpticalFlowFarneback}). Vstupom je komprimovaný JPEG snímok; uzol \texttt{optical\_flow} počíta stredný horizontálny posun sledovaných bodov medzi snímkami a z neho odvádza korekciu úhlovej rýchlosti. Tá sa pripočíta k poslednému príkazu \texttt{geometry\_msgs/msg/Twist} z manuálneho teleopu a publikuje sa na výstupný topic (napr.\ \texttt{/teleop\_cmd\_vel\_corrected}), ktorý má následne odoberať motorový uzol. Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v malom deadzone), aby sa neprebíjal úmysel riadenia.
+Korekcia dráhy z obrazu využíva knižnicu OpenCV podľa tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}. V nasadených launch súboroch (napr.\ \texttt{runtime\_stack.launch.py}) sa spúšťa uzol \texttt{optical\_flow}: \textbf{riedky tok} Lucas--Kanade hľadá posun vybraných bodov medzi snímkami (pyramídy \texttt{calcOpticalFlowPyrLK}). Voliteľná implementácia \textbf{hustého toku} Farnebäck (\texttt{calcOpticalFlowFarneback}) môže byť v projekte prítomná ako samostatný spustiteľný súbor pre experimenty; v texte nižšie sa predpokladá Lucas--Kanade, ak nie je uvedené inak. Vstupom je komprimovaný JPEG snímok; uzol počíta stredný horizontálny posun sledovaných bodov a z neho odvádza korekciu \texttt{angular.z}. Tá sa pripočíta k poslednému \texttt{geometry\_msgs/msg/Twist} z teleopu a publikuje sa na \texttt{/teleop\_cmd\_vel\_corrected}. Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v deadzone).
 
 Pre autonómnu navigáciu a SLAM v simulácii aj na hardvéri slúži predovšetkým LiDAR na téme \texttt{/scan}; IMU (\texttt{/imu}) môže byť použitá na doplnkovú stabilizáciu alebo odhad orientácie podľa konfigurácie. Kamera slúži predovšetkým teleprezencii, vizualizácii v RViz a experimentom s počítačovým videním; väzba na mapovanie je v tejto práci typicky cez LiDAR (nie priama vizuálna SLAM vetva).
 
@@ -571,7 +576,7 @@ V simulátore Gazebo Sim som v prostredí workspace pripravil model robota Wave 
     \centering
     \includegraphics[width=0.8\textwidth]{obrazky/gazebo world.png} 
     \caption{Model Wave Roveru v Gazebo} 
-    \label{fig:obrazok} 
+    \label{fig:gazebo-waver} 
 \end{figure}
 
 
@@ -585,6 +590,18 @@ Aktuálny softvérový systém na platforme Wave Rover je implementovaný ako RO
 \subsection*{Druhá hardvérová zostava: Motor Driver HAT a senzory na Raspberry Pi}
 
 Nezávisle od vyššie uvedenej vetvy s ESP32 sa v projekte používa konfigurácia, v ktorej Raspberry Pi priamo ovláda Waveshare \emph{Motor Driver HAT} po zbernici I\textsuperscript{2}C (typicky adresa \texttt{0x40}) uzlami balíka \texttt{waverower}. Implementačná trieda \texttt{MotorHatNode} (spustiteľná položka \texttt{waverower}) sa v launch súboroch pomenúva podľa kontextu, napr.\ \texttt{motor\_hat\_node} v \texttt{manual\_bringup.launch.py} alebo \texttt{wasd\_motor\_hat\_node} v iných konfiguráciách; odoberá \texttt{geometry\_msgs/msg/Twist} z témy určenej parametrami (teleop vs.\ \texttt{/cmd\_vel}) podľa \texttt{control\_mode}. Topic \texttt{/imu} dodáva skript \texttt{imu\_serial\_fusion\_bridge.py} (MPU-6050 na mikrokontroléri cez USB; odôvodnenie a firmware v sekcii~\ref{sec:mpu6050-nano-usb}). LiDAR LD19 poskytuje \texttt{/scan} cez balík \texttt{ldlidar\_ros2}. Táto zostava \emph{nepoužíva} HTTP motorové príkazy na ESP32; pohon je výhradne cez HAT na RPi. Podrobný popis PID korekcie, optického toku a bludenia je v sekcii~\ref{sec:waverower-riadenie}.
+
+\subsection*{Komunikácia motor -- LiDAR -- IMU (ktoré fyzické rozhranie)}
+
+V ROS~2 sa dáta stretávajú na témach (\texttt{/cmd\_vel}, \texttt{/scan}, \texttt{/imu}), ale na úrovni zapojenia medzi Raspberry Pi a perifériami platí:
+
+\begin{itemize}
+    \item \textbf{Motory (Motor Driver HAT)}: Raspberry Pi komunikuje s čipom PCA9685 na HAT-e cez zbernicu \textbf{I\textsuperscript{2}C} (piny SDA/SCL na 40-pin konektore, typicky adresa \texttt{0x40}). Uzol \texttt{MotorHatNode} cez ovládač I\textsuperscript{2}C nastavuje PWM; HAT riadi H-mósty a prúd do štyroch motorov. \textbf{Motory teda nie sú na samostatnom UART-e}, ale za HATom.
+    \item \textbf{LiDAR LD19}: senzor vystupuje ako \textbf{sériový UART} tok; v praxi je často pripojený cez \textbf{USB--UART} prevodník, takže na Linuxe pribudne zariadenie \texttt{/dev/ttyUSB\textit{n}} (alebo ekvivalent). Balík \texttt{ldlidar\_ros2} číta binárne rámce a publikuje \texttt{/scan}. Baud rate a port sú v launch parametroch drivera (typicky stovky kb/s podľa dokumentácie LD19).
+    \item \textbf{IMU (MPU-6050 + Arduino Nano)}: medzi Raspberry Pi a Nanom \textbf{nevedie I\textsuperscript{2}C}. Na strane Nano je MPU-6050 na \textbf{lokálnej I\textsuperscript{2}C} (len medzi čipom a Nanom); z Nano do RPi ide \textbf{USB} ako virtuálny sériový port (CDC), v systéme napr.\ \texttt{/dev/ttyACM\textit{n}} alebo stabilná cesta \texttt{/dev/serial/by-id/...}. Skript \texttt{imu\_serial\_fusion\_bridge.py} číta textový CSV stream (napr.\ 115200~Bd) a publikuje \texttt{/imu}.
+\end{itemize}
+
+Zhrnutie: \textbf{pohon = I\textsuperscript{2}C} (RPi $\rightarrow$ PCA9685/HAT), \textbf{LiDAR = UART (často cez USB)} , \textbf{IMU = USB sériový link z Nano} (samotný MPU-6050 nie je na I\textsuperscript{2}C priamo u RPi kvôli konfliktu s HATom, pozri sek.~\ref{sec:mpu6050-nano-usb}). Kamera (ak je v zostave) používa \textbf{CSI} (ribbon) alebo iné rozhranie podľa modulu; to je popísané v kapitole o \texttt{camera\_ros}.
 
 \subsection*{Odporúčané spustenie a dokumentácia}
 
@@ -629,17 +646,13 @@ Zdrojom \texttt{/imu} v projekte je typicky uzol \texttt{imu\_serial\_fusion\_br
 
 \subsection*{Optický tok (korekcia dráhy podľa obrazu)}
 
-Na vyrovnanie jazdy sa používa \textbf{samostatný uzol}, ktorý neimplementuje PID, ale \textbf{priamu úpravu} požadovaného \texttt{angular.z} v správe Twist na základe horizontálneho posunu obrazu (optický tok). Sú dve varianty:
-\begin{itemize}
-    \item \textbf{Riedky Lucas--Kanade} (\texttt{optical\_flow\_node}) -- v predošlom snímku sa nájdu dobré rohové body (\texttt{goodFeaturesToTrack}), medzi susednými snímkami sa sledujú (\texttt{calcOpticalFlowPyrLK}), z úspešných párov sa vypočíta priemer posunu $\Delta x$.
-    \item \textbf{Hustý Farneback} (\texttt{optical\_flow\_dense\_node}) -- na menšom rozlíšení sa vypočíta pole optického toku (\texttt{calcOpticalFlowFarneback}) a použije sa stredná hodnota horizontálnej zložky toku.
-\end{itemize}
+Na vyrovnanie jazdy sa používa \textbf{samostatný uzol}, ktorý neimplementuje PID, ale \textbf{priamu úpravu} požadovaného \texttt{angular.z} v správe Twist na základe horizontálneho posunu obrazu (optický tok). V bežnej konfigurácii sa používa \textbf{riedky Lucas--Kanade} (\texttt{optical\_flow\_node}): v predošlom snímku sa nájdu rohové body (\texttt{goodFeaturesToTrack}), medzi snímkami sa sledujú (\texttt{calcOpticalFlowPyrLK}) a z párov sa vypočíta priemer $\Delta x$. Experimentálne je v repozitári dostupný aj \textbf{hustý Farnebäck} ako samostatný uzol s \texttt{calcOpticalFlowFarneback}; do finálneho bringupu nemusí byť zaradený.
 
 V oboch prípadoch sa priemer normalizuje šírkou snímky. V kóde platí: ak sa scéna v obraze posúva \textbf{doľava} (\texttt{mean\_dx} záporné), robot v skutočnosti driftuje \textbf{doprava} --- korekcia pridá kladné \texttt{angular.z} (otočenie doľava), aby sa drift kompenzoval. Výstup sa násobí \texttt{correction\_gain} a obmedzuje na $\pm\texttt{max\_correction}$. Uzol načítava komprimovaný obraz z kamery a posledný teleop Twist; timerom (cca 20~Hz) publikuje výsledok na tému \textbf{\texttt{/teleop\_cmd\_vel\_corrected}}.
 
 Korekcia z optického toku sa \textbf{pridá k} \texttt{angular.z} len ak súčasne platí: $\lvert v_x \rvert > \texttt{forward\_threshold}$ (robot ide dopredu) a $\lvert \omega_z \rvert < \texttt{steer\_deadzone}$ (používateľ aktívne ``nezatáča'') -- aby sa nebojoval s úmyselným zatáčaním.
 
-V súbore \texttt{manual\_bringup.launch.py} parameter \texttt{use\_flow} zapína uzol optického toku a parameter \texttt{flow\_algo} volí medzi algoritmom \texttt{lk} a \texttt{farneback} (hustý). Motor v manuálnom režime odoberá buď \texttt{/teleop\_cmd\_vel}, alebo \texttt{/teleop\_cmd\_vel\_corrected}, podľa toho, či je \texttt{use\_flow} zapnutý. V \texttt{slam.launch.py} argument \texttt{correction\_mode} určuje tri režimy: \texttt{imu} (PID v motore cez \texttt{imu\_correction}), \texttt{optical\_flow} (spustí sa uzol \texttt{optical\_flow} -- v tejto konfigurácii len Lucas--Kanade; Farneback je dostupný v \texttt{manual\_bringup}), alebo \texttt{none}.
+Parameter \texttt{correction\_mode} v komplexnom launch (napr.\ \texttt{runtime\_stack.launch.py}) určuje tri režimy korekcie driftu: \texttt{imu} (PID v motore cez \texttt{imu\_correction}), \texttt{optical\_flow} (uzol Lucas--Kanade s kamerou), alebo \texttt{none}. Motor v manuálnom režime odoberá buď priamy teleop, alebo \texttt{/teleop\_cmd\_vel\_corrected}, ak je zapnutý optický tok. V \texttt{slam.launch.py} sa rovnaký argument forwarduje do vnoreného bringupu.
 
 \subsection*{LiDAR LD19 a rozdelenie na sektory pri bludení}
 
@@ -665,11 +678,19 @@ Launch súbor \texttt{wander.launch.py} spúšťa motor v režime \texttt{auto},
 \subsection*{Prepínanie prevádzkových režimov za behu (\texttt{robot\_mode\_switch.py})}
 \label{sec:mode-switch}
 
-Systém podporuje prepínanie medzi manuálnym a autonómnym režimom bez reštartu akéhokoľvek uzla. Prepínač je implementovaný ako samostatný ROS~2 uzol \texttt{robot\_mode\_switch} (súbor \texttt{waverower/scripts/robot\_mode\_switch.py}), ktorý po spustení poskytuje dve služby typu \texttt{std\_srvs/srv/Trigger}:
+Systém podporuje prepínanie medzi manuálnym a autonómnym režimom bez reštartu akéhokoľvek uzla. Prepínač je implementovaný ako samostatný ROS~2 uzol \texttt{robot\_mode\_switch} (súbor \texttt{waverower/scripts/robot\_mode\_switch.py}), ktorý po spustení poskytuje služby typu \texttt{std\_srvs/srv/Trigger}:
 
 \begin{itemize}
     \item \texttt{/waverower/switch\_to\_manual} -- prepne do manuálneho režimu,
-    \item \texttt{/waverower/switch\_to\_wander} -- prepne do autonómneho bludenia.
+    \item \texttt{/waverower/switch\_to\_wander} -- prepne do autonómneho bludenia,
+    \item \texttt{/waverower/shutdown} -- požiadavka na \textbf{vypnutie počítača} (Raspberry Pi); mechanizmus je popísaný nižšie.
+\end{itemize}
+
+\paragraph{Prehľad logických režimov (zjednodušená tabuľka).}
+\begin{itemize}
+    \item \textbf{Motorový uzol} -- parameter \texttt{control\_mode}: \texttt{manual} (odber \texttt{/teleop\_cmd\_vel}) vs.\ \texttt{auto} (odber \texttt{/cmd\_vel} z Nav2, wander, sledovania lopty, \ldots).
+    \item \textbf{Prepínač režimov} -- cez služby vyššie: manuál (teleop) vs.\ wander (reaktívne bludenie z LiDARu); Nav2/SLAM sa spúšťajú samostatnými launch súbormi.
+    \item \textbf{Korekcia driftu} (launch \texttt{correction\_mode}) -- \texttt{imu}, \texttt{optical\_flow} alebo \texttt{none} (vzájomne sa nevylučujú s prepínačom wander/manuál, ide o inú os konfigurácie).
 \end{itemize}
 
 \paragraph{Mechanizmus prepnutia.}
@@ -706,6 +727,9 @@ Každé smerové tlačidlo D-padu nesie HTML atribúty \texttt{data-lx} a \textt
 
 \paragraph{Prepínanie režimov z rozhrania.}
 Tlačidlá \emph{Manual} a \emph{Wander} volajú ROS~2 služby \texttt{/waverower/switch\_to\_manual} a \texttt{/waverower/switch\_to\_wander} (popísané v sekcii~\ref{sec:mode-switch}) prostredníctvom objektu \texttt{ROSLIB.Service}. Volanie je asynchrónne: tlačidlá sa počas čakania na odpoveď deaktivujú atribútom \texttt{disabled}, aby sa zabránilo opakovaným požiadavkám. Po prijatí odpovede sa vizuálny stav tlačidiel aktualizuje podľa výsledku -- aktívny režim je zvýraznený zelenou farbou (CSS trieda \texttt{active}). Na mobilných prehliadačoch môže byť udalosť \texttt{click} potlačená v dôsledku \texttt{preventDefault} na iných dotykových elementoch; problém je vyriešený registráciou udalosti \texttt{touchend} priamo na každom tlačidle prepínača s vlastným \texttt{preventDefault}, čím sa zaručí okamžitá odozva aj na dotykovom zariadení.
+
+\paragraph{Vzdialené vypnutie Raspberry Pi (\texttt{/waverower/shutdown}).}
+Pre vypnutie robota bez fyzického prístupu je v tom istom uzle \texttt{robot\_mode\_switch} služba \texttt{/waverower/shutdown}. Po zavolaní \textbf{najprv vráti úspešnú odpoveď} (\texttt{success=True}), aby klient cez rosbridge stihol prijať odpoveď skôr, než systém padne. Následne sa v samostatnom vlákne spustí časovač (oneskorenie približne 1\,s) a vykoná sa \texttt{sudo systemctl poweroff}. Na pracovnej stanici musí byť pre používateľa ROS povolené spustenie \texttt{poweroff} bez hesla (napr.\ pravidlo v \texttt{sudoers}) alebo ekvivalent. Webová časť (\texttt{connection-mode.js}) pred volaním zobrazí potvrdenie v prehliadači; po súhlase zavolá zabalenú funkciu \texttt{rosTrigger} z \texttt{ros.js}, ktorá odošle požiadavku na \texttt{std\_srvs/Trigger}. Tlačidlo \emph{Shutdown} je dostupné len pri aktívnom WebSocket spojení. \textbf{TODO (obrázok):} screenshot dialógu a stavu po odoslaní príkazu; voliteľne sekvenčný diagram (UI $\rightarrow$ rosbridge $\rightarrow$ služba $\rightarrow$ systemd).
 
 \paragraph{Vizuálny dizajn.}
 Rozhranie používa tmavú farebnú schému optimalizovanú pre čitateľnosť v exteriérových podmienkach. Meta tag \texttt{viewport} s parametrami \texttt{maximum-scale=1, user-scalable=no} zabraňuje neúmyselnému priblíženiu pri dotyku a eliminuje 300\,ms oneskorenie kliknutia prítomné v starších mobilných prehliadačoch. Tlačidlám je nastavená CSS vlastnosť \texttt{touch-action: manipulation}, ktorá ďalej skracuje dotykovú latenciu.
@@ -873,9 +897,9 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
 
     \item \textbf{IMU}
         \begin{itemize}
-            \item Inicializácia IMU a získavanie údajov o pohybe vozidla.
-            \item Kalibrácia a filtrácia údajov
-            \item Posielanie údajov ďalej pre navigáciu a vyhýbanie sa prekážkam.
+            \item Hardvér MPU-6050 s firmwareom na Arduino Nano a most \texttt{imu\_serial\_fusion\_bridge} na RPi (sek.~\ref{sec:mpu6050-nano-usb}).
+            \item Kalibrácia a filtrácia (komplementárny filter na strane firmwaru; prípadné ďalšie úpravy v moste).
+            \item Publikovanie \texttt{/imu} pre PID na motore, bludenie a ďalšie uzly.
         \end{itemize}
 
     \item \textbf{Motor Controller}
@@ -926,26 +950,37 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
 \section{Implementácia uzlov a komunikácia s UGV Base General}
 \label{sec:ugv-esp32-alternativa}
 
-\textbf{Poznámka:} Táto sekcia popisuje \emph{alternatívnu} softvérovú vetvu (projekt s uzlami \texttt{/bpc\_prp\_robot/...}, ESP32, HTTP), ktorá \textbf{nie je} totožná s nasadeným balíkom \texttt{waverower} na Wave Roveri z väčšej časti kapitoly. Je zachovaná ako dokumentácia súvisiacich experimentov alebo šablóny; hlavná implementácia robota je v sekcii~\ref{sec:waverower-riadenie} a v podsekciách o Motor HAT vyššie.
+\textbf{Poznámka:} Táto sekcia popisuje \emph{alternatívnu} komunikáciu s firmwareom UGV (ESP32, HTTP) a referenčné C++ uzly v \texttt{waverower/src/esp32}. \textbf{Hlavná nasadená vetva} na Wave Roveri je v balíku \texttt{waverower} s Motor Driver HAT a štandardnými názvami ROS~2 tém (bez umelého prefixu) -- sek.~\ref{sec:waverower-riadenie} a nižšie zhrnutie tém.
 
-Táto sekcia popisuje detailnú implementáciu jednotlivých uzlov, ich ROS~2 témy, HTTP požiadavky a komunikáciu s firmwareom \emph{UGV Base General} na ESP32. Oficiálny príklad nižšie počítača (Waveshare) je verejne dostupný v repozitári \texttt{ugv\_base\_general}~\cite{ugv_base_general_repo}; v kóde projektu je k dispozícii aj lokálna kópia v priečinku \texttt{ugv\_base\_general/}, kde súbor \texttt{General\_Driver/json\_cmd.h} enumeruje konštanty príkazov (\texttt{CMD\_*}) a ukážkové JSON reťazce.
+Nižšie sú HTTP požiadavky firmwaru \emph{UGV Base General} na ESP32 a referenčné C++ uzly v \texttt{waverower/src/esp32}. \textbf{Samostatný uzol s názvom „ESP32 Bridge“ v tomto repozitári nemusí existovať} -- mostenie je rozdelené medzi uvedené spustiteľné súbory a prípadné príklady Waveshare. Oficiálna dokumentácia a firmware sú v repozitári \texttt{ugv\_base\_general}~\cite{ugv_base_general_repo}; lokálna kópia je v \texttt{ugv\_base\_general/}, súbor \texttt{General\_Driver/json\_cmd.h} enumeruje konštanty príkazov (\texttt{CMD\_*}) a ukážkové JSON reťazce.
 
 \subsection*{Úloha Raspberry Pi a ESP32 (master--slave)}
 
 V konfigurácii s doskou \emph{General Driver} (ESP32) plní \textbf{Raspberry Pi úlohu horného počítača (master)}: beží na ňom ROS~2, senzorové uzly (napr.\ LiDAR cez USB), plánovanie a uzol mosta. \textbf{ESP32 je dolný počítač (slave)}: priamo riadi motory (PID podľa dokumentácie výrobcu), číta IMU pripojené k doske a vystavuje rozhranie pre príkazy. Komunikácia neprebieha cez ROS~2 DDS priamo na mikrokontroléri, ale \textbf{HTTP GET} (alebo podľa výrobcu aj sériový UART/USB s rovnakým JSON) --- Raspberry Pi teda posiela textové príkazy a pri pollingu IMU číta JSON odpovede. Tým sa oddelí reálny čas riadenia na ESP32 od linuxového stacku na RPi.
 
-\subsection*{ESP32 Bridge Node}
+\subsection*{Referenčné C++ uzly v \texttt{waverower/src/esp32}}
 
-ESP32 Bridge Node slúži ako most medzi ROS~2 systémom a UGV Base General hardvérom. Tento uzol komunikuje s ESP32 cez HTTP GET požiadavky a poskytuje ROS~2 témy pre motory a IMU.
+V balíku \texttt{waverower} sú (mimo šablóny \texttt{ugv\_base\_general}) uložené \textbf{dve jednoduché referenčné implementácie} mosta medzi ROS~2 a rovnakým HTTP API (\texttt{/js?json=...}), vhodné na ladenie podvozku s firmwareom UGV bez Motor Driver HAT na RPi:
 
-\subsubsection*{Komunikácia s UGV Base General}
+\begin{itemize}
+    \item \textbf{\texttt{motor\_http\_teleop\_node.cpp}} -- uzol \texttt{motor\_http\_teleop} číta ovládanie z \textbf{terminálu} (raw režim stdin): šípky, WASD, úprava rýchlosti (\texttt{+}/\texttt{-}, číslice 1--9), nezávislý \emph{trim} ľavého a pravého kanála (klávesy \texttt{u}/\texttt{i}, \texttt{o}/\texttt{p}). Periodický časovač (typicky 10--100\,ms) vyhodnocuje stlačené smery, rieši súčasné stlačenia (napr.\ vpred+vpravo = oblúk) a konflikty dopredu/dozadu. Výstup je vždy JSON \texttt{\{"T":1,"L":$L$,"R":$R$\}} s $L,R \in [-1,1]$, odoslaný cez \textbf{libcurl} ako HTTP GET na \texttt{http://<esp32\_ip>/js}. Parametre: \texttt{esp32\_ip}, \texttt{speed}, \texttt{left\_trim}, \texttt{right\_trim}, \texttt{key\_release\_timeout\_ms} (aby držanie klávesa nespôsobilo prerušenie po key-repeat). Pri ukončení uzla sa pošle zastavenie motorov (\texttt{0,0}).
+    \item \textbf{\texttt{motor\_driver\_node.cpp}} -- uzol \texttt{motor\_driver} odoberá \texttt{std\_msgs/msg/Float64MultiArray} na téme \texttt{/motor\_cmd} (očakáva aspoň dve zložky: ľavé a pravé koleso v rozsahu $-1\ldots 1$), každá zmena správy sa okamžite mapuje na rovnaký HTTP príkaz \texttt{T:1}. Slúži na pripojenie vlastného plánovača alebo skriptu, ktorý už vypočíta normované rýchlosti kolies.
+\end{itemize}
+
+Obe varianty zdieľajú rovnaké URL-kódovanie JSON reťazca ako v podsekciách nižšie; v CMakeLists môžu byť voliteľné ciele podľa toho, či sa má zostavovať len HAT vetva alebo aj ESP32 pomocné nástroje. \textbf{TODO (schéma):} blokový diagram RPi $\rightarrow$ HTTP $\rightarrow$ ESP32 $\rightarrow$ H-mósty $\rightarrow$ motory.
+
+\subsection*{HTTP volania voči ESP32 (UGV Base General)}
+
+Komunikácia medzi ROS~2 na Raspberry Pi a doskou s ESP32 prebieha podľa nižšie uvedeného protokolu (GET s parametrom \texttt{json}). Referenčné uzly \texttt{motor\_http\_teleop} a \texttt{motor\_driver} používajú rovnaké volania cez \textbf{libcurl}; ROS~2 témy v hlavnej vetve sú v zozname nižšie, nie pod umelým prefixom.
+
+\subsubsection*{Formát požiadaviek}
 
 UGV Base General poskytuje HTTP server na porte 80 (v lokálnej sieti Wi-Fi), ktorý prijíma JSON príkazy cez GET požiadavky s query parametrom \texttt{json}. Formát URL je:
 \begin{verbatim}
 http://<ESP32_IP>/js?json=<URL_ENCODED_JSON>
 \end{verbatim}
 
-ESP32 Bridge Node používa knižnicu libcurl na odosielanie HTTP požiadaviek. Každý príkaz je JSON objekt s poľom \texttt{T} (typ príkazu) a ďalšími parametrami podľa typu príkazu; zoznam typov je v \texttt{json\_cmd.h}~\cite{ugv_base_general_repo}.
+Klientský kód (napr.\ v referenčných uzloch vyššie) používa knižnicu \textbf{libcurl} na odoslanie HTTP požiadaviek. Každý príkaz je JSON objekt s poľom \texttt{T} (typ príkazu) a ďalšími parametrami podľa typu príkazu; zoznam typov je v \texttt{json\_cmd.h}~\cite{ugv_base_general_repo}.
 
 \paragraph{Príklady požiadaviek (reťazec \texttt{json} musí byť URL-kódovaný).}
 \begin{itemize}
@@ -958,341 +993,42 @@ ESP32 Bridge Node používa knižnicu libcurl na odosielanie HTTP požiadaviek. 
 Testovanie mimo ROS~2 je možné napr.\ príkazom \texttt{curl} z Raspberry Pi (po nahradení IP):\\
 \texttt{curl "http://<ESP32\_IP>/js?json=\%7B\%22T\%22\%3A126\%7D"}
 
-ESP32 Bridge Node robí to isté periodicky z uzla: pre motory prevádza hodnoty z tém na JSON \texttt{T:1} (alebo ekvivalent), pre IMU opakovane volá \texttt{T:126} a parsuje odpoveď.
+Hypotetický uzol typu „bridge“ by z týchto HTTP volaní vedel skladať ROS~2 správy; \textbf{v hlavnej vetve tohto repozitára} sa IMU na zostave s Motor HAT neberie z ESP32, ale z USB podľa sekcie~\ref{sec:mpu6050-nano-usb}.
 
-\subsubsection*{ROS 2 Topics}
+\subsubsection*{ROS~2 témy v projekte \texttt{waverower} (skutočné názvy)}
 
-ESP32 Bridge Node poskytuje nasledujúce topics:
-
-\textbf{Subscribers (vstupné príkazy):}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/cmd\_motor\_left} (std\_msgs/msg/UInt8) - Ovládanie ľavej strany motorov
-    \begin{itemize}
-        \item Hodnoty: 0-255, kde 127 = stoj
-        \item 0-126 = dozadu (čím menšie, tým rýchlejšie)
-        \item 128-255 = dopredu (čím väčšie, tým rýchlejšie)
-    \end{itemize}
-    
-    \item \texttt{/bpc\_prp\_robot/cmd\_motor\_right} (std\_msgs/msg/UInt8) - Ovládanie pravej strany motorov
-    \begin{itemize}
-        \item Rovnaký formát ako pre ľavú stranu
-    \end{itemize}
-\end{itemize}
-
-\textbf{Publishers (výstupné dáta):}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/imu} (sensor\_msgs/msg/Imu) - IMU dáta z ESP32
-    \begin{itemize}
-        \item \texttt{linear\_acceleration} - lineárne zrýchlenie (ax, ay, az) v m/s²
-        \item \texttt{angular\_velocity} - uhlová rýchlosť (gx, gy, gz) v rad/s
-        \item \texttt{header.frame\_id} = "imu\_link"
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{HTTP Requesty a JSON Príkazy}
-
-ESP32 Bridge konvertuje ROS 2 topic správy na JSON príkazy podľa UGV Base General protokolu:
-
-\textbf{Motor Control (CMD\_SPEED\_CTRL):}
-\begin{verbatim}
-{"T":1,"L":<left_speed>,"R":<right_speed>}
-\end{verbatim}
-Kde \texttt{left\_speed} a \texttt{right\_speed} sú hodnoty od -1.0 do +1.0. ESP32 Bridge automaticky konvertuje hodnoty 0-255 (127=stoj) z ROS topics na tento formát pomocou vzorca: \texttt{speed = (value - 127) / 127.0}.
-
-\textbf{IMU Data Request (CMD\_GET\_IMU\_DATA):}
-\begin{verbatim}
-{"T":126}
-\end{verbatim}
-ESP32 odpovedá JSON objektom:
-\begin{verbatim}
-{"T":1002,"ax":...,"ay":...,"az":...,"gx":...,"gy":...,"gz":...}
-\end{verbatim}
-
-ESP32 Bridge automaticky parsuje túto odpoveď a publikuje ju ako \texttt{sensor\_msgs/msg/Imu} na topic \texttt{/bpc\_prp\_robot/imu}.
-
-\subsubsection*{Parametre uzla}
+V texte práce \textbf{sa nepoužívajú} umelo zvolené prefixy typu \texttt{/bpc\_prp\_robot/...} (šlo o starú šablónu z iného dokumentu). Typické témy v nasadení sú:
 
 \begin{itemize}
-    \item \texttt{esp32\_ip} (string, default: "192.168.0.224") - IP adresa ESP32
-    \item \texttt{imu\_poll\_rate\_ms} (int, default: 50) - Frekvencia polling IMU dát v milisekundách (50ms = 20 Hz)
+    \item \texttt{/scan} -- \texttt{sensor\_msgs/msg/LaserScan} (LiDAR LD19 cez balík \texttt{ldlidar\_ros2}; presný \texttt{frame\_id} podľa launch súboru a statickej TF).
+    \item \texttt{/imu} -- \texttt{sensor\_msgs/msg/Imu} (skript \texttt{imu\_serial\_fusion\_bridge.py} a CSV z Arduino Nano; prípadne ďalšie spracovanie v \texttt{imu\_kalman\_filter.py}).
+    \item Pohyb: \texttt{/teleop\_cmd\_vel}, \texttt{/cmd\_vel} -- \texttt{geometry\_msgs/msg/Twist} (motorový uzol \texttt{MotorHatNode}; parametre určujú, ktorý zdroj sa práve používa).
+    \item Kamera: napr.\ \texttt{/camera/image\_raw} a komprimované varianty podľa \texttt{camera\_ros} a remappingu v launch súboroch (napr.\ \texttt{/camera/camera\_node/image\_raw/compressed}).
+    \item Referenčné ESP32 C++ uzly (HTTP): \texttt{/motor\_cmd} -- \texttt{std\_msgs/msg/Float64MultiArray} (dve zložky ľavé/pravé koleso $-1\ldots 1$, uzol \texttt{motor\_driver}) -- bez prefixu \texttt{bpc\_prp}.
 \end{itemize}
+
+JSON motorového príkazu \texttt{\{"T":1,"L":...,"R":...\}} zostáva rovnaký na úrovni HTTP; mapovanie z ROS sa v referenčných uzloch robí priamo z \texttt{Twist} alebo \texttt{Float64MultiArray}, nie z vlastných tém \texttt{cmd\_motor\_left} / \texttt{cmd\_motor\_right}. Šablónové uzly s prefixom \texttt{/bpc\_prp\_robot/} z cudzích dokumentov sa v \texttt{waverower} nepoužívajú -- skutočné uzly a témy sú v sekcii~\ref{sec:waverower-riadenie}.
 
 \subsection*{MPU6050 na Arduino Nano a USB (vetva s Motor Driver HAT na RPi)}
 \label{sec:mpu6050-nano-usb}
 
-Pri zostave, kde Raspberry Pi priamo ovláda motory cez Waveshare Motor Driver HAT po I\textsuperscript{2}C (PCA9685, typicky adresa \texttt{0x40}), sa IMU čip MPU6050 (adresa \texttt{0x68}) pôvodne uvažoval na rovnakej I\textsuperscript{2}C zbernici ako HAT. V praxi sa vyskytli \textbf{problémy so zdieľanou zbernicou I\textsuperscript{2}C} (konflikty prístupu, nestabilita alebo nekompatibilita súčasného čítania senzora s PWM výstupmi), preto bol MPU6050 presunutý na samostatný mikrokontrolér.
+Pri zostave, kde Raspberry Pi priamo ovláda motory cez Waveshare Motor Driver HAT po I\textsuperscript{2}C (PCA9685, typicky adresa \texttt{0x40}), bol čip MPU-6050 (adresa \texttt{0x68}) pôvodne uvažovaný na \textbf{tej istej I\textsuperscript{2}C zbernici} ako HAT. V praxi sa ukázalo, že \textbf{súbežný prístup} -- súčasné alebo striedavé čítanie a zápis na zbernici medzi ovládaním PWM motorov a čítaním IMU -- vedie k problémom: nestabilné správanie, straty transakcií alebo kolízie pri zdieľaní zbernice. Pokus o koordináciu prístupov na strane Linuxu (\textbf{mutexy} medzi procesmi/uzlami) problém \emph{nedostatočne vyriešil}; zbernica a načasovanie ovládača HATu zostali kritickým miestom. Praktické riešenie preto bolo \textbf{oddeliť IMU na vlastný mikrokontrolér}: Arduino Nano má výhradne svoju lokálnu I\textsuperscript{2}C medzi sebou a MPU-6050, zatiaľ čo RPi komunikuje s HATom bez súperenia o ten istý fyzický I\textsuperscript{2}C k IMU.
 
-Firmware v súbore \texttt{waverower/firmware/mpu6050\_serial/mpu6050\_serial.ino} beží na \textbf{Arduino Nano}: MPU6050 je pripojený len k Nano cez I\textsuperscript{2}C (\texttt{Wire}, hodiny typicky 100~kHz, adresa \texttt{0x68}), inicializácia registrov (prebudenie, DLPF, rozsahy gyro/akcelerometra, vzorkovanie). Po spustení sa vykoná \textbf{kalibrácia gyroskopu} pri nehybnom senzore; v hlavnej slučke sa čítajú surové registre, prepočítajú sa na fyzikálne jednotky, použije sa doplnkový filter pre roll/pitch a integrácia gyro pre yaw (s driftom bez magnetometra). Výstup je \textbf{jedna textová CSV línia na riadok} cez USB sériový port (115200~Bd), ktorú na Raspberry Pi odoberá uzol \texttt{imu\_serial\_fusion\_bridge.py} a publikuje \texttt{sensor\_msgs/msg/Imu} na tému \texttt{/imu}. Tým je IMU fyzicky oddelený od I\textsuperscript{2}C HATu a spoľahlivosť komunikácie sa zlepší.
+\textbf{Vlastný firmware} v súbore \texttt{waverower/firmware/mpu6050\_serial/mpu6050\_serial.ino} beží na \textbf{Arduino Nano}: MPU-6050 je pripojený len k Nano cez I\textsuperscript{2}C (\texttt{Wire}, typicky 100~kHz, adresa \texttt{0x68}), s inicializáciou registrov (prebudenie, DLPF, rozsahy gyroskopu a akcelerometra, vzorkovanie). Po štarte sa vykoná \textbf{kalibrácia gyroskopu} pri nehybnom senzore; v hlavnej slučke sa čítajú surové registre, prepočítajú sa na fyzikálne jednotky, použije sa komplementárny filter pre roll/pitch a integrácia gyroskopu pre yaw (bez magnetometra zostáva očakávaný drift yaw). Výstup je \textbf{jedna textová CSV línia na riadok} cez USB sériový port (115200~Bd). Na Raspberry Pi uzol \texttt{imu\_serial\_fusion\_bridge.py} číta tento stream, voliteľne dopĺňa ďalšiu úpravu a publikuje \texttt{sensor\_msgs/msg/Imu} na tému \texttt{/imu}. Celá vetva je zámerne jednoduchá na ladenie (Arduino IDE, sériový monitor) a nezávislá od ROS buildu firmwaru HATu.
 
-\subsection*{Motor Controller Node}
-
-Motor Controller Node poskytuje vyššiu úroveň abstrakcie pre riadenie motorov. Tento uzol publikuje príkazy na topic, ktorý môže byť odoberaný ESP32 Bridge uzlom alebo inými uzlami.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Publisher:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/set\_motor\_speeds} (std\_msgs/msg/UInt8MultiArray)
-    \begin{itemize}
-        \item \texttt{data[0]} - rýchlosť ľavého motora (0-255)
-        \item \texttt{data[1]} - rýchlosť pravého motora (0-255)
-    \end{itemize}
-\end{itemize}
-
-Motor Controller poskytuje metódu \texttt{set\_motor\_speeds()}, ktorá prijíma štruktúru \texttt{WheelSpeed} s hodnotami pre ľavé a pravé koleso. Tieto hodnoty sú automaticky konvertované a publikované na topic.
-
-\subsection*{Camera Node}
-
-Camera Node spracováva obrazové dáta z kamery a detekuje ArUco markery v obraze. Tento uzol využíva OpenCV knižnicu pre spracovanie obrazu.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscriber:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/camera/compressed} (sensor\_msgs/msg/CompressedImage)
-    \begin{itemize}
-        \item Prijíma komprimované obrazové dáta z kamery
-        \item Formát: JPEG komprimovaný obraz
-    \end{itemize}
-\end{itemize}
-
-\textbf{Publisher:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/tag\_detected} (std\_msgs/msg/Int32)
-    \begin{itemize}
-        \item Publikuje ID posledného detekovaného ArUco markeru
-        \item Hodnota -1 znamená, že žiadny marker nebol detekovaný
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-Camera Node prijíma komprimované obrazové dáta, ktoré dekóduje pomocou OpenCV. Následne aplikuje ArUco detektor, ktorý hľadá ArUco markery v obraze. Keď je marker detekovaný, jeho ID je publikované na topic \texttt{/bpc\_prp\_robot/tag\_detected}.
-
-Zdrojom komprimovaného obrazu v systéme s Raspberry Pi je typicky výstup z \texttt{camera\_ros} (téma s \texttt{/compressed}) alebo uzla \texttt{waverower\_camera}, ktorý vie republikovať alebo spracovať obraz z \texttt{/camera/image\_raw}. Kalibrácia kamery pre presné projekcie by mala byť uložená v \texttt{\textasciitilde/.ros/camera\_info/} v súlade s \texttt{camera\_info} správami; bez kalibračného súboru ArUco detekcia funguje v pixeloch, ale priestorová interpretácia značiek je menej presná.
-
-\subsection*{IMU Node}
-
-IMU Node spracováva dáta z IMU senzora získané cez ESP32 Bridge. Tento uzol poskytuje kalibráciu a integráciu gyroskopických dát pre získanie orientácie robota.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscriber:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/imu} (sensor\_msgs/msg/Imu)
-    \begin{itemize}
-        \item Prijíma surové IMU dáta z ESP32 Bridge
-        \item Obsahuje lineárne zrýchlenie a uhlovú rýchlosť
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-IMU Node má dva režimy práce:
-
-\textbf{Režim kalibrácie (CALIBRATE):}
-\begin{itemize}
-    \item Zbierá vzorky gyroskopických dát počas 5 sekúnd
-    \item Vypočíta offset pre každú os
-    \item Offset sa používa na kompenzáciu driftu
-\end{itemize}
-
-\textbf{Režim integrácie (INTEGRATE):}
-\begin{itemize}
-    \item Integruje uhlovú rýchlosť z gyroskopu pre získanie orientácie
-    \item Používa PlanarImuIntegrator, ktorý aplikuje kalibrované offsety
-    \item Poskytuje metódu \texttt{getIntegratedResults()} pre získanie aktuálnej orientácie (yaw uhol)
-\end{itemize}
-
-\subsubsection*{Komunikácia s UGV Base General}
-
-IMU dáta sú získavané cez ESP32 Bridge Node, ktorý periodicky (podľa \texttt{imu\_poll\_rate\_ms}) posiela HTTP GET request s príkazom \texttt{\{"T":126\}} na ESP32. ESP32 odpovedá JSON objektom s IMU dátami, ktoré sú parsované a publikované ako ROS 2 topic.
-
-\subsection*{LIDAR Driver Node}
-
-LIDAR Driver Node číta dáta z LIDARu cez seriový port a publikuje ich ako LaserScan topic. Tento uzol podporuje viacero typov LIDARov vrátane D300 LD19.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Publisher:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
-    \begin{itemize}
-        \item \texttt{header.frame\_id} = "lidar\_link"
-        \item \texttt{ranges} - pole vzdialeností v metroch
-        \item \texttt{angle\_min}, \texttt{angle\_max} - minimálny a maximálny uhol skenovania
-        \item \texttt{range\_min}, \texttt{range\_max} - minimálna a maximálna merateľná vzdialenosť
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-LIDAR Driver Node otvára seriový port (typicky \texttt{/dev/ttyUSB0}) s baud rate 230400 a číta binárne dáta z LIDARu. Dáta sú parsované podľa typu LIDARu (D300, YDLIDAR, RPLIDAR) a konvertované do formátu \texttt{sensor\_msgs/msg/LaserScan}.
-
-\subsubsection*{Parametre uzla}
+\section*{Placeholdery a odporúčané obrázky / grafy (TODO pred odovzdaním)}
 
 \begin{itemize}
-    \item \texttt{serial\_port} (string, default: "/dev/ttyUSB0") - cesta k seriovému portu
-    \item \texttt{baud\_rate} (int, default: 230400) - rýchlosť seriovej komunikácie
-    \item \texttt{lidar\_type} (string, default: "d300") - typ LIDARu ("d300", "ydlidar", "rplidar")
-    \item \texttt{angle\_min}, \texttt{angle\_max} (float) - rozsah uhlov skenovania
-    \item \texttt{range\_min}, \texttt{range\_max} (float) - rozsah merateľných vzdialeností
-    \item \texttt{num\_readings} (int, default: 360) - počet meraní na jedno otočenie
-\end{itemize}
-
-\subsection*{LIDAR Filter Node}
-
-LIDAR Filter Node filtruje a spracúva dáta z LIDAR Driver Node. Tento uzol aplikuje filtre na LaserScan dáta a poskytuje agregované hodnoty pre rôzne smery.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscriber:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
-    \begin{itemize}
-        \item Prijíma surové LaserScan dáta z LIDAR Driver Node
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-LIDAR Filter Node aplikuje filtre na LaserScan dáta a vypočítava agregované hodnoty pre:
-\begin{itemize}
-    \item Front - vzdialenosť vpred
-    \item Back - vzdialenosť vzad
-    \item Front\_Left - vzdialenosť vpred-ľavo
-    \item Front\_Right - vzdialenosť vpred-vpravo
-\end{itemize}
-
-Tieto hodnoty môžu byť použité pre vyhýbanie sa prekážkam alebo navigáciu.
-
-\subsection*{Integrácia uzlov a komunikácia}
-
-Všetky uzly komunikujú cez ROS 2 topics, čo umožňuje modulárnu architektúru. ESP32 Bridge Node slúži ako jediný bod komunikácie s UGV Base General hardvérom cez HTTP. Ostatné uzly komunikujú iba cez ROS 2 topics, čo zjednodušuje architektúru a umožňuje jednoduchú výmenu komponentov.
-
-Tok dát v systéme:
-\begin{enumerate}
-    \item Hardvérové senzory (IMU, motory) → ESP32 (UGV Base General)
-    \item ESP32 → ESP32 Bridge Node (HTTP GET requesty)
-    \item ESP32 Bridge Node → ROS 2 topics
-    \item ROS 2 topics → Ostatné uzly (IMU Node, Motor Controller, atď.)
-    \item Ostatné uzly → ROS 2 topics → ESP32 Bridge Node → ESP32 → Hardvér
-\end{enumerate}
-
-Táto architektúra umožňuje jednoduchú integráciu nových uzlov bez potreby zmeny komunikácie s hardvérom.
-
-Odporúča sa doplniť obrázok grafu uzlov z nástroja \texttt{rqt\_graph} pri bežiacom systéme a tabuľku použitých príkazov \texttt{ros2 launch \ldots} podľa skutočnej konfigurácie robota.
-
-\subsection*{Button Listener Node}
-
-Button Listener Node slúži na detekciu stlačenia tlačidiel na robote. Tento uzol poskytuje jednoduchý mechanizmus na prepínanie stavov pomocou tlačidiel.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscriber:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/buttons} (std\_msgs/msg/UInt8)
-    \begin{itemize}
-        \item Prijíma informácie o stlačení tlačidiel
-        \item Hodnota 0 znamená stlačenie hlavného tlačidla
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-Button Listener Node prijíma správy o stlačení tlačidiel a prepína interný stav \texttt{active\_}. Keď je prijatá hodnota 0, stav sa prepne (toggle). Metóda \texttt{is\_active()} vráti aktuálny stav, ktorý môže byť použitý inými uzlami na riadenie správania robota.
-
-\subsection*{IO Node}
-
-IO Node poskytuje rozhranie pre vstupno-výstupné operácie, konkrétne pre tlačidlá a RGB LED diódy.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscriber:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/buttons} (std\_msgs/msg/UInt8)
-    \begin{itemize}
-        \item Prijíma informácie o stlačení tlačidiel
-        \item Uloží poslednú stlačenú hodnotu
-    \end{itemize}
-\end{itemize}
-
-\textbf{Publisher:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/rgb\_leds} (std\_msgs/msg/UInt8MultiArray)
-    \begin{itemize}
-        \item Publikuje farby pre RGB LED diódy
-        \item Pole hodnôt reprezentuje farby jednotlivých LED diód
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-IO Node poskytuje metódu \texttt{get\_button\_pressed()} pre získanie poslednej stlačenej hodnoty tlačidla a metódu \texttt{publish\_leds()} pre publikovanie farieb LED diód. Tento uzol slúži ako abstrakčná vrstva pre I/O operácie.
-
-\subsection*{PID Node}
-
-PID Node implementuje PID regulátor pre autonómne riadenie robota s vyhýbaním sa prekážkam. Tento uzol kombinuje dáta z LIDARu, IMU a ArUco detektora pre inteligentné riadenie pohybu.
-
-\subsubsection*{ROS 2 Topics}
-
-\textbf{Subscribers:}
-\begin{itemize}
-    \item \texttt{/bpc\_prp\_robot/lidar} (sensor\_msgs/msg/LaserScan)
-    \begin{itemize}
-        \item Prijíma LaserScan dáta z LIDARu
-        \item Používa sa na detekciu prekážok
-    \end{itemize}
-    
-    \item \texttt{/bpc\_prp\_robot/tag\_detected} (std\_msgs/msg/Int32)
-    \begin{itemize}
-        \item Prijíma ID detekovaného ArUco markeru
-        \item Používa sa na navigáciu k cieľu
-    \end{itemize}
-\end{itemize}
-
-\subsubsection*{Fungovanie}
-
-PID Node implementuje nasledujúce správanie:
-
-\textbf{Stavy riadenia:}
-\begin{itemize}
-    \item \texttt{DRIVE\_FORWARD} - Jazda dopredu s vyhýbaním sa prekážkam
-    \item \texttt{TURN\_LEFT} - Otočenie doľava
-    \item \texttt{TURN\_RIGHT} - Otočenie doprava
-\end{itemize}
-
-\textbf{PID regulátor:}
-\begin{itemize}
-    \item Používa IMU Node pre získanie aktuálnej orientácie (yaw uhol)
-    \item Vypočítava chybu medzi požadovanou a aktuálnou orientáciou
-    \item Aplikuje PID algoritmus s parametrami Kp, Ki, Kd
-    \item Generuje príkazy pre motory na základe vypočítanej chyby
-\end{itemize}
-
-\textbf{Vyhýbanie sa prekážkam:}
-\begin{itemize}
-    \item Analyzuje LaserScan dáta z LIDARu
-    \item Detekuje prekážky vpred, vľavo a vpravo
-    \item Pri detekcii prekážky vykoná otočenie do voľného smeru
-    \item Po otočení pokračuje v jazde dopredu
-\end{itemize}
-
-\textbf{Navigácia k ArUco markeru:}
-\begin{itemize}
-    \item Pri detekcii ArUco markeru môže zmeniť správanie
-    \item Môže navigovať robota k markeru alebo vykonať špecifickú akciu
-\end{itemize}
-
-\subsubsection*{Komunikácia s Motor Controller}
-
-PID Node používa Motor Controller Node pre odosielanie príkazov motorom. Vypočítané rýchlosti kolies sú konvertované na formát \texttt{WheelSpeed} a odoslané cez \texttt{set\_motor\_speeds()}, ktoré publikuje na topic \texttt{/bpc\_prp\_robot/set\_motor\_speeds}.
-
-\section*{Placeholdery na doplnenie po implementácii}
-
-\begin{itemize}
-    \item \textbf{Launch súbory:} čiastočne pokryté v sekciách~\ref{sec:waverower-riadenie} a~\ref{kap:implementacia}; doplniť prípadne tabuľku všetkých \texttt{ros2 launch waverower ...} príkazov a parametrov pre obhajobu.
-    \item \textbf{Testovanie a merania:} výsledky testov (latencia, frekvencia topicov, správanie pri vyhýbaní sa prekážkam), prípadne screenshoty z RViz alebo \texttt{rqt\_graph}.
-    \item \textbf{Dynamická rekonfigurácia:} pokryté v sekcii~\ref{sec:mode-switch} (\texttt{robot\_mode\_switch.py}, ROS~2 parametrové služby, \texttt{ReentrantCallbackGroup}) a v sekcii~\ref{sec:web-ui-detail} (webové rozhranie, \texttt{roslibjs}, dotykové udalosti) a sekcii~\ref{sec:systemd} (systemd unit súbory, automatický reštart).
-    \item \textbf{Distribuovaný beh:} ktoré uzly bežia na RPi a ktoré na stacionárnom PC, konfigurácia \texttt{ROS\_DOMAIN\_ID} alebo multicast.
+    \item \textbf{Launch súbory:} čiastočne pokryté v sekciách~\ref{sec:waverower-riadenie} a~\ref{kap:implementacia}; doplniť tabuľku všetkých používaných \texttt{ros2 launch waverower ...} a kľúčových argumentov.
+    \item \textbf{\texttt{rqt\_graph} / rqt\_tf\_tree:} screenshot pri behu \texttt{runtime\_stack} (manuál) a druhý pri \texttt{wander} + rozdiel v prepojeniach \texttt{/cmd\_vel}.
+    \item \textbf{RViz:} mapa + laser + obraz kamery (jedna kompozitná obrazovka); voliteľne Nav2 s globálnou trajektóriou.
+    \item \textbf{Gazebo:} robot v simulovanom svete (obr.~\ref{fig:gazebo-waver}); ostatné obrázky v práci majú zjednotiť \texttt{\textbackslash label} (teraz je viacnásobné \texttt{fig:obrazok} -- pri finalizácii nahradiť jedinečnými menami).
+    \item \textbf{Drift / korekcia:} graf času vs.\ \texttt{angular\_velocity.z} z \texttt{/imu} alebo odchýlky jazdy -- porovnanie \texttt{correction\_mode:=none} vs.\ \texttt{imu} vs.\ \texttt{optical\_flow} (rovnaká trajektória).
+    \item \textbf{Optický tok:} graf strednej horizontálnej zložky toku (\texttt{mean\_dx}) alebo ukážka sledovaných bodov v OpenCV okne (ladiaci výstup).
+    \item \textbf{Web UI:} fotografia telefónu s D-padom, stavom režimu Manual/Wander a voliteľne tlačidlom Shutdown po potvrdení.
+    \item \textbf{LiDAR wander:} jednoduchý diagram sektorov vpred/vľavo/vpravo alebo výrez \texttt{/scan} v polárnych súradniciach.
+    \item \textbf{Sledovanie lopty:} už uvedené v podsekcií o \texttt{ball\_tracker}; vlastná vetva -- graf $e(t)$ a $\omega_z(t)$ pri adaptívnom PID.
+    \item \textbf{Testovanie a merania:} latencia rosbridge (ak sa meria), frekvencie topicov (\texttt{ros2 topic hz}), časy odozvy pri prepínaní režimov.
+    \item \textbf{Dynamická rekonfigurácia:} textovo pokryté v sekciách~\ref{sec:mode-switch}, \ref{sec:web-ui-detail}, \ref{sec:systemd}; doplniť len ukážkový výpis \texttt{ros2 param get} pred/po službe.
+    \item \textbf{Distribuovaný beh:} ak sa používa druhý PC -- schéma a \texttt{ROS\_DOMAIN\_ID}.
 \end{itemize}
