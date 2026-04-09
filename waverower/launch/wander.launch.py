@@ -31,11 +31,11 @@ def generate_launch_description():
             description="prah vzdialenosti vsetkych kvadrantov [m]",
         ),
         DeclareLaunchArgument(
-            "forward_speed", default_value="0.10",
+            "forward_speed", default_value="0.75",
             description="rychlost priamky [m/s]",
         ),
         DeclareLaunchArgument(
-            "turn_speed", default_value="1.80",
+            "turn_speed", default_value="1.50",
             description="uhlova rychlost [rad/s]",
         ),
         DeclareLaunchArgument(

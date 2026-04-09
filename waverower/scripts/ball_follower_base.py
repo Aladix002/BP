@@ -12,7 +12,7 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Float64MultiArray
 
 
 def _smoothstep01(t: float) -> float:
@@ -94,10 +94,24 @@ class BallFollowerBase(Node):
         cmd_topic   = self.get_parameter("cmd_topic").get_parameter_value().string_value
 
         self.declare_parameter("debug_image", True)
+        self.declare_parameter("debug_mask_compressed", True)
+        self.declare_parameter("debug_mask_topic", "/ball_follower/debug_mask/compressed")
+        self.declare_parameter("publish_debug_signals", True)
+        self.declare_parameter("debug_signals_topic", "/ball_follower/debug_signals")
 
         self._bridge = CvBridge()
         self._pub = self.create_publisher(Twist, cmd_topic, 10)
         self._debug_pub = self.create_publisher(Image, "/ball_follower/debug_image", 1)
+        self._debug_mask_pub = self.create_publisher(
+            CompressedImage,
+            self.get_parameter("debug_mask_topic").get_parameter_value().string_value,
+            1,
+        )
+        self._signals_pub = self.create_publisher(
+            Float64MultiArray,
+            self.get_parameter("debug_signals_topic").get_parameter_value().string_value,
+            10,
+        )
         self._conf_pub = self.create_publisher(Float32, "/ball_follower/detection_confidence", 10)
 
         self._last_det_time = 0.0
@@ -393,19 +407,38 @@ class BallFollowerBase(Node):
             ):
                 self._last_accept_cx = None
 
-        if self.get_parameter("debug_image").get_parameter_value().bool_value:
-            dbg = frame.copy()
+        want_dbg = self.get_parameter("debug_image").get_parameter_value().bool_value
+        want_msk = self.get_parameter("debug_mask_compressed").get_parameter_value().bool_value
+        mask_full = None
+        if want_dbg or want_msk:
             mask, _, _ = self._binary_mask(frame)
             mask_full = cv2.resize(mask, (w, h))
+        if want_msk and mask_full is not None:
+            ok_j, enc = cv2.imencode(".jpg", mask_full, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            if ok_j:
+                cm = CompressedImage()
+                cm.header.stamp = self.get_clock().now().to_msg()
+                cm.format = "jpeg"
+                cm.data = enc.tobytes()
+                self._debug_mask_pub.publish(cm)
+        if want_dbg and mask_full is not None:
+            dbg = frame.copy()
             dbg[mask_full > 0] = (dbg[mask_full > 0] * 0.5 + np.array([0, 255, 0]) * 0.5).astype(np.uint8)
             if result is not None:
                 cx = int((result[0] + 1.0) * w / 2.0)
-                r  = int(result[1])
+                r = int(result[1])
                 cv2.circle(dbg, (cx, h // 2), r, (0, 0, 255), 2)
                 cv2.circle(dbg, (cx, h // 2), 4, (0, 0, 255), -1)
             cv2.line(dbg, (w // 2, 0), (w // 2, h), (255, 255, 0), 1)
-            cv2.putText(dbg, f"r={self._last_radius:.0f}px  x={self._last_x_err:+.2f}  conf={self._last_confidence:.2f}",
-                        (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(
+                dbg,
+                f"r={self._last_radius:.0f}px  x={self._last_x_err:+.2f}  conf={self._last_confidence:.2f}",
+                (8, 24),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+            )
             try:
                 self._debug_pub.publish(self._bridge.cv2_to_imgmsg(dbg, encoding="bgr8"))
             except Exception:
@@ -430,10 +463,59 @@ class BallFollowerBase(Node):
         if abs(x_err) > 0.05:
             self._search_dir = 1.0 if x_err > 0 else -1.0
 
+    def _publish_debug_signals(
+        self,
+        cmd_lin: float,
+        cmd_ang: float,
+        *,
+        state_id: float,
+        err_shaped: float = 0.0,
+        pid_integral: float = 0.0,
+        d_err: float = 0.0,
+        effective_kp: float = 0.0,
+        pid_out_unclipped: float = 0.0,
+        diff_mix: float = 0.0,
+        v_ln: float = 0.0,
+        v_rn: float = 0.0,
+    ) -> None:
+        """Float64MultiArray pre rqt_plot: 0=state 1=x_err 2=r 3=conf 4=err_shaped 5=integral 6=d_err
+        7=effective_kp 8=pid_out_pre_clip 9=mix 10=v_ln 11=v_rn 12=cmd_lin 13=cmd_ang.
+        state: 0 idle 1 no_frame 2 verify 3 stop 4 track_diff 5 track_pid 6 approach_diff 7 approach_pid 8 search."""
+        if not self.get_parameter("publish_debug_signals").get_parameter_value().bool_value:
+            return
+        msg = Float64MultiArray()
+        msg.data = [
+            float(state_id),
+            float(self._last_x_err),
+            float(self._last_radius),
+            float(self._last_confidence),
+            float(err_shaped),
+            float(pid_integral),
+            float(d_err),
+            float(effective_kp),
+            float(pid_out_unclipped),
+            float(diff_mix),
+            float(v_ln),
+            float(v_rn),
+            float(cmd_lin),
+            float(cmd_ang),
+        ]
+        self._signals_pub.publish(msg)
+
     def _tick(self) -> None:
         # Perioda riadenia: stav TRACK/SEARCH, PID na uhol, diferencial alebo twist na cmd_topic
+        dbg_state_id = 8.0
+        dbg_err_shaped = 0.0
+        dbg_d_err = 0.0
+        dbg_eff_kp = 0.0
+        dbg_pid_out = 0.0
+        dbg_mix = 0.0
+        dbg_vln = 0.0
+        dbg_vrn = 0.0
+
         if not self._following_active:
             self._pub.publish(Twist())
+            self._publish_debug_signals(0.0, 0.0, state_id=0.0)
             return
 
         fwd_spd = self.get_parameter("forward_speed").get_parameter_value().double_value
@@ -450,6 +532,7 @@ class BallFollowerBase(Node):
         no_frame_stop_only = self.get_parameter("no_frame_stop_only").get_parameter_value().bool_value
         if no_frame_stop_only and not has_frames:
             self._pub.publish(cmd)
+            self._publish_debug_signals(0.0, 0.0, state_id=1.0)
             self.get_logger().warn(
                 "[NO_FRAME] stop-only mode (kamera neposiela obraz)",
                 throttle_duration_sec=2.0,
@@ -463,6 +546,7 @@ class BallFollowerBase(Node):
                 state = f"VERIFY {seen_for:.1f}/{confirm_sec:.1f}s"
                 self._prev_radius = self._last_radius
                 self._pub.publish(cmd)
+                self._publish_debug_signals(0.0, 0.0, state_id=2.0)
                 self.get_logger().info(
                     f"[{state}]  r={self._last_radius:.0f}px  x_err={self._last_x_err:+.2f}"
                     f"  conf={self._last_confidence:.2f}  lin={cmd.linear.x:+.2f} ang={cmd.angular.z:+.2f}",
@@ -472,6 +556,7 @@ class BallFollowerBase(Node):
             if stop_r > 0 and self._last_radius >= stop_r:
                 state = "STOP"
                 self._pid_reset = True
+                dbg_state_id = 3.0
             else:
                 fwd_scale = float(np.clip(
                     self.get_parameter("forward_speed_scale_after_detect").get_parameter_value().double_value,
@@ -562,6 +647,11 @@ class BallFollowerBase(Node):
                     cmd.linear.x = -v_c if invert_lin else v_c
                     cmd.angular.z = w_c
                     self._pid_reset = True
+                    dbg_err_shaped = err_shaped
+                    dbg_mix = mix
+                    dbg_vln = v_ln
+                    dbg_vrn = v_rn
+                    dbg_state_id = 6.0 if state == "APPROACH" else 4.0
                 else:
                     cmd.linear.x = -(fwd_spd * fwd_scale * turn_slowdown)
                     tick_now = time.monotonic()
@@ -599,6 +689,10 @@ class BallFollowerBase(Node):
                     radius_scale = float(np.clip(self._last_radius / r_ref, r_smin, r_smax))
                     effective_kp = kp * radius_scale
                     pid_out = effective_kp * err_shaped + ki * self._pid_integral + kd * d_err
+                    dbg_err_shaped = err_shaped
+                    dbg_d_err = d_err
+                    dbg_eff_kp = effective_kp
+                    dbg_pid_out = float(pid_out)
                     cmd.angular.z = -float(np.clip(pid_out, -ang_spd, ang_spd))
                     min_turn_abs = max(0.0, self.get_parameter("pid_min_turn_abs").get_parameter_value().double_value)
                     if abs(err_shaped) > 0.06 and min_turn_abs > 0.0:
@@ -623,10 +717,13 @@ class BallFollowerBase(Node):
                             cmd.linear.x *= blend_lin
                             cmd.angular.z *= blend_ang
                             state = "APPROACH"
+                            dbg_state_id = 7.0
                         else:
                             state = "TRACK"
+                            dbg_state_id = 5.0
                     else:
                         state = "TRACK"
+                        dbg_state_id = 5.0
             self._prev_radius = self._last_radius
         else:
             if self._had_fresh_track:
@@ -673,6 +770,19 @@ class BallFollowerBase(Node):
         cmd.linear.x = self._cmd_lin_f
         cmd.angular.z = self._cmd_ang_f
 
+        self._publish_debug_signals(
+            cmd.linear.x,
+            cmd.angular.z,
+            state_id=dbg_state_id,
+            err_shaped=dbg_err_shaped,
+            pid_integral=self._pid_integral,
+            d_err=dbg_d_err,
+            effective_kp=dbg_eff_kp,
+            pid_out_unclipped=dbg_pid_out,
+            diff_mix=dbg_mix,
+            v_ln=dbg_vln,
+            v_rn=dbg_vrn,
+        )
         self._pub.publish(cmd)
         self.get_logger().info(
             f"[{state}]  r={self._last_radius:.0f}px  x_err={self._last_x_err:+.2f}"

@@ -42,7 +42,7 @@ target_include_directories(optical_flow PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 ament_target_dependencies(optical_flow
-  rclcpp geometry_msgs sensor_msgs cv_bridge
+  rclcpp geometry_msgs sensor_msgs std_msgs cv_bridge
 )
 target_link_libraries(optical_flow ${OpenCV_LIBS})
 
@@ -63,6 +63,15 @@ install(PROGRAMS scripts/lidar_wander.py             DESTINATION lib/${PROJECT_N
 install(PROGRAMS scripts/robot_mode_switch.py         DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/ball_follower_action.py     DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/ball_follow_bt_runner.py    DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/log_imu_wz_csv.py     DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/log_imu_drive_csv.py    DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/plot_imu_drive_csv.py   DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/log_optical_flow_csv.py   DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/plot_optical_flow_csv.py   DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/log_optical_flow_debug_csv.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/plot_optical_flow_debug_csv.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/log_ball_follow_csv.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS tools/visualisation/plot_ball_follow_csv.py DESTINATION lib/${PROJECT_NAME})
 install(FILES scripts/ball_follower_base.py         DESTINATION lib/${PROJECT_NAME})
 
 ament_export_dependencies(rosidl_default_runtime)

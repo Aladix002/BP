@@ -9,10 +9,24 @@ import py_trees
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.action import ActionClient
+from std_msgs.msg import String
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 
 from waverower.action import FollowBall
+
+
+def _running_behaviour_name(behaviour: py_trees.behaviour.Behaviour) -> str:
+    if behaviour.status != py_trees.common.Status.RUNNING:
+        return ""
+    children = getattr(behaviour, "children", None)
+    if children:
+        for c in children:
+            if c.status == py_trees.common.Status.RUNNING:
+                sub = _running_behaviour_name(c)
+                return sub if sub else c.name
+        return behaviour.name
+    return behaviour.name
 
 
 class ActionBehaviour(py_trees.behaviour.Behaviour):
@@ -133,6 +147,8 @@ def main():
     executor = SingleThreadedExecutor()
     executor.add_node(node)
 
+    bt_status_pub = node.create_publisher(String, "/ball_follow_bt/active_behaviour", 10)
+
     # memory=True: po uspesnom FindBall sa uz nevracia na zaciatok sekvencie
     sequence = py_trees.composites.Sequence(name="BallFollowSeq", memory=True)
     sequence.add_children([
@@ -160,6 +176,8 @@ def main():
     try:
         while rclpy.ok():
             tree.tick()
+            active = _running_behaviour_name(sequence)
+            bt_status_pub.publish(String(data=active if active else sequence.name))
             st = tree.root.status
             if st == py_trees.common.Status.SUCCESS:
                 node.get_logger().info("=== USPECH - lopta dosiahnuta ===")

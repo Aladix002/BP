@@ -199,6 +199,13 @@ def _opaque(context, *args, **kwargs):
     elif use_camera and not have_cam:
         actions.append(LogInfo(msg="use_camera:=true vyzaduje balik camera_ros."))
 
+    optical_flow_debug_show = (
+        LaunchConfiguration("optical_flow_debug_show").perform(context).lower() == "true"
+    )
+    optical_flow_debug_publish_image = (
+        LaunchConfiguration("optical_flow_debug_publish_image").perform(context).lower() == "true"
+    )
+
     if have_cam and use_camera:
         # LK optical flow: topic musi byt compressed (JPEG z camera_ros), vystup ide do motor uzla ked correction_mode=optical_flow
         actions.append(
@@ -217,6 +224,10 @@ def _opaque(context, *args, **kwargs):
                     "image_topic": "/camera/camera_node/image_raw/compressed",
                     "teleop_topic": "/teleop_cmd_vel",
                     "output_topic": "/teleop_cmd_vel_corrected",
+                    "debug_show": optical_flow_debug_show,
+                    "debug_publish_image": optical_flow_debug_publish_image,
+                    "debug_window_scale": 2,
+                    "debug_window_name": "optical_flow",
                 }],
             )
         )
@@ -366,6 +377,16 @@ def generate_launch_description():
             "correction_mode",
             default_value="imu",
             description="zarovnanie: imu | optical_flow | none",
+        ),
+        DeclareLaunchArgument(
+            "optical_flow_debug_show",
+            default_value="false",
+            description="OpenCV okno na stroji kde bezi uzol (DISPLAY); na PC pouzi optical_flow_debug_publish_image",
+        ),
+        DeclareLaunchArgument(
+            "optical_flow_debug_publish_image",
+            default_value="false",
+            description="JPEG vizualizacia na /optical_flow/viz/compressed — rqt_image_view na PC (rovnaky ROS_DOMAIN_ID)",
         ),
         DeclareLaunchArgument("use_teleop", default_value="false"),
         DeclareLaunchArgument("i2c_bus", default_value="1"),
