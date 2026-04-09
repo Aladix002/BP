@@ -10,7 +10,7 @@
 
 Práca sa zaoberá výzvami mobilnej robotiky a teleprezencie, návrhom a implementáciou riadiaceho systému pre mobilného robota. Základnou platformou pre túto prácu je WAVE ROVER vybavený lidarom D300 LD19. Ako hlavný softvérový nástroj sa uvádza rámec ROS2 vzhľadom na to, že sa stal štandardom pri riadení a koordinácii robotických systémov. Cieľom tejto práce je nielen ukázať, čo všetko sa dá pomocou ROS2 na zvolenej hardvérovej platforme urobiť, ale navrhnúť systém, ktorý sa prispôsobí pri konfigurácii a experimentovaní s alternatívnymi komponentmi.
 
-S úlohou úzko súvisia dve príbuzné bakalárske práce z tej istej fakulty. Práca Skoleka~\cite{balancujici_robot} rieši balancujúceho dvoukolového robota s ROS2 na Raspberry Pi 4B: využíva PID regulátory na základe dát z IMU a enkodérov, dálkové ovládanie cez Bluetooth a autonómny pohyb s vyhýbaním sa prekážkam pomocou ultrazvukového senzora; dôležitá je modularita systému (balíčky pre senzory, riadenie, Bluetooth) a spúšťanie cez launch súbory. Bakalárska práca Onderku \emph{Mobilní kamera realizovaná prostředky ROS2}~\cite{mobilni_kamera} (katalógový záznam FIT VUT) slúžila ako \textbf{orientačná inšpirácia} pri stavaní vlastného riešenia: kombinácia \textbf{teleprezencie} (kamera v ROS2), \textbf{prepínania medzi manuálnym a autonómnym správaním}, nasadenia \textbf{Gazebo} na overenie funkcionality v simulácii a integrácie \textbf{slam\_toolbox} a \textbf{Nav2} pre mapovanie a globálnu navigáciu. Onderka pracoval s platformou Adeept AWR 4WD a ROS2 na RPi4; táto práca prenáša podobnú myšlienku na WAVE ROVER, RPi5, LiDAR LD19 a vlastný webový teleop. Rozdiely: namiesto \texttt{ros2\_control} je u fyzického podvozku primárne priame riadenie motorov (Motor Driver HAT alebo alternatívne HTTP na ESP32); dynamické prepínanie režimov je riešené parametrami uzlov a službami (sek.~\ref{sec:mode-switch}).
+S úlohou úzko súvisia dve príbuzné bakalárske práce z tej istej fakulty. Práca Skoleka~\cite{balancujici_robot} sa zaoberá vyvažovaným dvojkolesovým robotom s ROS~2 na Raspberry Pi 4B: využíva PID regulátory na základe údajov z IMU a enkodérov, diaľkové ovládanie cez Bluetooth a autonómny pohyb s vyhýbaním sa prekážkam pomocou ultrazvukového senzora; dôležitá je modularita systému (balíčky pre senzory, riadenie, Bluetooth) a spúšťanie cez launch súbory. Bakalárska práca Daniela Onderku \emph{Mobilní kamera realizovaná prostředky ROS2}~\cite{mobilni_kamera} (katalógový záznam FIT VUT) bola \textbf{orientačnou inšpiráciou} pri budovaní vlastného riešenia: kombinácia \textbf{teleprezencie} (kamera v ROS2), \textbf{prepínania medzi manuálnym a autonómnym správaním}, nasadenia \textbf{Gazebo} na overenie funkcionality v simulácii a integrácie \textbf{slam\_toolbox} a \textbf{Nav2} pre mapovanie a globálnu navigáciu. Onderka pracoval s platformou Adeept AWR 4WD a ROS2 na RPi4; táto práca prenáša podobnú myšlienku na WAVE ROVER, RPi5, LiDAR LD19 a vlastný webový teleop. Rozdiely: namiesto \texttt{ros2\_control} je u fyzického podvozku primárne priame riadenie motorov (Motor Driver HAT alebo alternatívne HTTP na ESP32); dynamické prepínanie režimov je riešené parametrami uzlov a službami (sek.~\ref{sec:mode-switch}).
 
 Obe referenčné práce demonštrujú možnosti ROS2 a zmysluplné rozdelenie uzlov; táto práca z nich čerpá najmä \textbf{architektonický vzor} (launch súbory, senzorové témy, rozšírenie o ďalší hardvér), nie kopírovanie konkrétneho kódu.
 
@@ -25,7 +25,7 @@ Navrhovaný systém má možnosť prepnutia medzi diaľkovým a autonómnym ovl�
 V nasledujúcej sekcii poskytnem prehľad o Raspberry Pi 5, čo je najnovšia generácia týchto jednodoskových počítačov. Sekcia poukazuje na jeho hlavné vlastnosti a zmeny oproti predchádzajúcim modelom.
 
 \subsection*{Raspberry Pi 5}
-Raspberry Pi 5 je malý jednodoskový počítač navrhnutý na riešenie všemožných projektov. Primárne má slúžiť denne ako lacná ale výkonná platforma, ktorá podporuje rozvoj v oblasti elektroniky, programovania, Internetu vecí, alebo robotiky.\cite{rpi}
+Raspberry Pi 5 je kompaktný jednodoskový počítač určený na vývoj a prototypovanie. Ako cenovo dostupná, no výkonná platforma podporuje vzdelávanie a projekty v oblasti elektroniky, programovania, internetu vecí a robotiky~\cite{rpi_official_docs}.
 
 \begin{figure}[H] 
     \centering
@@ -36,8 +36,8 @@ Raspberry Pi 5 je malý jednodoskový počítač navrhnutý na riešenie všemo�
 
 
 \subsection*{Ako funguje}
-Raspberry Pi 5 je založený na architektúre ARM a využíva procesor Cortex-A76\cite{rpi5}, ktorý je vybavený štyrmi jadrami pracujúcimi na frekvencii až 2,4 GHz. Táto architektúra a frekvencia umožňujú spracovanie viacerých úloh paralelne, čo je dôležité najmä pri projektoch, ktoré vyžadujú veľké množstvo výpočtových operácií, ako je práve tento.
-Na Wave Rover je napojený pomocou GPIO pinnov \cite{rpi}, ktoré sa dajú prispôsobiť ako vstupy na čítanie signálov alebo výstupy na ovládanie.
+Raspberry Pi 5 je založený na architektúre ARM a využíva procesor Cortex-A76\cite{rpi5}, ktorý je vybavený štyrmi jadrami pracujúcimi na frekvencii až 2,4 GHz. Táto architektúra a taktová frekvencia umožňujú paralelné spracovanie viacerých úloh, čo je výhodné pri výpočtovo náročných úlohách, akými sú spracovanie senzorov a riadenie robota.
+Na platforme Wave Rover je Raspberry Pi pripojené cez GPIO piny~\cite{rpi_official_docs}, ktoré je možné použiť ako vstupy na čítanie signálov alebo ako výstupy na ovládanie.
 
 
 \subsection*{Porovnanie s Raspberry Pi 4B}
@@ -64,7 +64,7 @@ Driver Board slúži ako medzičlánok medzi mikrokontrolérom, napríklad Raspb
 
 \subsection*{Ako funguje Driver Board}
 
-Driver Board prijíma signály z mikrokontroléra, ktoré obsahujú informácie o smere a rýchlosti pohybu. Tieto signály sú spracované tranzistormi alebo H-mostmi na doske ovládača, ktoré zabezpečujú riadenie prúdu pre motory. Ak napríklad mikrokontrolér vyšle signál PWM s rôznymi frekvenciami, doska ovládača tento signál prevedie na riadenie prúdu do motora, čím riadi jeho rýchlosť. Ak mikrokontrolér zmení polaritu signálu, potom doska ovládača zmení smer prúdu a motor sa otáča opačným smerom. To umožňuje robotickým systémom vykonávať veľmi presné pohyby.\cite{waveshare_driver}
+Driver Board prijíma signály z mikrokontroléra, ktoré obsahujú informácie o smere a rýchlosti pohybu. Tieto signály sú spracované tranzistormi alebo H-mostmi na doske ovládača, ktoré zabezpečujú riadenie prúdu pre motory. Ak napríklad mikrokontrolér vyšle signál PWM s rôznymi frekvenciami, doska ovládača tento signál prevedie na riadenie prúdu do motora, čím riadi jeho rýchlosť. Ak mikrokontrolér zmení polaritu signálu, potom doska ovládača zmení smer prúdu a motor sa otáča opačným smerom. Takto je možné plynule meniť rýchlosť a smer otáčania motorov~\cite{waveshare_driver}.
 
 
 
@@ -74,7 +74,7 @@ Wave Rover je experimentálna platforma pre mobilnú robotiku, ktorá umožňuje
 
 
 \subsection*{Stavba tela}
-Konštrukcia zahŕňa stabilitu a odolnosť pri pohybe na rôznych typoch povrchov. Preto sa dosiahol dobrý pomer pevných, ale ľahkých materiálov rámu tela robota, aby sa zabezpečila menšia celková hmotnosť, a pritom všetka potrebná pevnosť mohla chrániť vnútorné časti senzorov, motorov a batérií. To všetko zvýši jeho optimalizáciu pre lepšie vyváženie a manévrovacie schopnosti robota.\cite{waverover}
+Konštrukcia kladie dôraz na stabilitu a odolnosť na rôznych povrchoch. Rám kombinuje dostatočnú pevnosť s nízkou hmotnosťou, chráni batérie, motory a senzory a uľahčuje vyváženie a ovládateľnosť podvozku~\cite{waverover}.
 
 \begin{figure}[H] % 
     \centering
@@ -85,10 +85,7 @@ Konštrukcia zahŕňa stabilitu a odolnosť pri pohybe na rôznych typoch povrch
 
 \subsubsection*{Modularita a rozšíriteľnosť}
 Telo robota je navrhnuté tak, aby bolo možné ľahko pripojiť a vymeniť komponenty.
-V ráme sú štandardizované montážne body, ktoré umožňujú pripojenie ďalších
-ultrazvukové senzory, LIDAR alebo kamery a aktuátory. Rozšírenie:
-Rozširujúce piny GPIO a rozhrania ako I2C, SPI, UART a PWM umožňujú pripojenie ďalších
-zariadení a modulov.
+V ráme sú štandardizované montážne body pre ďalšie ultrazvukové senzory, LiDAR, kameru či ďalšie moduly. Rozšírenie umožňujú aj GPIO piny a zbernice I\textsuperscript{2}C, SPI, UART a PWM.
 
 \subsubsection*{Arduino Nano ako doplnková jednotka pre IMU}
 Okrem Raspberry Pi a Motor Driver HAT je v realizačnej zostave použité \textbf{Arduino Nano} (alebo ekvivalent s rovnakým rozhraním) ako malý mikrokontrolér výhradne na čítanie MPU-6050 a streamovanie údajov po USB. Tým sa senzor \emph{nezdieľa} I\textsuperscript{2}C zbernicu s motorovým HATom na strane RPi; ide o zámerné oddelenie kvôli spoľahlivosti (viď sek.~\ref{sec:mpu6050-nano-usb}). Nano je napájané z rovnakého 5\,V logického prostredia ako bežné Arduino periférie; fyzické uchytenie zodpovedá montáži na podvozku (krátke I\textsuperscript{2}C vedenie medzi modulom MPU-6050 a Nanom).
@@ -98,8 +95,8 @@ Okrem Raspberry Pi a Motor Driver HAT je v realizačnej zostave použité \textb
 Wave Rover používa modul s čipom \textbf{MPU-6050}, ktorý integruje akcelerometer a gyroskop na jednom čipe; technické parametre rozsahov a rozhrania zodpovedajú dokumentácii čipu a komunite okolo knižníc pre MPU6050~\cite{mpu6050_electroniccats}. V \textbf{nasadenej zostave s Motor Driver HAT} na Raspberry Pi nie je senzor pripojený priamo na I\textsuperscript{2}C zbernicu počítača Raspberry Pi spolu s ovládačom motorov (PCA9685) -- namiesto toho slúži ako meracia hlava na samostatnom \textbf{Arduino Nano} s \textbf{vlastným firmwareom} a údaje prichádzajú na RPi cez USB sériový port (podrobnejšie odôvodnenie a popis firmwaru v sekcii~\ref{sec:mpu6050-nano-usb}). MPU-6050 poskytuje údaje o pohybe a orientácii potrebné pre korekciu driftu, otáčanie pri bludení a ďalšie vrstvy riadenia. Nižšie nasleduje stručný popis fyzikálneho princípu akcelerometra a gyroskopu a fúzie signálov.
 
 \subsubsection*{Akcelerometer}
-V module IMU MPU-6050 sa nachádza 3-osový akcelerometer, ktorý meria lineárne zrýchlenie
-Akcelerometer funguje na princípe kapacitnej zmeny v mikromechanických senzoroch. Vnútorná hmota napojená na pružinu pri namáhaní generuje elektrický signál ako dôsledok piezoelektrického efektu, kde kryštalické štruktúry dokážu produkovať napätie pri namáhaní, teda zmenou polohy sa prejavuje aj zmena kapacity.\cite{accelerometer}
+V module IMU MPU-6050 je trojosový akcelerometer, ktorý meria lineárne zrýchlenie.
+MEMS akcelerometer využíva väčšinou kapacitný princíp: výchylka hmotného prvku mení kapacitu štruktúry a tá sa premení na merateľný elektrický signál~\cite{accelerometer}.
 
 \begin{figure}[H] 
     \centering
@@ -109,7 +106,7 @@ Akcelerometer funguje na princípe kapacitnej zmeny v mikromechanických senzoro
 \end{figure}
 
 \subsubsection*{Gyroskop}
-Gyroskop využíva princíp zachovania momentu hybnosti. Hlavnou častou je hmot napojená na pružný systém a prípade pohybu vykazuje odpor voči smeru rotácie. Pri rotácii dochádza k výchylkám hmoty a podobne ako u akcelerometru sa to prevedie na elektrický signál.\cite{gyroskop}
+Gyroskop meria uhlovú rýchlosť; v MEMS realizácii sa často využíva Coriolisova sila pôsobiaca na vibrujúci prvok, pričom výsledkom je signál úmerný rýchlosti otáčania~\cite{gyroskop}.
 
 \begin{figure}[H] 
     \centering
@@ -120,16 +117,13 @@ Gyroskop využíva princíp zachovania momentu hybnosti. Hlavnou častou je hmot
 
 
 \subsubsection*{Fúzia údajov pre navigáciu}
-Údaje z akcelerometra a gyroskopu sa kombinujú pomocou algoritmov, ako je Kalmanov filter
-alebo komplementárny filter, aby sa získali stabilné a presné údaje o polohe a orientácii.
-robota. Preto je riadenie a navigácia robota v reálnom čase plynulé a spoľahlivé.
-čase. Komplementárny filter sa používa v IMU.
+Údaje z akcelerometra a gyroskopu sa zvyčajne kombinujú (napríklad komplementárnym alebo Kalmanovým filtrom), aby sa získala stabilnejšia odhadnutá orientácia. V nasadenej zostave sa vo firmware pre Arduino Nano používa komplementárny filter (obr.~\ref{fig:complementary_filter}).
 
 \begin{figure}[H] 
     \centering
     \includegraphics[width=1\textwidth]{obrazky/complementary.png} 
-    \caption{Komplementárny filter\cite{complementary_filter}}
-    \label{fig:obrazok} 
+    \caption{Komplementárny filter~\cite{complementary_filter}}
+    \label{fig:complementary_filter} 
 \end{figure}
 
 
@@ -140,12 +134,8 @@ LIDAR (Light Detection and Ranging) je technológia, ktorá využíva laserové 
 meranie vzdialeností, ako aj na vytváranie trojrozmerných modelov prostredia.
 
 
-\subsection*{Princíp fungovania LIDAR}
- Funguje tak, že zariadenie
-vysiela krátke dávky laserového svetla a meria, ako dlho trvá, kým sa svetlo odrazí od objektu a
-vráti späť. Na základe nameraného času návratu sa dá určiť vzdialenosť medzi snímačom a objektom
-a objekt. Táto technológia nachádza v súčasnosti veľmi široké uplatnenie v oblastiach, ako sú autonómne vozidlá,
-robotika a geodézia, kde schopnosť mapovať prostredie znamená veľa.\cite{lidar}
+\subsection*{Princíp fungovania LiDAR}
+Snímač vysiela krátke impulzy (alebo modulované kontinuálne svetlo) a z merania času návratu alebo fázového posunu odvádza vzdialenosť k odrazovej ploche. LiDAR sa bežne používa v mobilnej robotike, autonómnych vozidlách a geodézii~\cite{behroozpour2017lidar}.
 
 
 \begin{figure}[H] 
@@ -155,10 +145,7 @@ robotika a geodézia, kde schopnosť mapovať prostredie znamená veľa.\cite{li
     \label{fig:obrazok} 
 \end{figure}
 
-Súčasné snímače LIDAR používajú určitý rotačný mechanizmus, ktorý zabezpečuje 360
-stupňov, čím sa získa kompletný 3D model prostredia v reálnom čase. Tieto informácie sa ukladá vo forme mračna bodov, ktoré poskytuje presný obraz o pro
-stred. Takéto modely sú nevyhnutné na navigáciu a detekciu prekážok v automatickom
-autonómnych a mobilných robotických systémoch.\cite{lidar}
+Rotujúce alebo viaclúčové snímače dokážu pokryť okolie v plnom azimute; merania sa ukladajú ako mračno bodov alebo ako 2D prierez (napr.\ \texttt{LaserScan} v ROS), čo umožňuje mapovanie a detekciu prekážok v autonómnych mobilných systémoch~\cite{behroozpour2017lidar}.
 
 
 
@@ -166,7 +153,7 @@ autonómnych a mobilných robotických systémoch.\cite{lidar}
 
 \section{Kamera s nočným videním}
 
- Kamera disponuje 5-megapixelovým CMOS snímačom, ktorý podporuje nahrávanie HD videa a nahrávanie v tme.
+Modul kamery má päťmegapixelový CMOS snímač vhodný na HD video; s infračerveným prisvietením umožňuje snímanie aj pri slabom osvetlení.
 
 \begin{figure}[H] 
     \centering
@@ -176,14 +163,8 @@ autonómnych a mobilných robotických systémoch.\cite{lidar}
 \end{figure}
 
 \subsection*{Nočné videnie a IR technológia}
-Kamera OV5647 infračervené LED diódy na osvetlenie a
-snímanie obrazu v tme. Infračervené svetlo
-nie je viditeľné pre ľudské oko, ale pre snímač CMOS kamery áno.
-LED diódy generujú infračervené svetlo, ktoré sa odráža od objektov späť k snímaču fotoaparátu, čo mu umožňuje snímať fotografie aj v tme.
-Aby mohol fotoaparát pracovať vo dne aj v noci, používa IR-cut filter \cite{ir_filter}, ktorý sa automaticky zapína a vypína podľa svetelných podmienok. Počas dňa sa IR-cut
-filter blokuje infračervené svetlo, aby sa zabránilo skresleniu farieb a zaznamenávali sa snímky s
-prirodzenými farbami. V tme je IR-cut filter vypnutý a infračervené svetlo je
-dosiahne k snímaču a umožní nočné videnie. Systém umožňuje kamere získať vysokokvalitné snímky v denných aj nočných podmienkach, čo je dosť dôležité pre aplikácie, kde má robot alebo systém pracovať v rôznych svetelných podmienkach.\cite{nightvision}
+Modul OV5647 môže byť vybavený infračervenými LED na prisvietenie scény; žiarenie je pre človeka takmer neviditeľné, no CMOS snímač ho zaznamená, takže je možné snímať pri nízkej hladine viditeľného svetla~\cite{nakamura2017image}.
+Pre prepínanie medzi denným a nočným režimom sa používa IR-cut filter~\cite{ir_filter}: cez deň blokuje infračervené žiarenie, aby ostali farby na snímke verné; v tme sa prepne tak, aby IR žiarenie dopadalo na snímač. Takto kamera ostáva použiteľná pri meniacich sa svetelných podmienkach, čo je pri mobilnom robotovi v teréne praktické.
 
 \begin{figure}[H]
     \centering
@@ -215,7 +196,7 @@ Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hl
 
 \subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
 
-V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \texttt{/camera/image\_raw} (alebo príslušný komprimovaný topic). RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom; pri vizualizácii ďalších senzorov (napr. LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr. \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach. Pri hardvéri Raspberry Pi Camera ide o CMOS senzor; oficiálna dokumentácia modulu popisuje konštrukciu snímania~\cite{raspberrypi_camera_module}, farebné filtrovanie (Bayerova maska) vysvetľuje napr.\ článok o Bayerovom filtri~\cite{wikipedia_bayer_filter}.
+V ROS 2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \texttt{/camera/image\_raw} (alebo príslušný komprimovaný topic). RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom; pri vizualizácii ďalších senzorov (napr. LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr. \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach. Pri module Raspberry Pi Camera ide o CMOS senzor; konštrukciu snímania popisuje výrobca~\cite{raspberrypi_camera_module}. Farebné informácie sa získavajú cez masku farebných filtrov pred snímačom; spôsob interpolácie z mozaiky (demosaicing) podrobne rozoberajú napr.~\cite{gunturk2005demosaicking}.
 
 \subsection*{Súvis s implementáciou v tejto práci}
 
@@ -242,8 +223,8 @@ vhodné pre nízkorýchlostné periférne zariadenia, ako sú snímače, displej
 
 \textbf{Základné vlastnosti:}
 \begin{itemize}
-    \item \textbf I2C používa iba dva vodiče: SDA (sériový prenos dát) a SCL (časovací signál), čo umožňuje pripojiť viacero zariadení na jednu zbernicu.
-    \item \textbf Funguje na princípe hlavného zariadenia (master) a podriadených zariadení (slave). Master zariadenie iniciuje a riadi komunikáciu na zbernici.
+    \item \textbf{I\textsuperscript{2}C} používa iba dva vodiče: SDA (dátová linka) a SCL (hodinový signál), takže na jednu zbernicu je možné pripojiť viacero periférií.
+    \item Komunikácia prebieha medzi jedným \emph{masterom}, ktorý iniciuje prenos, a jedným alebo viacerými \emph{slave} zariadeniami.
     \item \textbf{Jedinečné adresovanie:} Každé zariadenie má jedinečnú adresu, ktorú master použije na identifikáciu a komunikáciu s konkrétnym zariadením na zbernici.
     \item \textbf{Prenos dát}: Dáta sa prenášajú po bajtoch s potvrdením (ACK) po každom bajte. Komunikácia končí signálom STOP. \cite{i2c}
 \end{itemize}
@@ -273,26 +254,25 @@ ROS 2 (Robot Operating System 2) je moderná softvérová platforma tvorená z v
 
 \subsection*{Rozdiel medzi ROS 1 a ROS 2}
 
-Jednou z najvýznamnejších zmien je odstránenie závislosti od centrálnej časti systému, tzv. ROS master. V ROS1 uchopenie ROS slúžilo ako jediný faktor zlyhania, čo znamenalo, že ak prestane fungovať, celý systém sa zastaví. ROS2 prešiel do decentralizovanej štruktúry, kde uzly hovoria priamo s každým iným, čo zvyšuje spoľahlivosť celého systému; objavovanie uzlov v doméne a nadväzovanie spojení popisuje dokumentácia ROS~2~\cite{ros2_doc_discovery}.
+Jednou z najvýznamnejších zmien je odstránenie centrálneho uzla \emph{ROS master} z ROS~1: ak master prestal odpovedať, komunikácia medzi uzlami prestala fungovať. ROS~2 využíva decentralizovaný model založený na DDS; uzly sa objavujú v spoločnej doméne a nadväzujú spojenia podľa dokumentácie~\cite{ros2_doc_discovery}.
 
-Ďalším vylepšením je sprievodca v reálnom čase. ROS2 rieši tento problém použitím služby DDS (Data Distribution Service), ktorá umožňuje konfiguráciu Quality of Service (QoS) na optimalizáciu komunikácie a pomáha pri deterministickom vykonávaní úloh~\cite{ros2_doc_qos}.
+ROS~2 umožňuje nastavovať kvalitu služby (Quality of Service, QoS) pri publikovaní a odberu správ, čo pomáha pri synchronizácii, stratách paketov a požiadavkách na odozvu~\cite{ros2_doc_qos}.
 
-ROS2 tiež predstavil myšlienku „komponentov“. Vďaka nemu môžu vývojári spustiť niekoľko uzlov v jednom spustiteľnom súbore,čo zvyšuje efektivitu komunikácie medzi uzlami.
+ROS~2 podporuje aj zostavovanie viacerých uzlov do jedného procesu ako \emph{komponenty}, čo znižuje režijné náklady komunikácie.
 
-ROS2 taktiež prináša lepšiu podporu pre viaceré platformy. ROS1 fungoval primárne na Linuxe, ale ROS2 podporuje aj Windows a macOS, čím rozširuje svoj dosah a uľahčuje vývoj na rôznych zariadeniach.\cite{ros1_vs_ros2}
+ROS~2 oficiálne podporuje viac platforiem než ROS~1 (okrem Linuxu aj Windows a macOS), čo uľahčuje vývoj a integráciu nástrojov na rôznych počítačoch~\cite{ros2}.
 
 \section{Práca s ROS2}
 
-Táto sekcia ukazuje jednoduchú prácu s jednotlivymi komponentmi, medzi ktoré patria uzly (nodes), témy (topics), služby (services) a akcie (actions).
+Táto sekcia stručne predstavuje základné prvky ROS~2: uzly (\emph{nodes}), témy (\emph{topics}), služby (\emph{services}) a akcie (\emph{actions}).
 
 
 \subsubsection*{Uzly}
 Uzly sú základnými stavebnými prvkami systému ROS2, pričom každý uzol predstavuje
-samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výstup
-výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
-alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v tutoriáli ROS~2~\cite{ros2_doc_understanding_topics}; zbierky bežných typov správ sú zdokumentované v balíku \emph{common\_msgs}~\cite{wiki_ros_common_msgs}.
+samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
+alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v tutoriáli ROS~2~\cite{ros2_doc_understanding_topics}; štandardné typy správ sú definované v repozitári \emph{common\_interfaces}~\cite{ros2_common_interfaces}.
 
-V ROS2 uzly bežia iba v prípade potreby, čo zabezpečuje metóda \texttt{spin()}.
+Metóda \texttt{spin()} v uzle spracováva prichádzajúce správy a udržiava uzol aktívny v slučke udalostí.
 
 \paragraph{Vytvorenie uzla:} V ROS2 sa uzol vytvára pomocou triedy \texttt{Node} v rámci knižnice \texttt{rclpy}. Uzol musí byť inicializovaný a registrovaný v rámci ROS2 siete. \cite{ros2_doc}
 
@@ -315,7 +295,7 @@ V ROS2 uzly bežia iba v prípade potreby, čo zabezpečuje metóda \texttt{spin
 Každý uzol beží vo svojom vlastnom výpočtovom cykle. ROS2 poskytuje funkciu \texttt{rclpy.spin()}, ktorá udržiava uzol aktívny a zabezpečí, že môže reagovať na prichádzajúce správy alebo udalosti.
 
 \subsubsection*{Témy}
-Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy. Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát.\cite{topic}
+Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy. Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát~\cite{ros2_doc_understanding_topics}.
 
 \paragraph{Publikovanie na tému:} Uzol môže publikovať správy na konkrétnu tému. Publikované správy sú odosielané všetkým uzlom, ktoré sa na danú tému odoberajú.
 
@@ -507,7 +487,7 @@ Odporúčané čítanie sleduje skladanie systému rovnako ako pri ladení na re
 \section{Model robota, URDF/Xacro a simulácia v Gazebo a RViz}
 \label{sec:sim-gazebo}
 
-Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov - LIDARu a kamerou. Podvozok zodpovedá koncepcii diferenciálneho pohonu~\cite{wikipedia_differential_drive}. Tieto komponenty sú spojené do jedného súboru pomocou príkazu \texttt{xacro:include}, čo uľahčuje organizáciu a správu kódu.
+Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov - LIDARu a kamerou. Podvozok zodpovedá koncepcii diferenciálneho pohonu~\cite{siegwart2011introduction}. Tieto komponenty sú spojené do jedného súboru pomocou príkazu \texttt{xacro:include}, čo uľahčuje organizáciu a správu kódu.
 
 
 Hlavný súbor obsahuje odkazy na jednotlivé časti robota, ktoré sú pre prehľadnosť implementované v samostatných súboroch.
@@ -570,7 +550,7 @@ Rovnako ako kamera, aj LIDAR je pripojený k podvozku pomocou pevného kĺbu. Te
 
 \subsection*{Gazebo simulátor a RViz}
 
-V simulátore Gazebo Sim som v prostredí workspace pripravil model robota Wave Rover v súradniciach URDF/Xacro (podvozok, kolesá, LiDAR, kamera) a svet s prekážkami na demonštráciu senzorov a navigácie. \cite{gazebo} Senzory v simulácii sú napojené cez \texttt{ros\_gz\_bridge}: laser poskytuje dáta vhodné pre SLAM a Nav2, kamera obraz na tému kompatibilnú s vizualizáciou v RViz (napr.\ \texttt{/camera/image\_raw}). Spúšťanie: zdrojovanie ROS~2 Jazzy a workspace (\texttt{source install/setup.bash}), následne \texttt{ros2 launch waver\_sim launch\_sim.launch.py} alebo zjednotený skript \texttt{./run\_sim.sh} z priečinka simulácie, ktorý navyše môže spustiť teleop a plný bringup s Nav2 a \texttt{slam\_toolbox}, ak sú príslušné balíky v workspace zbuildené. RViz používa uloženú konfiguráciu (napr.\ \texttt{main.rviz}) s dispmi pre mapu, laser, plán a obraz z kamery.
+V simulátore Gazebo Sim som v prostredí workspace pripravil model robota Wave Rover v súradniciach URDF/Xacro (podvozok, kolesá, LiDAR, kamera) a svet s prekážkami na demonštráciu senzorov a navigácie. \cite{gazebo} Senzory v simulácii sú napojené cez \texttt{ros\_gz\_bridge}: laser poskytuje dáta vhodné pre SLAM a Nav2, kamera obraz na tému kompatibilnú s vizualizáciou v RViz (napr.\ \texttt{/camera/image\_raw}). Spúšťanie: zdrojovanie ROS~2 Jazzy a workspace (\texttt{source install/setup.bash}), následne \texttt{ros2 launch waver\_sim launch\_sim.launch.py} alebo zjednotený skript \texttt{./run\_sim.sh} z priečinka simulácie, ktorý navyše môže spustiť teleop a plný bringup s Nav2 a \texttt{slam\_toolbox}, ak sú príslušné balíky v pracovnom priestore zostavené (\texttt{colcon build}). RViz používa uloženú konfiguráciu (napr.\ \texttt{main.rviz}) so zobrazeniami mapy, laseru, plánu a obrazu z kamery.
 
 \begin{figure}[H] 
     \centering
@@ -613,7 +593,7 @@ Pre ovládanie robota z prehliadača na telefóne alebo druhom PC je v balíku \
 
 \subsection*{Zarovnanie jazdy: optický tok a IMU (stručný prehľad)}
 
-Pojem \emph{zarovnanie} tu znamená \textbf{zníženie nechceného bočného driftu} pri jazde vpred. Používajú sa dva nezávislé prístupy (kamera vs.\ gyroskop); teoretický rámec optického toku (OpenCV, Lucas--Kanade, Farnebäck) je v~\cite{opencv_optical_flow_tutorial}, PID v zmysle spätnej väzby v~\cite{wikipedia_pid_controller}. \textbf{Implementačný detail} (presné názvy tém, parametre, podmienky zapnutia, plný PID vrátane integrálu a derivácie, rozdelenie LiDARu pri bludení) je sústredený v sekcii~\ref{sec:waverower-riadenie}, aby sa v tejto podsekcii neopakovali celé odseky.
+Pojem \emph{zarovnanie} tu znamená \textbf{zníženie nechceného bočného driftu} pri jazde vpred. Používajú sa dva nezávislé prístupy (kamera vs.\ gyroskop); teoretický rámec optického toku (OpenCV, Lucas--Kanade, Farnebäck) je v~\cite{opencv_optical_flow_tutorial}, PID v zmysle spätnej väzby v~\cite{astrom2008feedback}. \textbf{Implementačný detail} (presné názvy tém, parametre, podmienky zapnutia, plný PID vrátane integrálu a derivácie, rozdelenie LiDARu pri bludení) je sústredený v sekcii~\ref{sec:waverower-riadenie}, aby sa v tejto podsekcii neopakovali celé odseky.
 
 \paragraph{Súvis a obmedzenia.}
 Optický tok a IMU korekcia riešia \textbf{rôzne príčiny} driftu (vizuálny posun scény vs.\ meraná yaw rate) a v launch súboroch sa dajú voliť oddelene (\texttt{use\_flow}, \texttt{correction\_mode}). Nezaručujú jazdu po priamke v mapových súradniciach bez globálnej navigácie alebo kvalitnej odometrie. V simulácii môže byť táto vrstva vypnutá.
@@ -737,7 +717,7 @@ Rozhranie používa tmavú farebnú schému optimalizovanú pre čitateľnosť v
 \subsection*{Automatické spúšťanie a ochrana procesov (systemd)}
 \label{sec:systemd}
 
-Pre spoľahlivý provoz robota bez manuálneho zásahu sú kritické uzly registrované ako systemd jednotky, čo zaručuje ich automatické spustenie po nabootovaní Raspberry Pi a automatické reštartovanie pri páde.
+Pre spoľahlivú prevádzku robota bez manuálneho zásahu sú kritické uzly registrované ako systemd jednotky, čo zaručuje ich automatické spustenie po nabootovaní Raspberry Pi a opätovné spustenie po páde procesu.
 
 Balík \texttt{waverower} obsahuje v adresári \texttt{systemd/} dve unit súbory:
 
@@ -905,7 +885,7 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
     \item \textbf{LIDAR}
         \begin{itemize}
             \item Inicializácia a kalibrácia lidaru.
-            \item Zber dát o vzdialenosti, ktoré potom sošle ďalším uzlom na vyhodnotenie trasy a vyhýbanie sa prekážkam.
+            \item Zber dát o vzdialenosti a ich odosielanie ďalším uzlom na vyhodnotenie trasy a vyhýbanie sa prekážkam.
             \item Publikuje spracových dát.
         \end{itemize}
 
@@ -924,7 +904,7 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
 
     \item \textbf{Motor Controller}
         \begin{itemize}
-            \item Riadenie motorov na základe Navigaton Controll Uzlu.
+            \item Riadenie motorov podľa príkazov z uzlov navigácie a teleoperácie.
         \end{itemize}
 
     \item \textbf{Navigation and Control}
@@ -934,7 +914,7 @@ Navrhovaný systém pre riadenie robota WAVE ROVER s využitím ROS2 zahŕňa vi
             \item Vydávanie príkazov Motor Controlleru na základe zisteného aktuálneho stavu.
         \end{itemize}
 
-    \item \textbf{SLAM}\cite{slam}
+    \item \textbf{SLAM}\cite{cadena2016past}
         \begin{itemize}
             \item V implementácii sa mapa prostredia buduje najmä z LiDARu (\texttt{sensor\_msgs/msg/LaserScan} na \texttt{/scan}) pomocou balíka \texttt{slam\_toolbox} (asynchrónny alebo synchrónny režim podľa YAML konfigurácie). Odhad polohy robota v mape je súčasťou SLAM procesu; kamera slúži na vizuálnu kontrolu operátorovi a nie je nutná pre základnú 2D LiDAR mapu. Parametre a spúšťanie sú zadelené do launch súborov spolu s Nav2.
         \end{itemize}
