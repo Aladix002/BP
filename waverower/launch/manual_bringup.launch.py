@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Bringup: motor (I2C HAT), volitelne kamera/IMU/LiDAR/teleop, SLAM (slam_toolbox).
-# Mapa: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/cesta/mapa'}}"
+# Bringup: motor (I2C HAT), volitelne kamera/IMU/LiDAR/teleop.
+# SLAM je v runtime_stack.launch.py (plati pre manual aj wander).
 
 import os
 
@@ -8,12 +8,9 @@ from ament_index_python.packages import PackageNotFoundError, get_package_share_
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    ExecuteProcess,
     IncludeLaunchDescription,
     LogInfo,
-    OpaqueFunction,
     SetEnvironmentVariable,
-    TimerAction,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -25,108 +22,6 @@ from launch_ros.parameter_descriptions import ParameterValue
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 CAMERA_FORMAT = "XRGB8888"
-
-
-def _slam_stack(context, *args, **kwargs):
-    # Vyhodnotenie argumentov az pri spusteni launchu (nie skor), aby sedeli override z CLI
-    use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
-    use_lidar = LaunchConfiguration("use_lidar").perform(context) == "true"
-    use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom").perform(context) == "true"
-    if not use_slam:
-        # Bez SLAM nic z tejto funkcie nepridavame (ziadny slam_toolbox, ziadna extra TF logika)
-        return []
-    pkg = get_package_share_directory("waverower")
-    slam_params = os.path.join(pkg, "params", "slam.yaml")
-    ekf_params = os.path.join(pkg, "params", "ekf.yaml")
-    use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
-    use_rviz = LaunchConfiguration("use_rviz").perform(context) == "true"
-    if not use_lidar:
-        # SLAM z LiDAR scanu: bez /scan nema zmysel async_slam_toolbox spustat
-        return [
-            LogInfo(
-                msg=(
-                    "use_slam:=true ale use_lidar:=false - SLAM sa nespusta (chyba /scan). "
-                    "Nastav use_lidar:=true."
-                ),
-            ),
-        ]
-    actions = []
-    if not use_ekf and not use_cmd_vel_odom:
-        # Ak nemame ani EKF ani integrator z teleopu, TF strom potrebuje aspon pevny odom->base_link,
-        # inak RViz/model nemaju vztah medzi mapou a robotom (slam_toolbox mapuje scan do map->odom)
-        actions.append(
-            Node(
-                package="tf2_ros",
-                executable="static_transform_publisher",
-                name="odom_to_base_link",
-                output="screen",
-                arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
-            )
-        )
-    # IMU je fyzicky nad podvozkom: static TF len posun Z (5 cm), rotacia 0 (ak nemas kalibraciu nastrojov)
-    actions.append(
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="base_link_to_imu",
-            output="screen",
-            arguments=["0", "0", "0.05", "0", "0", "0", "base_link", "imu_link"],
-        )
-    )
-    if use_ekf:
-        # EKF fuzuje IMU (a prip. ine senzory podla ekf.yaml) do odom; nahradza staticky odom->base_link vyssie
-        actions.append(
-            Node(
-                package="robot_localization",
-                executable="ekf_node",
-                name="ekf_filter_node",
-                output="screen",
-                parameters=[ekf_params],
-            )
-        )
-    actions.extend(
-        [
-            # async_slam_toolbox: ziaden synchronny spin; mapuje sa na pozadi (vhodne pre RPi)
-            Node(
-                package="slam_toolbox",
-                executable="async_slam_toolbox_node",
-                name="slam_toolbox",
-                output="screen",
-                parameters=[slam_params],
-            ),
-            # Lifecycle: node je najprv neaktivny; bez configure/activate neprijima ciele
-            TimerAction(
-                period=2.0,
-                actions=[
-                    ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
-                        output="screen",
-                    )
-                ],
-            ),
-            TimerAction(
-                period=4.0,
-                actions=[
-                    ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
-                        output="screen",
-                    )
-                ],
-            ),
-        ]
-    )
-    if use_rviz:
-        # RViz na RPi je tazky; casto sa spusta na PC so rovnakym ROS_DOMAIN_ID
-        actions.append(
-            Node(
-                package="rviz2",
-                executable="rviz2",
-                name="rviz2",
-                output="screen",
-                arguments=["-d", os.path.join(pkg, "params", "slam.rviz")],
-            )
-        )
-    return actions
 
 
 def generate_launch_description():
@@ -269,7 +164,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "use_imu",
-                default_value="false",
+                default_value="true",
                 description="Arduino USB -> imu_serial_fusion_bridge (CSV 15/20 poli) -> /imu",
             ),
             DeclareLaunchArgument(
@@ -293,22 +188,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_lidar",
                 default_value="true",
-                description="ldlidar_ros2 ld19.launch.py (/scan), default true pre SLAM",
-            ),
-            DeclareLaunchArgument(
-                "use_slam",
-                default_value="true",
-                description="slam_toolbox async + TF (vyzaduje use_lidar:=true)",
-            ),
-            DeclareLaunchArgument(
-                "use_ekf",
-                default_value="false",
-                description="robot_localization EKF (IMU->odom); ak true, bez statickeho odom->base_link",
-            ),
-            DeclareLaunchArgument(
-                "use_rviz",
-                default_value="false",
-                description="RViz2 + slam.rviz (na RPi narocne; casto RViz na PC, rovnaky DOMAIN_ID)",
+                description="ldlidar_ros2 ld19.launch.py (/scan)",
             ),
             DeclareLaunchArgument(
                 "use_teleop",
@@ -402,14 +282,17 @@ def generate_launch_description():
                 condition=IfCondition(use_cmd_vel_odom),
                 parameters=[
                     {
-                        # Integracia /teleop_cmd_vel -> fiktivna odometria (enkodery nemame)
-                        "cmd_topic": "/teleop_cmd_vel",
-                        "odom_topic": "/odom",
-                        "odom_frame": "odom",
-                        "base_frame": "base_link",
-                        "publish_tf": True,
-                        "timeout_sec": 0.4,
+                        "cmd_topic":      "/teleop_cmd_vel",
+                        "cmd_topic_auto": "/cmd_vel",
+                        "odom_topic":     "/odom",
+                        "odom_frame":     "odom",
+                        "base_frame":     "base_link",
+                        "publish_tf":     True,
+                        "timeout_sec":    0.4,
                         "update_rate_hz": 30.0,
+                        "use_imu_yaw":    True,
+                        "imu_topic":      "/imu",
+                        "linear_scale":   0.4,
                     }
                 ],
             ),
@@ -429,6 +312,5 @@ def generate_launch_description():
             lidar_include,
             *camera_stack,
             *robot_model_stack,
-            OpaqueFunction(function=_slam_stack),
         ]
     )

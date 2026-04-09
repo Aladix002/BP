@@ -6,10 +6,11 @@ import os
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, OpaqueFunction, SetEnvironmentVariable, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 # Pomer vpred / otacanie pre auto vypocet wander rychlosti; musi sediet s web_ui (WANDER_TURN_RATIO)
 WANDER_TURN_RATIO = 18.0
@@ -44,12 +45,28 @@ def _opaque(context, *args, **kwargs):
     use_camera = LaunchConfiguration("use_camera").perform(context) == "true"
     use_web = LaunchConfiguration("use_web").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
+    use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
+    use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
+    use_rviz = LaunchConfiguration("use_rviz").perform(context) == "true"
+    use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom").perform(context) == "true"
 
     try:
         get_package_share_directory("camera_ros")
         have_cam = True
     except PackageNotFoundError:
         have_cam = False
+
+    use_robot_model = LaunchConfiguration("use_robot_model").perform(context) == "true"
+    try:
+        waver_sim_share = get_package_share_directory("waver_sim")
+        robot_model_file = LaunchConfiguration("robot_model_file").perform(context).strip()
+        if not robot_model_file:
+            robot_model_file = os.path.join(waver_sim_share, "description", "robot.urdf.xacro")
+        have_waver_sim = True
+    except PackageNotFoundError:
+        waver_sim_share = ""
+        robot_model_file = ""
+        have_waver_sim = False
 
     wander_cmd_topic = "/cmd_vel"
 
@@ -218,6 +235,109 @@ def _opaque(context, *args, **kwargs):
             )
         )
 
+    if use_cmd_vel_odom:
+        actions.append(
+            Node(
+                package="waverower",
+                executable="cmd_vel_odom.py",
+                name="cmd_vel_odom",
+                output="screen",
+                parameters=[{
+                    "cmd_topic":      "/teleop_cmd_vel",
+                    "cmd_topic_auto": "/cmd_vel",
+                    "odom_topic":     "/odom",
+                    "odom_frame":     "odom",
+                    "base_frame":     "base_link",
+                    "publish_tf":     True,
+                    "timeout_sec":    0.4,
+                    "update_rate_hz": 30.0,
+                    "use_imu_yaw":    True,
+                    "imu_topic":      "/imu",
+                    # Skutocna rychlost robota = cmd_linear / teleop_max_linear * max_wheel_speed
+                    "linear_scale":   0.4 / max_lin,
+                }],
+            )
+        )
+
+    if use_slam:
+        if not use_lidar:
+            actions.append(LogInfo(msg="use_slam:=true ale use_lidar:=false - SLAM sa nespusta (chyba /scan)."))
+        else:
+            pkg = get_package_share_directory("waverower")
+            slam_params = os.path.join(pkg, "params", "slam.yaml")
+            ekf_params = os.path.join(pkg, "params", "ekf.yaml")
+            if not use_ekf and not use_cmd_vel_odom:
+                actions.append(
+                    Node(
+                        package="tf2_ros",
+                        executable="static_transform_publisher",
+                        name="odom_to_base_link",
+                        output="screen",
+                        arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
+                    )
+                )
+            if use_ekf:
+                actions.append(
+                    Node(
+                        package="robot_localization",
+                        executable="ekf_node",
+                        name="ekf_filter_node",
+                        output="screen",
+                        parameters=[ekf_params],
+                    )
+                )
+            actions.extend([
+                Node(
+                    package="slam_toolbox",
+                    executable="async_slam_toolbox_node",
+                    name="slam_toolbox",
+                    output="screen",
+                    parameters=[slam_params],
+                ),
+                TimerAction(
+                    period=2.0,
+                    actions=[ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
+                        output="screen",
+                    )],
+                ),
+                TimerAction(
+                    period=4.0,
+                    actions=[ExecuteProcess(
+                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                        output="screen",
+                    )],
+                ),
+            ])
+            if use_rviz:
+                actions.append(
+                    Node(
+                        package="rviz2",
+                        executable="rviz2",
+                        name="rviz2",
+                        output="screen",
+                        arguments=["-d", os.path.join(pkg, "params", "slam.rviz")],
+                    )
+                )
+
+    if use_robot_model:
+        if have_waver_sim:
+            robot_description = ParameterValue(
+                Command(["xacro ", robot_model_file]),
+                value_type=str,
+            )
+            actions.append(
+                Node(
+                    package="robot_state_publisher",
+                    executable="robot_state_publisher",
+                    name="robot_state_publisher",
+                    output="screen",
+                    parameters=[{"robot_description": robot_description}],
+                )
+            )
+        else:
+            actions.append(LogInfo(msg="use_robot_model:=true vyzaduje balik waver_sim (robot.urdf.xacro)."))
+
     if use_web:
         pkg = get_package_share_directory("waverower")
         actions.append(
@@ -239,6 +359,8 @@ def generate_launch_description():
         DeclareLaunchArgument("use_imu", default_value="true"),
         DeclareLaunchArgument("use_camera", default_value="true"),
         DeclareLaunchArgument("camera_id", default_value="0"),
+        DeclareLaunchArgument("use_robot_model", default_value="true", description="robot_state_publisher z waver_sim URDF"),
+        DeclareLaunchArgument("robot_model_file", default_value="", description="cesta k URDF/Xacro; prazdne = autodetect z waver_sim"),
         DeclareLaunchArgument("use_web", default_value="true", description="rosbridge + HTTP :8080"),
         DeclareLaunchArgument(
             "correction_mode",
@@ -289,6 +411,10 @@ def generate_launch_description():
             description="auto = forward * 18 (ako web UI); inak cislo [rad/s]",
         ),
         DeclareLaunchArgument("lidar_rotation_deg", default_value="-90.0"),
+        DeclareLaunchArgument("use_slam", default_value="true", description="slam_toolbox async (vyzaduje use_lidar:=true)"),
+        DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
+        DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),
+        DeclareLaunchArgument("use_cmd_vel_odom", default_value="true", description="odometria z cmd_vel -> odom->base_link TF"),
         LogInfo(msg="runtime_stack: /waverower/switch_to_{manual,wander}; web ak use_web:=true"),
         OpaqueFunction(function=_opaque),
     ])
