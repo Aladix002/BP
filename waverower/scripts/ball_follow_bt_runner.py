@@ -171,7 +171,7 @@ def main():
     node.get_logger().info(
         f"BT start  tick={tick_hz:.0f}Hz  color={color}  fail_on_lost_sec={fail_on_lost:.1f}"
     )
-    print(py_trees.display.ascii_tree(tree.root))
+    node.get_logger().info("BT strom:\n" + py_trees.display.ascii_tree(tree.root))
 
     try:
         while rclpy.ok():

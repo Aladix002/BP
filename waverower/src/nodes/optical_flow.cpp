@@ -4,8 +4,7 @@
 #include <iomanip>
 #include <sstream>
 
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgcodecs.hpp>
+// opencv2/opencv.hpp uz zahrnuje highgui, imgcodecs a vsetky ostatne hlavicky cez optical_flow.hpp
 
 namespace nodes {
 

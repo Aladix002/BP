@@ -119,7 +119,6 @@ class BallFollowerBase(Node):
         self._last_x_err = 0.0
         self._last_radius = 0.0
         self._last_confidence = 0.0
-        self._prev_radius = 0.0
         self._ever_seen = False
         self._search_dir = 1.0  # +1 vpravo, -1 vlavo pri hlade
         self._last_accept_cx: float | None = None  # px, naposledy akceptovany stred X (pre filter skokov)
@@ -544,7 +543,6 @@ class BallFollowerBase(Node):
             seen_for = 0.0 if self._seen_streak_start is None else (now - self._seen_streak_start)
             if seen_for < confirm_sec:
                 state = f"VERIFY {seen_for:.1f}/{confirm_sec:.1f}s"
-                self._prev_radius = self._last_radius
                 self._pub.publish(cmd)
                 self._publish_debug_signals(0.0, 0.0, state_id=2.0)
                 self.get_logger().info(
@@ -724,8 +722,7 @@ class BallFollowerBase(Node):
                     else:
                         state = "TRACK"
                         dbg_state_id = 5.0
-            self._prev_radius = self._last_radius
-        else:
+            else:
             if self._had_fresh_track:
                 self._cmd_lin_f = 0.0
                 self._cmd_ang_f = 0.0

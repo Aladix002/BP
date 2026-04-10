@@ -361,11 +361,12 @@ class ImuSerialFusionBridge(Node):
                 self._gyro_sum[2] += gz_rad
                 self._gyro_n += 1
                 if self._gyro_n >= self._gyro_warmup:
-                    n = float(self._gyro_n)
+                    # Pouzivame n_samples aby sme nepretlacili n = len(parts) z vonkajsieho scope
+                    n_samples = float(self._gyro_n)
                     self._gyro_bias = (
-                        self._gyro_sum[0] / n,
-                        self._gyro_sum[1] / n,
-                        self._gyro_sum[2] / n,
+                        self._gyro_sum[0] / n_samples,
+                        self._gyro_sum[1] / n_samples,
+                        self._gyro_sum[2] / n_samples,
                     )
                     self.get_logger().info(
                         "Gyro bias odhad (priemer z %d vzoriek, rad/s): "
