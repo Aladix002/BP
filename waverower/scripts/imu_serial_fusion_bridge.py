@@ -8,7 +8,6 @@ import queue
 import re
 import select
 import subprocess
-import sys
 import termios
 import threading
 from glob import glob

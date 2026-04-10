@@ -1,7 +1,10 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
-    <!-- Makra: homogenna gula, homogenny kvader, homogenny valec (osy = symetria linku). -->
+    <!--
+      Utility makra pre zjednoduseny vypocet inercie.
+      Poznamka: robot_core.xacro ich momentalne nepouziva (ma rucne hodnoty) - sluzia ako zalozne pomucky.
+    -->
 
     <xacro:macro name="inertial_sphere" params="mass radius *origin">
         <inertial>

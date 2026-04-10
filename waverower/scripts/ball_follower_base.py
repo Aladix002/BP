@@ -128,7 +128,6 @@ class BallFollowerBase(Node):
         self._image_candidates = []
         self._candidate_idx = 0
 
-        self._frame_count      = 0
         self._following_active = True
         self._burst_phase_start = time.monotonic()
         self._burst_spinning = True
@@ -199,8 +198,8 @@ class BallFollowerBase(Node):
         auto_switch = self.get_parameter("auto_switch_image_topic").get_parameter_value().bool_value
         if not auto_switch or len(self._image_candidates) < 2:
             return
-        # Ak nechodia framy, skus dalsi kandidat.
-        if self._frame_count > 0:
+        # Ak este neprisiel ani jeden frame z tohto topicu, skus dalsi kandidat.
+        if self._last_frame_time > 0.0:
             return
         use_be = self.get_parameter("image_use_best_effort_qos").get_parameter_value().bool_value
         qos = rclpy.qos.qos_profile_sensor_data if use_be else QoSProfile(
@@ -216,7 +215,6 @@ class BallFollowerBase(Node):
         arr   = np.frombuffer(msg.data, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if frame is not None:
-            self._frame_count += 1
             self._last_frame_time = time.monotonic()
             self._process(frame)
 
@@ -226,13 +224,17 @@ class BallFollowerBase(Node):
         except Exception as e:
             self.get_logger().warn(f"cv_bridge: {e}", throttle_duration_sec=5.0)
             return
-        self._frame_count += 1
         self._last_frame_time = time.monotonic()
         self._process(frame)
 
     def _warn_no_frames(self) -> None:
-        if self._frame_count == 0:
-            self.get_logger().warn("Za 4s ziadny obrazok - skontroluj image_topic a QoS.")
+        # Pouzivame cas posledneho framu (nie pocitadlo) - varuje aj pri neskorsom vypadku kamery
+        no_frame = self._last_frame_time == 0.0 or (time.monotonic() - self._last_frame_time) > 4.0
+        if no_frame:
+            self.get_logger().warn(
+                "Za 4s ziadny obrazok - skontroluj image_topic a QoS.",
+                throttle_duration_sec=4.0,
+            )
 
     # Pre vybranu farbu vrati binarnu masku v HSV priestore (OpenCV inRange)
     def _hsv_mask(self, hsv: np.ndarray, color: str) -> np.ndarray:

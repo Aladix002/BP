@@ -40,8 +40,7 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
   declare_parameter<bool>("invert_angular", false);
 
   declare_parameter<int>("cmd_vel_timeout_ms", 600);
-  // max_wheel_speed: dokumentacny limit; skalovanie jazdy ide cez teleop_max_linear
-  declare_parameter<double>("max_wheel_speed", 0.4);
+  // wheel_base: [m] polovica sa pouziva v cmd_vel unicycle -> L/R rozklad (half_b = wheel_base/2)
   declare_parameter<double>("wheel_base",      0.20);
   // cmd_vel_invert_linear: ak planovac ma opacne znamienko voci fyzickej jazde
   declare_parameter<bool>("cmd_vel_invert_linear", false);

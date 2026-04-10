@@ -204,7 +204,9 @@ function DrivePanel({ ros, connected }) {
         syncRef.current = null;
       }
     };
-  }, [linScale, wanderThresholdM, ros, connected, teleopMax.lin, teleopMax.ang]);
+  // teleopMax.ang sa v tele efektu nepouziva (len .lin cez ref) - odstraneho aby sa wander sync
+  // netrieroval zbytocne pri zmene angular maxima (napr. po Fetch z robota).
+  }, [linScale, wanderThresholdM, ros, connected, teleopMax.lin]);
 
   const stop = () => {
     twistRef.current = { linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 } };
