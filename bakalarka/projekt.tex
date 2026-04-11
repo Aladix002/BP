@@ -17,6 +17,13 @@
 %   projekt-30-prilohy-appendices.tex - přílohy / appendices
 %   projekt-30-prilohy-appendices-en.tex - přílohy v angličtině / appendices in English
 %==============================================================================
+% DÔLEŽITÉ / IMPORTANT:
+% Tento súbor musí začínať príkazom \documentclass nižšie a obsahovať \begin{document}
+% a \input{projekt-01-kapitoly-chapters} — text kapitol patrí len do
+% projekt-01-kapitoly-chapters.tex. Ak sem vložíte \chapter{...}, kompilácia zlyhá
+% (Undefined \chapter, Missing \begin{document}).
+% IMPORTANT: Keep the preamble here; chapter body belongs in projekt-01-kapitoly-chapters.tex only.
+%==============================================================================
 \documentclass[slovak]{fitthesis} % bez zadání - pro začátek práce, aby nebyl problém s překladem
 %\documentclass[english]{fitthesis} % without assignment - for the work start to avoid compilation problem
 %\documentclass[zadani]{fitthesis} % odevzdani do IS VUT a/nebo tisk s barevnými odkazy - odkazy jsou barevné
@@ -71,6 +78,14 @@
 \csdoublequotesoff
 
 \usepackage{url}
+% Lepšie zalamovanie ciest a URL; \path v tabuľkách/odstavcoch.
+\usepackage{xurl}
+% Ďalšie miesta zlomu v \path/\url (systemd kľúče=hodnoty, ROS parametre :=).
+\makeatletter
+\g@addto@macro\UrlBreaks{\do\=\do\:\do\-\do\.}%
+\makeatother
+% ROS témy: \path láme na '/' a '_' (vyžaduje xurl).
+\newcommand{\rostopic}[1]{{\urlstyle{tt}\path{#1}}}
 \usepackage{amsmath}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
@@ -125,7 +140,7 @@
   date=\today,             % datum odevzdání / submission date
   %Nazev prace / thesis title
   title.cs={Demonstrace využití prostředků ROS 2 na podvozku WAVE ROVER s Raspberry Pi, kamerou a lidarem},  % název práce v češtině či slovenštině (dle zadání) / thesis title in czech language (according to assignment)
-  title.en={Thesis title}, % název práce v angličtině / thesis title in english
+  title.en={Demonstration of ROS~2 on the WAVE ROVER platform with Raspberry Pi, camera and lidar}, % název práce v angličtině / thesis title in english
   %title.length={14.5cm}, % nastavení délky bloku s titulkem pro úpravu zalomení řádku (lze definovat zde nebo níže) / setting the length of a block with a thesis title for adjusting a line break (can be defined here or below)
   %sectitle.length={14.5cm}, % nastavení délky bloku s druhým titulkem pro úpravu zalomení řádku (lze definovat zde nebo níže) / setting the length of a block with a second thesis title for adjusting a line break (can be defined here or below)
   %dectitle.length={14.5cm}, % nastavení délky bloku s titulkem nad prohlášením pro úpravu zalomení řádku (lze definovat zde nebo níže) / setting the length of a block with a thesis title above declaration for adjusting a line break (can be defined here or below)
@@ -142,23 +157,21 @@
   supervisor.title.p={doc. Ing.},   %titul před jménem (nepovinné) / title before the name (optional)
   supervisor.title.a={Ph.D.},    %titul za jménem (nepovinné) / title after the name (optional)
   % Klíčová slova / keywords
-  keywords.cs={Sem budou zapsána jednotlivá klíčová slova v českém (slovenském) jazyce, oddělená čárkami.}, % klíčová slova v českém či slovenském jazyce / keywords in czech or slovak language
-  keywords.en={Sem budou zapsána jednotlivá klíčová slova v anglickém jazyce, oddělená čárkami.}, % klíčová slova v anglickém jazyce / keywords in english
+  keywords.cs={mobilná robotika, ROS~2, Wave Rover, Raspberry Pi, LiDAR, kamera, teleprezencia, autonómna navigácia, Gazebo}, % klíčová slova v českém či slovenském jazyce / keywords in czech or slovak language
+  keywords.en={mobile robotics, ROS~2, Wave Rover, Raspberry Pi, lidar, camera, telepresence, autonomous navigation, Gazebo}, % klíčová slova v anglickém jazyce / keywords in english
   %keywords.en={Here, individual keywords separated by commas will be written in English.},
   % Abstrakt / Abstract
   abstract.cs={Táto práca sa zaoberá mobilnou robotikou a teleprezenciou. Cieľom je navrhnúť a implementovať systém riadenia robota na platforme WAVE ROVER s využitím Robot Operating System 2 (ROS~2). Práca zahŕňa prehľad metód vývoja softvéru pre mobilné roboty v ROS~2 a oboznámenie sa s platformou WAVE ROVER, overenie použiteľnosti existujúceho hardvéru a jeho rozšírenie o senzory (lidar, kamera). Navrhovaný systém umožňuje prepínanie medzi diaľkovým ovládaním a autonómnym pohybom s vyhýbaním sa prekážkam. Riadiaci počítač je Raspberry Pi 5 s Ubuntu 24.04.}, % abstrakt v českém či slovenském jazyce / abstract in czech or slovak language
   abstract.en={This thesis deals with mobile robotics and telepresence. The aim is to design and implement a robot control system on the WAVE ROVER platform using Robot Operating System 2 (ROS~2). The work surveys software development practices for mobile robots in ROS~2, introduces the WAVE ROVER platform, validates the existing hardware, and extends it with sensors (lidar, camera). The proposed system supports switching between remote control and autonomous motion with obstacle avoidance. The onboard computer is a Raspberry Pi 5 running Ubuntu 24.04.}, % abstrakt v anglickém jazyce / abstract in english
   %abstract.en={An abstract of the work in English will be written in this paragraph.},
   % Prohlášení (u anglicky psané práce anglicky, u slovensky psané práce slovensky; u projektové praxe lze zakomentovat) / Declaration (for thesis in english should be in english; for project practice can be commented out)
-  declaration={Prehlasujem, že som túto bakalársku prácu vypracoval samostatne pod vedením doc. Janouška.
-Ďalšie informácie mi poskytol...
+  declaration={Prehlasujem, že som túto bakalársku prácu vypracoval samostatne pod vedením doc.\ Ing.\ Vladimíra Janouška, Ph.D.
 Uviedol som všetky literárne pramene, publikácie a iné zdroje, z ktorých som čerpal.},
   %declaration={I hereby declare that this Bachelor's thesis was prepared as an original work by the author under the supervision of Mr. X
 % The supplementary information was provided by Mr. Y
 % I have listed all the literary sources, publications and other sources, which were used during the preparation of this thesis.},
   % Poděkování (nepovinné, nejlépe v jazyce práce; nechcete-li, zakomentujte pro skrytí nadpisu) / Acknowledgement (optional, ideally in the language of the thesis; comment out for hiding including heading)
-  acknowledgment={V této sekci je možno uvést poděkování vedoucímu práce a těm, kteří poskytli odbornou pomoc
-(externí zadavatel, konzultant apod.).},
+  acknowledgment={Ďakujem vedúcemu práce doc.\ Ing.\ Vladimírovi Janouškovi, Ph.D., za odborné vedenie, pripomienky a trpezlivosť.},
   %acknowledgment={Here it is possible to express thanks to the supervisor and to the people which provided professional help
 %(external submitter, consultant, etc.).},
   % Rozšířený abstrakt (cca 3 normostrany) - lze definovat zde nebo níže / Extended abstract (approximately 3 standard pages) - can be defined here or below
@@ -167,8 +180,8 @@ Uviedol som všetky literárne pramene, publikácie a iné zdroje, z ktorých so
   %faculty={FIT}, % FIT/FEKT/FSI/FA/FCH/FP/FAST/FAVU/USI/DEF
   faculty.cs={Fakulta informačních technologií}, % Fakulta v češtině - pro využití této položky výše zvolte fakultu DEF / Faculty in Czech - for use of this entry select DEF above
   faculty.en={Faculty of Information Technology}, % Fakulta v angličtině - pro využití této položky výše zvolte fakultu DEF / Faculty in English - for use of this entry select DEF above
-  department.cs={Ústav matematiky}, % Ústav v češtině - pro využití této položky výše zvolte ústav DEF nebo jej zakomentujte / Department in Czech - for use of this entry select DEF above or comment it out
-  department.en={Institute of Mathematics} % Ústav v angličtině - pro využití této položky výše zvolte ústav DEF nebo jej zakomentujte / Department in English - for use of this entry select DEF above or comment it out
+  department.cs={Ústav inteligentních systémů}, % UITS / Department in Czech
+  department.en={Department of Intelligent Systems} % UITS / Department in English
 }
 
 % Rozšířený abstrakt (cca 3 normostrany) - lze definovat zde nebo výše / Extended abstract (approximately 3 standard pages) - can be defined here or above
@@ -201,6 +214,8 @@ Uviedol som všetky literárne pramene, publikácie a iné zdroje, z ktorých so
 % \raggedbottom
 
 \begin{document}
+  \emergencystretch=3em
+  \lstset{breaklines=true,breakatwhitespace=true}
   % Vysazeni titulnich stran / Typesetting of the title pages
   % ----------------------------------------------
   \maketitle
