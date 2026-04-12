@@ -1,5 +1,6 @@
-% Literatúra citovaná v texte práce (skrátené o nepoužité šablónové záznamy).
-% ISO 690: štýl czplain/skplain z balíka Pysného.
+% Literatúra: záznamy v tomto súbore môžu byť ľubovoľne; číslovanie [1], [2], … určuje
+% štýl skplain-un (poradie prvého citovania v texte), nie poradie riadkov v .bib.
+% Formát zápisov: ISO 690 cez skplain-un (odvodený od Pysného skplain).
 
 @webpage{rpi_official_docs,
   author       = {{Raspberry Pi Ltd}},
@@ -21,16 +22,6 @@
   cited        = {2024-11-02}
 }
 
-@webpage{waveshare_driver,
-  author       = {Waveshare},
-  title        = {General Driver for Robots},
-  howpublished = {online},
-  publisher    = {Waveshare},
-  year         = {2024},
-  url          = {https://www.waveshare.com/wiki/General_Driver_for_Robots},
-  cited        = {2024-01-25}
-}
-
 @webpage{waverover,
   author       = {Waveshare},
   title        = {WAVE ROVER},
@@ -41,85 +32,68 @@
   cited        = {2024-01-25}
 }
 
-@article{accelerometer,
-  title   = {Accelerometer Working Principle},
-  author  = {Anand, Ashutosh},
-  journal = {Intelligent Detection and Sensing Systems},
-  edition = {1},
-  volume  = {1},
-  number  = {1},
-  pages   = {4},
-  year    = {2023}
+@webpage{hyperphysics_dc_motor,
+  author       = {Nave, Carl Rod},
+  title        = {DC Motors},
+  howpublished = {online},
+  publisher    = {HyperPhysics, Georgia State University},
+  year         = {2000},
+  url          = {https://hyperphysics.phy-astr.gsu.edu/hbase/magnetic/motdc.html},
+  cited        = {2026-04-11},
+  note         = {Stručný prehľad princípu jednosmerného motora.}
 }
 
-@article{gyroskop,
-  title   = {Using of measuring system {MPU6050} for the determination of the angular velocities and linear accelerations},
-  author  = {Fedorov, D. S. and Ivoilov, A. Yu. and Zhmud, V. A. and Trubin, V. G.},
-  journal = {Automatics \& Software Enginery},
-  edition = {1},
-  volume  = {11},
-  number  = {1},
-  pages   = {75--80},
-  year    = {2015}
+@webpage{waveshare_driver,
+  author       = {Waveshare},
+  title        = {General Driver for Robots},
+  howpublished = {online},
+  publisher    = {Waveshare},
+  year         = {2024},
+  url          = {https://www.waveshare.com/wiki/General_Driver_for_Robots},
+  cited        = {2026-04-11},
+  note         = {Waveshare Wiki: prehľad dosky, rozhraní a onboard IMU (QMI8658, AK09918C).}
+}
+
+@webpage{analog_devices_accel_gyro,
+  author       = {{Analog Devices}},
+  title        = {Accelerometer and Gyroscopes Sensors: Operation, Sensing, and Applications},
+  howpublished = {online},
+  year         = {2024},
+  url          = {https://www.analog.com/en/resources/technical-articles/accelerometer-and-gyroscopes-sensors-operation-sensing-and-applications.html},
+  cited        = {2026-04-11},
+  note         = {Prehľad princípov MEMS akcelerometra a gyroskopu, aplikácie a súvislosti s fúziou dát.}
 }
 
 @webpage{complementary_filter,
-  author       = {Adams, Van Hunter},
+  author       = {Adams, V. Hunter},
   title        = {Complementary Filters},
   howpublished = {online},
   year         = {2024},
   url          = {https://vanhunteradams.com/Pico/ReactionWheel/Complementary_Filters.html},
-  cited        = {2024-01-25}
+  cited        = {2026-04-11},
+  note         = {Teoretický úvod k fúzii akcelerometra a gyroskopu, váhy filtra a poznámky k alternatívam.}
 }
 
-@article{behroozpour2017lidar,
-  author  = {Behroozpour, Behnam and Poulain, Philip and Gamal, Ahmed E. and Boser, Bernhard E. and Jalali, Bahram},
-  title   = {LiDAR System Architectures and Circuits},
-  journal = {Proceedings of the IEEE},
-  edition = {1},
-  volume  = {105},
-  number  = {10},
-  pages   = {1960--1971},
-  year    = {2017},
-  doi     = {10.1109/JPROC.2017.2701658}
-}
-
-@webpage{ir_filter,
-  author       = {{E-Con Systems}},
-  title        = {What is an {IR} cut filter and why do embedded vision applications need it?},
+@webpage{britannica_lidar,
+  author       = {{Encyclopaedia Britannica}},
+  title        = {lidar},
   howpublished = {online},
-  year         = {2023},
-  url          = {https://www.e-consystems.com/blog/camera/technology/what-is-an-ir-cut-filter-and-why-do-embedded-vision-applications-need-it/},
-  cited        = {2025-01-26}
-}
-
-@book{nakamura2017image,
-  author    = {Nakamura, Junichi},
-  title     = {Image Sensors and Signal Processing for Digital Still Cameras},
-  publisher = {CRC Press},
-  year      = {2017},
-  edition   = {2nd},
-  isbn      = {978-1-4987-0746-3}
-}
-
-@webpage{RPCameraRP5,
-  author       = {ARLunan and contributors},
-  title        = {Raspberry Pi Camera Installation on Raspberry Pi 5 / Ubuntu 24.04 Noble / ROS 2 Jazzy},
-  howpublished = {online},
+  publisher    = {Encyclopaedia Britannica},
   year         = {2026},
-  url          = {https://github.com/ARLunan/Raspberry-Pi-Camera-ROS/blob/main/Documents/RPCamera-Installation-RP5.md},
-  cited        = {2026-02-21},
-  note         = {Dokumentácia inštalácie kamery pre RPi5, Ubuntu 24.04 a ROS 2 Jazzy.}
+  url          = {https://www.britannica.com/technology/lidar},
+  cited        = {2026-04-11},
+  note         = {Všeobecný popis princípu LiDAR a oblastí použitia.}
 }
 
-@webpage{camera_ros,
-  author       = {Rauch, Christian},
-  title        = {camera\_ros: ROS 2 driver for libcamera},
+@webpage{waveshare_ld19_wiki,
+  author       = {Waveshare},
+  title        = {DTOF LIDAR LD19},
   howpublished = {online},
+  publisher    = {Waveshare Wiki},
   year         = {2024},
-  url          = {https://github.com/christianrauch/camera_ros},
-  cited        = {2025-02-21},
-  note         = {Balík pre publikovanie obrazu z kamery na ROS 2 témy.}
+  url          = {https://www.waveshare.com/wiki/DTOF_LIDAR_LD19},
+  cited        = {2026-04-11},
+  note         = {Princíp DTOF, parametre LD19, UART, PWM motora, súradnicový systém.}
 }
 
 @webpage{raspberrypi_camera_module,
@@ -128,41 +102,38 @@
   howpublished = {online},
   year         = {2025},
   url          = {https://www.raspberrypi.com/documentation/accessories/camera.html},
-  cited        = {2026-03-28},
-  note         = {Hardvér CMOS senzora pre Raspberry Pi Camera.}
+  cited        = {2026-04-11},
+  note         = {Oficiálna dokumentácia hardvéru Raspberry Pi Camera Module (CM1--CM3, varianty, CSI, senzory).}
 }
 
-@article{gunturk2005demosaicking,
-  author  = {Gunturk, Bahadir K. and Glotzbach, John and Altunbasak, Yucel and Schafer, Ronald W. and Mersereau, Russell M.},
-  title   = {Demosaicking: Color Filter Array Interpolation},
-  journal = {IEEE Signal Processing Magazine},
-  edition = {1},
-  volume  = {22},
-  number  = {1},
-  pages   = {44--54},
-  year    = {2005},
-  doi     = {10.1109/MSP.2004.327681}
+@misc{i2c,
+  author       = {{NXP Semiconductors}},
+  title        = {{I2C}-bus specification and user manual},
+  howpublished = {User manual UM10204},
+  year         = {2021},
+  url          = {https://www.nxp.com/docs/en/user-guide/UM10204.pdf},
+  cited        = {2026-04-11},
+  note         = {Špecifikácia a používateľská príručka zbernice I2C.}
 }
 
-@webpage{opencv_optical_flow_tutorial,
-  author       = {{OpenCV}},
-  title        = {Optical Flow},
+@misc{uart,
+  author       = {{Texas Instruments}},
+  title        = {Interface Circuits for {TIA/EIA}-232-{F}},
+  howpublished = {Application Report SLLA037A},
+  year         = {2002},
+  url          = {https://www.ti.com/lit/an/slla037a/slla037a.pdf},
+  cited        = {2026-04-11},
+  note         = {Rev.~A; obvodové súvislosti sériového rozhrania.}
+}
+
+@webpage{ros2_doc,
+  author       = {{Open Robotics}},
+  title        = {ROS 2 Documentation},
   howpublished = {online},
-  year         = {2024},
-  url          = {https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html},
-  cited        = {2026-03-28},
-  note         = {Tutoriál: riedky tok Lucas--Kanade a hustý tok Farnebäck.}
-}
-
-@article{i2c,
-  title     = {Review of {I2C} protocol},
-  author    = {Mankar, Jayant and Darode, Chaitali and Trivedi, Komal and Kanoje, Madhura and Shahare, Prachi},
-  journal   = {International Journal of Research in Advent Technology},
-  edition   = {1},
-  volume    = {2},
-  number    = {1},
-  year      = {2014},
-  publisher = {Citeseer}
+  year         = {2025},
+  url          = {https://docs.ros.org/en/jazzy/index.html},
+  cited        = {2026-04-08},
+  note         = {Distribúcia Jazzy; tutoriály a koncepty.}
 }
 
 @article{ros2,
@@ -178,34 +149,32 @@
   url     = {https://www.science.org/doi/abs/10.1126/scirobotics.abm6074}
 }
 
-@webpage{ros2_doc,
-  author       = {{Open Robotics}},
-  title        = {ROS 2 Documentation},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/index.html},
-  cited        = {2026-04-08},
-  note         = {Distribúcia Jazzy; tutoriály a koncepty.}
+@misc{bpc_prp_ros2_materials,
+  author       = {Cihl{\'a}{\v{r}}, Milo{\v{s}} and Mina{\v{r}}{\'\i}k, Jakub},
+  title        = {{BPC-PRP}: Robotika a po{\v{c}}{\'\i}ta{\v{c}}ov{\'e} viden{\'\i} -- materi{\'a}ly k {ROS}~2},
+  howpublished = {Predn{\'a}{\v{s}}ky {FIT} {VUT}, Brno},
+  year         = {2023},
+  note         = {Intern{\'y} v{\'y}ukov{\'y} materi{\'a}l (napr. prezent{\'a}cia \emph{{ROS}~2 -- {Overview}}).}
 }
 
-@webpage{ros2_doc_understanding_topics,
-  author       = {{Open Robotics}},
-  title        = {Understanding {ROS} 2 topics},
+@webpage{dds_foundation_what_is_dds,
+  author       = {{Object Management Group / DDS Foundation}},
+  title        = {What is {DDS}?},
   howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Topics/Understanding-ROS2-Topics.html},
+  year         = {2024},
+  url          = {https://www.dds-foundation.org/what-is-dds-3/},
   cited        = {2026-03-28},
-  note         = {Témy, publisher/subscriber, typy správ.}
+  note         = {Štandard middleware pod ROS 2.}
 }
 
-@webpage{ros2_common_interfaces,
+@webpage{ros2_doc_client_libraries,
   author       = {{Open Robotics}},
-  title        = {common\_interfaces: standard message definitions for {ROS} 2},
+  title        = {About {ROS} 2 client libraries},
   howpublished = {online},
   year         = {2025},
-  url          = {https://github.com/ros2/common_interfaces},
-  cited        = {2026-04-08},
-  note         = {geometry\_msgs, sensor\_msgs, nav\_msgs a ďalšie.}
+  url          = {https://docs.ros.org/en/jazzy/Concepts/Basic/About-Client-Libraries.html},
+  cited        = {2026-04-11},
+  note         = {rclpy, rclcpp, RCL, jednotné API.}
 }
 
 @webpage{ros2_doc_discovery,
@@ -228,14 +197,24 @@
   note         = {History, reliability, durability a ďalšie QoS politiky.}
 }
 
-@webpage{ros2_doc_client_libraries,
+@webpage{ros2_doc_understanding_topics,
   author       = {{Open Robotics}},
-  title        = {About {ROS} 2 client libraries},
+  title        = {Understanding {ROS} 2 topics},
   howpublished = {online},
   year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Concepts/Basic/About-Client-Libraries.html},
-  cited        = {2026-04-11},
-  note         = {rclpy, rclcpp, RCL, jednotné API.}
+  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Topics/Understanding-ROS2-Topics.html},
+  cited        = {2026-03-28},
+  note         = {Témy, publisher/subscriber, typy správ.}
+}
+
+@webpage{ros2_common_interfaces,
+  author       = {{Open Robotics}},
+  title        = {common\_interfaces: standard message definitions for {ROS} 2},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://github.com/ros2/common_interfaces},
+  cited        = {2026-04-08},
+  note         = {geometry\_msgs, sensor\_msgs, nav\_msgs a ďalšie.}
 }
 
 @webpage{ros2_doc_workspace,
@@ -278,43 +257,14 @@
   note         = {Transformácie rámov, /tf, /tf\_static.}
 }
 
-@misc{bpc_prp_ros2_materials,
-  author       = {Cihl{\'a}{\v{r}}, Milo{\v{s}} and Mina{\v{r}}{\'\i}k, Jakub},
-  title        = {{BPC-PRP}: Robotika a po{\v{c}}{\'\i}ta{\v{c}}ov{\'e} viden{\'\i} -- materi{\'a}ly k {ROS}~2},
-  howpublished = {Predn{\'a}{\v{s}}ky {FIT} {VUT}, Brno},
-  year         = {2023},
-  note         = {Intern{\'y} v{\'y}ukov{\'y} materi{\'a}l (napr. prezent{\'a}cia \emph{{ROS}~2 -- {Overview}}).}
-}
-
-@webpage{dds_foundation_what_is_dds,
-  author       = {{Object Management Group / DDS Foundation}},
-  title        = {What is {DDS}?},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://www.dds-foundation.org/what-is-dds-3/},
-  cited        = {2026-03-28},
-  note         = {Štandard middleware pod ROS 2.}
-}
-
-@webpage{gazebo,
-  author       = {Gazebo Sim},
-  title        = {Building a Robot},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://gazebosim.org/docs/latest/building_robot/},
-  cited        = {2024-01-25}
-}
-
-@article{cadena2016past,
-  author  = {Cadena, Cesar and Carlone, Luca and Carrillo, Henry and Latif, Yasir and Scaramuzza, Davide and Neira, Jos{\'e} and Reid, Ian and Leonard, John J.},
-  title   = {Past, Present, and Future of Simultaneous Localization and Mapping: Toward the Robust-Perception Age},
-  journal = {IEEE Transactions on Robotics},
-  edition = {1},
-  volume  = {32},
-  number  = {6},
-  pages   = {1309--1332},
-  year    = {2016},
-  doi     = {10.1109/TRO.2016.2624754}
+@mastersthesis{balancujici_robot,
+  author  = {Skolek, Tom{\'a}{\v{s}}},
+  title   = {Balancuj{\'i}c{\'i} dvoukolov{\'y} robot},
+  school  = {Vysok{\'e} u{\v{c}}en{\'i} technick{\'e} v Brn{\v{e}}, Fakulta informa{\v{c}}n{\'i}ch technologi{\'i}},
+  year    = {2025},
+  address = {Brno},
+  type    = {Bakal{\'a}{\v{r}}sk{\'a} pr{\'a}ce},
+  note    = {Vedouc{\'i} pr{\'a}ce doc. Ing. Vladim{\'i}r Janou{\v{s}}ek, Ph.D. ROS2 (Humble), RPi4B, PID, IMU, enkod{\'e}ry, Bluetooth, autonomn{\'i} pohyb.}
 }
 
 @webpage{microros,
@@ -346,14 +296,85 @@
   isbn      = {978-0-262-01535-4}
 }
 
-@webpage{rosbridge_suite_github,
-  author       = {{Robot Web Tools}},
-  title        = {rosbridge\_suite},
+@webpage{gazebo,
+  author       = {Gazebo Sim},
+  title        = {Building a Robot},
   howpublished = {online},
   year         = {2024},
-  url          = {https://github.com/RobotWebTools/rosbridge_suite},
+  url          = {https://gazebosim.org/docs/latest/building_robot/},
+  cited        = {2024-01-25}
+}
+
+@webpage{RPCameraRP5,
+  author       = {ARLunan and contributors},
+  title        = {Raspberry Pi Camera Installation on Raspberry Pi 5 / Ubuntu 24.04 Noble / ROS 2 Jazzy},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://github.com/ARLunan/Raspberry-Pi-Camera-ROS/blob/main/Documents/RPCamera-Installation-RP5.md},
+  cited        = {2026-02-21},
+  note         = {Dokumentácia inštalácie kamery pre RPi5, Ubuntu 24.04 a ROS 2 Jazzy.}
+}
+
+@webpage{camera_ros,
+  author       = {Rauch, Christian},
+  title        = {camera\_ros: ROS 2 driver for libcamera},
+  howpublished = {online},
+  year         = {2024},
+  url          = {https://github.com/christianrauch/camera_ros},
+  cited        = {2025-02-21},
+  note         = {Balík pre publikovanie obrazu z kamery na ROS 2 témy.}
+}
+
+@article{gunturk2005demosaicking,
+  author  = {Gunturk, Bahadir K. and Glotzbach, John and Altunbasak, Yucel and Schafer, Ronald W. and Mersereau, Russell M.},
+  title   = {Demosaicking: Color Filter Array Interpolation},
+  journal = {IEEE Signal Processing Magazine},
+  edition = {1},
+  volume  = {22},
+  number  = {1},
+  pages   = {44--54},
+  year    = {2005},
+  doi     = {10.1109/MSP.2004.327681}
+}
+
+@webpage{opencv_optical_flow_tutorial,
+  author       = {{OpenCV}},
+  title        = {Optical Flow},
+  howpublished = {online},
+  year         = {2024},
+  url          = {https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html},
   cited        = {2026-03-28},
-  note         = {WebSocket most medzi prehliadačom a ROS 2 (rosbridge).}
+  note         = {Tutoriál: riedky tok Lucas--Kanade a hustý tok Farnebäck.}
+}
+
+@webpage{ugv_base_general_repo,
+  author       = {{Waveshare}},
+  title        = {ugv\_base\_general},
+  howpublished = {online},
+  publisher    = {GitHub},
+  year         = {2024},
+  url          = {https://github.com/waveshareteam/ugv_base_general},
+  cited        = {2026-04-11},
+  note         = {Oficiálny ESP32 firmware pre UGV s General Driver (JSON príkazy, README; vetvy UGV Rover / RaspRover / UGV Beast podľa konfigurácie).}
+}
+
+@webpage{nav2_documentation,
+  author       = {{Open Navigation LLC et al.}},
+  title        = {Navigation2},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://navigation.ros.org/},
+  cited        = {2026-03-28},
+  note         = {Oficiálna dokumentácia stacku Nav2 pre ROS 2.}
+}
+
+@book{astrom2008feedback,
+  author    = {{\AA}str{\"o}m, Karl Johan and Murray, Richard M.},
+  title     = {Feedback Systems: An Introduction for Scientists and Engineers},
+  publisher = {Princeton University Press},
+  year      = {2008},
+  edition   = {1},
+  isbn      = {978-0-691-13576-2}
 }
 
 @webpage{roslibjs_github,
@@ -366,23 +387,14 @@
   note         = {JavaScript klientská knižnica pre ROS cez rosbridge.}
 }
 
-@book{astrom2008feedback,
-  author    = {{\AA}str{\"o}m, Karl Johan and Murray, Richard M.},
-  title     = {Feedback Systems: An Introduction for Scientists and Engineers},
-  publisher = {Princeton University Press},
-  year      = {2008},
-  edition   = {1},
-  isbn      = {978-0-691-13576-2}
-}
-
-@webpage{nav2_documentation,
-  author       = {{Open Navigation LLC et al.}},
-  title        = {Navigation2},
+@webpage{rosbridge_suite_github,
+  author       = {{Robot Web Tools}},
+  title        = {rosbridge\_suite},
   howpublished = {online},
-  year         = {2025},
-  url          = {https://navigation.ros.org/},
+  year         = {2024},
+  url          = {https://github.com/RobotWebTools/rosbridge_suite},
   cited        = {2026-03-28},
-  note         = {Oficiálna dokumentácia stacku Nav2 pre ROS 2.}
+  note         = {WebSocket most medzi prehliadačom a ROS 2 (rosbridge).}
 }
 
 @webpage{ball_tracker_github,
@@ -408,44 +420,39 @@
   note      = {Prehľad obrazového sérvoriadenia (IBVS).}
 }
 
-@webpage{ugv_base_general_repo,
-  author       = {{Waveshare / effectsmachine}},
-  title        = {ugv\_base\_general},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://github.com/effectsmachine/ugv_base_general},
-  cited        = {2026-03-28},
-  note         = {Firmware General Driver pre ESP32; JSON príkazy a README.}
-}
-
-@webpage{mpu6050_electroniccats,
-  author       = {{Electronic Cats}},
-  title        = {MPU6050},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://github.com/ElectronicCats/mpu6050},
-  cited        = {2026-03-28},
-  note         = {Popis čipu MPU6050, rozsahy gyroskopu a akcelerometra, I2C.}
-}
-
-@mastersthesis{balancujici_robot,
-  author  = {Skolek, Tom{\'a}{\v{s}}},
-  title   = {Balancuj{\'i}c{\'i} dvoukolov{\'y} robot},
+@bachelorsthesis{Pysny,
+  author  = {Py{\v{s}}n{\'y}, Radek},
+  title   = {Typografick{\'e} a bibliografick{\'e} z{\'a}sady pro textov{\'e} zpracov{\'a}n{\'i} kvalifika{\v{c}}n{\'i}ch prac{\'i}},
   school  = {Vysok{\'e} u{\v{c}}en{\'i} technick{\'e} v Brn{\v{e}}, Fakulta informa{\v{c}}n{\'i}ch technologi{\'i}},
-  year    = {2025},
+  year    = {2009},
   address = {Brno},
   type    = {Bakal{\'a}{\v{r}}sk{\'a} pr{\'a}ce},
-  note    = {Vedouc{\'i} pr{\'a}ce doc. Ing. Vladim{\'i}r Janou{\v{s}}ek, Ph.D. ROS2 (Humble), RPi4B, PID, IMU, enkod{\'e}ry, Bluetooth, autonomn{\'i} pohyb.}
+  note    = {Z{\'a}klad BibTeX stylu pro citace podle {\v{C}}SN ISO 690 (czplain/skplain).}
 }
 
-@mastersthesis{mobilni_kamera,
-  author  = {Onderka, Daniel},
-  title   = {Mobiln{\'i} kamera realizovan{\'a} prost{\v{r}}edky ROS2},
-  school  = {Vysok{\'e} u{\v{c}}en{\'i} technick{\'e} v Brn{\v{e}}, Fakulta informa{\v{c}}n{\'i}ch technologi{\'i}},
-  year    = {2024},
-  address = {Brno},
-  type    = {Bakal{\'a}{\v{r}}sk{\'a} pr{\'a}ce},
-  url     = {https://www.vut.cz/studenti/zav-prace/detail/155048},
-  cited   = {2026-04-08},
-  note    = {Vedouc{\'i} pr{\'a}ce doc. Ing. Vladim{\'i}r Janou{\v{s}}ek, Ph.D. Adeept AWR 4WD, teleprezence, Nav2, slam\_toolbox.}
+@webpage{fitWeb,
+  author       = {{FIT VUT v Brn{\v{e}}}},
+  title        = {Z{\'a}v{\v{e}}re{\v{c}}n{\'e} pr{\'a}ce -- pokyny a form{\'a}ln{\'i} n{\'a}le{\v{z}}itosti},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://www.fit.vut.cz/study/theses/},
+  cited        = {2026-04-11},
+}
+
+@webpage{CernockyEnglish,
+  author       = {{\v{C}}ernock{\'y}, Jan},
+  title        = {Hints for {English} Technical Writing},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://www.fit.vut.cz/~cernocky/english.html},
+  cited        = {2026-04-11},
+}
+
+@webpage{Herout,
+  author       = {Herout, Adam},
+  title        = {Blog -- {\v{s}}ablona a doporu{\v{c}}en{\'i} k z{\'a}v{\v{e}}re{\v{c}}n{\'y}m pr{\'a}c{\'i}m},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://www.herout.net/blog/kategorie/diplomky/},
+  cited        = {2026-04-11},
 }

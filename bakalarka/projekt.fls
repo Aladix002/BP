@@ -41,3 +41,8 @@ INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/en/babel-english
 INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/en/babel-english.tex
 INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/sk/babel-sk.ini
 INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/errbabel.def
+INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/cs/babel-cs.ini
+INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/sk/babel-sk.ini
+INPUT /home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/en/babel-en.ini
+INPUT /home/aladix/.TinyTeX/texmf-dist/tex/latex/base/inputenc.sty
+INPUT /home/aladix/.TinyTeX/texmf-dist/tex/latex/base/inputenc.sty

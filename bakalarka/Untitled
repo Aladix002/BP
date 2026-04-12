@@ -8,7 +8,7 @@
 
 \chapter{Úvod}
 
-Práca sa zameriava na oblasť mobilnej robotiky a teleprezencie, pričom dôraz je kladený na návrh a implementáciu softvéru pre mobilné roboty s využitím middleware ROS 2. Riešenie vychádza z robotickej platformy \emph{Wave Rover} od spoločnosti Waveshare, ktorá je vybavená 2D lidarom radu D300/LD19. Platforma je rozšírená o výpočtovú jednotku Raspberry Pi 5 a riadenie pohonu zabezpečuje Motor Driver HAT.
+Práca sa zameriava na oblasť mobilnej robotiky a teleprezencie, pričom dôraz je kladený na návrh a implementáciu softvéru pre mobilné roboty s využitím middleware ROS 2. Riešenie vychádza z robotickej platformy \textbackslash{}emph\{Wave Rover\} od spoločnosti Waveshare, ktorá je vybavená 2D lidarom radu D300/LD19. Platforma je rozšírená o výpočtovú jednotku Raspberry Pi 5 a riadenie pohonu zabezpečuje Motor Driver HAT.
 
 Systém je navrhnutý ako distribuovaný, pričom výpočty prebiehajú paralelne na palubnom počítači robota aj na externej pracovnej stanici s operačným systémom Ubuntu. Takéto usporiadanie umožňuje efektívne spracovanie dát zo senzorov, ich vizualizáciu a zároveň aj priebežné ladenie systému. V praxi to znamená, že časť úloh môže byť vykonávaná priamo na robote, zatiaľ čo náročnejšie operácie alebo vizualizačné nástroje bežia na výkonnejšom zariadení.
 
@@ -65,216 +65,194 @@ Konštrukcia kladie dôraz na stabilitu a odolnosť na rôznych povrchoch. Rám 
 \end{figure}
 
 \subsection*{Motory a pohon podvozku}
-
-\subsubsection*{Jednosmerný elektromotor (DC)}
-Pohon kolies tvoria jednosmerné motory: v magnetickom poli preteká prúd vinutím na kotve a komutátor s kefkami zabezpečuje, aby sa moment na hriadeli udržal v jednom smere otáčania. Na riadenie výkonu a smeru sa v robotike bežne používa PWM a H-most.~\cite{hyperphysics_dc_motor}.
-
-\begin{figure}[H]
-    \centering
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{obrazky/dc.png}\\[0.35em]
-        {\small Princíp kefkového jednosmerného motora}
-    \end{minipage}
-    \hfill
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{obrazky/pwm.jpg}\\[0.35em]
-        {\small PWM: rovnaká perioda $T$, priemerná hodnota od $t_{\mathrm{on}}$}
-    \end{minipage}
-    \caption[Vľavo DC motor, vpravo PWM]{Vľavo ilustrácia princípu kefkového jednosmerného motora; vpravo šírkovo-pulzná modulácia (PWM) --- pri rovnakej periode $T$ závisí priemerná hodnota signálu od dĺžky impulzu $t_{\mathrm{on}}$ (striedy).}
-    \label{fig:dc-motor-principle}
-    \label{fig:pwm-principle}
-\end{figure}
-
-Podvozok je diferenciálny, nezávislé poháňanie ľavého a pravého kolesa umožňuje jazdu vpred, vzad a otáčanie na mieste. V tejto práci ide o dve hlavné vetvy riadenia: (1)~Motor Driver HAT na Raspberry Pi -- PWM signály pre H-mosty sa nastavujú cez čip PCA9685 na zbernici I\textsuperscript{2}C; to je hlavná nasadená konfigurácia (prepojenie periférií v sek.~\ref{sec:architektura-auticko}, uzol motora v sek.~\ref{sec:waverower-riadenie}). (2)~doska General Driver for Robots s mikrokontrolérom ESP32 a HTTP API podľa Waveshare -- referenčná výrobná alternatíva popísaná v podsekcii nižšie a v implementácii (sek.~\ref{sec:ugv-esp32-alternativa}).
-
-\subsubsection*{General Driver for Robots}
-
-Univerzálna riadiaca doska General Driver for Robots patrí k ekosystému mobilných platforiem Waveshare. Je založená na module ESP32-WROOM-32, pre vývoj sa často používa Arduino IDE, a podporuje bezdrôtové rozhrania WiFi, Bluetooth a ESP-NOW. Prehľad označených blokov a rozhraní na PCB je v tabuľke~\ref{tab:general-driver-onboard}; obr.~\ref{fig:general-driver-board} znázorňuje dosku s vyznačenými oblasťami podľa výrobcu.
-
-Pre odhad orientácie výrobca udáva integrovanú deväťosovú IMU: šesťosový senzor pohybu  a trojosový magnetometer. Táto konfigurácia sa líši od hlavnej experimentálnej vetvy v práci s MPU-6050 na Arduino Nano pri Motor Driver HAT.
-
-Motory ovláda napríklad čip TB6612FNG (H-most); výrobca poskytuje open-source ukážky a návody na jednotlivé subsystémy~\cite{waveshare_driver}. Prepojenie s ROS~2 cez HTTP a firmware UGV Base General je v kapitole o implementácii.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.7\textwidth]{obrazky/General_Driver_for_Robot02.jpg}
-    \caption[General Driver for Robots]{Doska General Driver for Robots (Waveshare) s vyznačenými palubnými zdrojmi; číslovanie zodpovedá tabuľke~\ref{tab:general-driver-onboard} a dokumentácii výrobcu~\cite{waveshare_driver}}
-    \label{fig:general-driver-board}
-\end{figure}
-
-{\footnotesize
-\begin{longtable}{@{}r >{\raggedright\arraybackslash}p{0.34\textwidth} >{\raggedright\arraybackslash}p{0.50\textwidth}@{}}
-    \caption{Prehľad palubných zdrojov dosky General Driver for Robots}
-    \label{tab:general-driver-onboard} \\
-    \toprule
-    Č. & Palubný zdroj / rozhranie & Popis \\
-    \midrule
-    \endfirsthead
-    \multicolumn{3}{c}{\tablename~\thetable{} -- pokračovanie} \\
-    \toprule
-    Č. & Palubný zdroj / rozhranie & Popis \\
-    \midrule
-    \endhead
-    \midrule
-    \multicolumn{3}{r}{\textit{Pokračovanie na nasledujúcej strane}} \\
-    \endfoot
-    \bottomrule
-    \endlastfoot
-    1 & ESP32-WROOM-32 (hlavný mikrokontrolér) & Vývoj napríklad v Arduino IDE. \\
-    2 & Konektor IPEX1 (WiFi) & Pripojenie WiFi antény na zväčšenie dosahu bezdrôtovej komunikácie. \\
-    3 & Rozhranie LiDAR & Funkcia adaptéra pre radar / LiDAR. \\
-    4 & Rozšírenie periférií I\textsuperscript{2}C & OLED displeje alebo ďalšie senzory na I\textsuperscript{2}C. \\
-    5 & Tlačidlo reset & Krátky stisk reštartuje ESP32. \\
-    6 & Tlačidlo download & Pri zapnutí napájania so stlačením tlačidla vstup do režimu nahrávania firmwaru. \\
-    7 & Obvod DC--DC 5\,V & Napájanie hostiteľa (Raspberry Pi, Jetson Nano a pod.). \\
-    8 & Konektor Type-C (LiDAR) & Dátové rozhranie LiDARu. \\
-    9 & Konektor Type-C (USB) & UART ESP32; nahrávanie programov do ESP32. \\
-    10 & Napájací port XH2.54 & Vstup DC 7--13\,V; priamo napája sériové bus servá a motory. \\
-    11 & INA219 & Čip na monitorovanie napätia a prúdu. \\
-    12 & Zapínanie / vypínanie & Prepínače vonkajšieho napájania. \\
-    13 & Rozhranie sériového bus serva ST3215 & Pripojenie serv ST3215. \\
-    14 & Motor PH2.0 6P, skupina B & Rozhranie pre motor s enkodérom, skupina B. \\
-    15 & Motor PH2.0 6P, skupina A & Rozhranie pre motor s enkodérom, skupina A. \\
-    16 & Motor PH2.0 2P, skupina A & Rozhranie pre motor bez enkodéra, skupina A. \\
-    17 & Motor PH2.0 2P, skupina B & Rozhranie pre motor bez enkodéra, skupina B. \\
-    18 & AK09918C & Trojosový magnetometer (elektronický kompas). \\
-    19 & QMI8658 & Šesťosový senzor pohybu (akcelerometer a gyroskop). \\
-    20 & TB6612FNG & Čip na riadenie motorov. \\
-    21 & Obvod riadenia sériového bus serva & Rozšírenie viacerých serv ST3215 a spätná väzba z serv. \\
-    22 & Slot SD karty & Ukladanie logov alebo WiFi konfigurácie. \\
-    23 & 40-pinové rozšírenie (1) & Prístup pre Raspberry Pi alebo Horizon Sunrise X3 Pi. \\
-    24 & 40-pinové rozšírenie (2) & Využitie pinov hostiteľa umiestneného na doske. \\
-    25 & CP2102 (LiDAR / radar) & UART--USB pre prenos dát z radaru. \\
-    26 & CP2102 (ESP32) & UART--USB pre komunikáciu s ESP32. \\
-    27 & Automatické nahrávanie & Nahrávanie ukážok bez nutnosti stláčať EN a BOOT. \\
-\end{longtable}
-}
+Podvozok je diferenciálny, nezávislé poháňanie ľavého a pravého kolesa umožňuje jazdu vpred, vzad a otáčanie na mieste. Súprava Wave Rover používa prevodové motory s kolieskami. V tejto práci ide o dve hlavné vetvy riadenia: (1)~Motor Driver HAT na Raspberry Pi -- PWM signály pre H-mosty sa nastavujú cez čip PCA9685 na zbernici I\textsuperscript{2}C, to je hlavná nasadená konfigurácia (prepojenie periférií v sek.~\ref{sec:architektura-auticko}, uzol motora v sek.~\ref{sec:waverower-riadenie}). (2)~General Driver Board s mikrokontrolérom ESP32 a HTTP API podľa dokumentácie Waveshare -- referenčná alternatíva, ktorú práca spomína ako druhú vetvu (sek.~\ref{sec:ugv-esp32-alternativa}).
 
 \subsubsection*{Modularita a rozšíriteľnosť}
 Telo robota je navrhnuté tak, aby bolo možné ľahko pripojiť a vymeniť komponenty.
 V ráme sú štandardizované montážne body pre ďalšie ultrazvukové senzory, LiDAR, kameru či ďalšie moduly. Rozšírenie umožňujú aj GPIO piny a zbernice I\textsuperscript{2}C, SPI a UART.
 
 \subsubsection*{Arduino Nano ako doplnková jednotka pre IMU}
-Okrem Raspberry Pi a Motor Driver HAT je v realizačnej zostave použité Arduino Nano ako malý mikrokontrolér výhradne na čítanie MPU-6050 a streamovanie údajov po USB. Tým sa senzor \emph{nezdieľa} I\textsuperscript{2}C zbernicu s motorovým HATom na strane RPi. Ide o zámerné oddelenie kvôli spoľahlivosti (viď sek.~\ref{sec:mpu6050-nano-usb}).
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.4\textwidth]{obrazky/arduinonano.png}
-    \caption[Arduino Nano]{Arduino Nano R4 použité v zostave ako mikrokontrolér pre MPU-6050 a USB výstup dát na Raspberry Pi}
-    \label{fig:arduino-nano-imu}
-\end{figure}
+Okrem Raspberry Pi a Motor Driver HAT je v realizačnej zostave použité Arduino Nano ako malý mikrokontrolér výhradne na čítanie MPU-6050 a streamovanie údajov po USB. Tým sa senzor \emph{nezdieľa} I\textsuperscript{2}C zbernicu s motorovým HATom na strane RPi; ide o zámerné oddelenie kvôli spoľahlivosti (viď sek.~\ref{sec:mpu6050-nano-usb}).
 
 
 \subsection*{Inerciálny merací systém (IMU)}
-Nasledujúci text o princípoch akcelerometra a gyroskopu a o MPU-6050 sa vzťahuje na hlavnú experimentálnu zostavu s Motor Driver HAT.
+Wave Rover používa modul s čipom MPU-6050, ktorý integruje akcelerometer a gyroskop na jednom čipe; technické parametre rozsahov a rozhrania zodpovedajú dokumentácii čipu a komunite okolo knižníc pre MPU6050~\cite{mpu6050_electroniccats}. V nasadenej zostave s Motor Driver HAT na Raspberry Pi nie je senzor pripojený priamo na I\textsuperscript{2}C zbernicu počítača Raspberry Pi spolu s ovládačom motorov (PCA9685) -- namiesto toho slúži ako meracia hlava na samostatnom Arduino Nano s vlastným firmwareom a údaje prichádzajú na RPi cez USB sériový port (podrobnejšie odôvodnenie a popis firmwaru v sekcii~\ref{sec:mpu6050-nano-usb}). MPU-6050 poskytuje údaje o pohybe a orientácii potrebné pre korekciu driftu, otáčanie pri bludení a ďalšie vrstvy riadenia. Nižšie nasleduje stručný popis fyzikálneho princípu akcelerometra a gyroskopu a fúzie signálov.
 
 \subsubsection*{Akcelerometer}
-V module IMU MPU-6050 je trojosový akcelerometer, ktorý meria lineárne zrýchlenie. MEMS akcelerometer využíva často kapacitný princíp: výchylka hmotného prvku mení kapacitu štruktúry a tá sa premení na merateľný elektrický signál.
+V module IMU MPU-6050 je trojosový akcelerometer, ktorý meria lineárne zrýchlenie.
+MEMS akcelerometer využíva väčšinou kapacitný princíp: výchylka hmotného prvku mení kapacitu štruktúry a tá sa premení na merateľný elektrický signál~\cite{accelerometer}.
 
-Okrem dynamického zrýchlenia je akcelerometer schopný merať aj gravitačné zrýchlenie, čo umožňuje odhad náklonu zariadenia vzhľadom na zemský povrch. V robotických aplikáciách sa tieto údaje využívajú napríklad na stabilizáciu pohybu alebo ako vstup pre výpočet orientácie robota. Pri mobilnom podvozku typu Wave Rover to súvisí napríklad s odhadom sklonu rámu voči vodorovnej rovine a s doplnkovými informáciami pre reguláciu, hoci presná poloha v rovine bez enkodérov ostáva aj naďalej problematická.
-
-Zrýchlenie v zmysle druhého Newtonovho zákona súvisí so silou pôsobiacou na hmotu senzora; výstup akcelerometra je možné chápať ako meranie špecifickej sily v telese senzora. Pri pomalom pohybe, keď je zanedbateľné zrýchlenie podvozku voči zemi, dominuje v meraní najmä gravitácia a z jej zložiek v súradniciach senzora sa dá odhadnúť napríklad sklon v jednej rovine (interpretácia závisí od zvolených osí podľa datasheetu MPU-6050). Takýto odhad je spoľahlivý hlavne bez silného transláčného zrýchlenia; pri dynamickom pohybe sa sklon z akcelerometra skresľuje a treba ho doplňovať gyroskopom alebo fúziou~\cite{analog_devices_accel_gyro}.
-
-\begin{figure}[H]
+\begin{figure}[H] 
     \centering
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{obrazky/acelerometer.png}\\[0.35em]
-        {\small Ilustrácia MEMS akcelerometra}
-    \end{minipage}
-    \hfill
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{obrazky/mechmodelaccelerometer.png}\\[0.35em]
-        {\small Zjednodušený mechanický model: hmotnosť na pružine s tlmením}
-    \end{minipage}
-    \caption[Vľavo MEMS akcelerometer, vpravo mechanický model]{Akcelerometer meria zrýchlenie cez silové účinky na vnútornú hmotu: vľavo princíp MEMS realizácie, vpravo ekvivalent hmotnosť--pružina--tlmenie~\cite{analog_devices_accel_gyro}.}
+    \includegraphics[width=0.6\textwidth]{obrazky/acelerometer.png} 
+    \caption{Princíp fungovania akcelerometra}
     \label{fig:accel-principle}
 \end{figure}
 
 \subsubsection*{Gyroskop}
-Na rozdiel od akcelerometra, gyroskop nemeria lineárne zrýchlenie ani nevyužíva priamo gravitáciu na odhad náklonu v pokoji; meria \emph{uhlovú rýchlosť} okolo osí, teda ako rýchlo sa mení orientácia. Pri dynamickom pohybe preto často vedie integrácia gyroskopu k presnejšiemu krátkodobému odhadu otočenia než čistý odhad zo zrýchlenia, zatiaľ čo akcelerometer dlhodobejšie ukotvuje sklon voči gravitácii, odtiaľ plynie motivácia fúzie v nasledujúcej podsekcii.
+Gyroskop meria uhlovú rýchlosť; v MEMS realizácii sa často využíva Coriolisova sila pôsobiaca na vibrujúci prvok, pričom výsledkom je signál úmerný rýchlosti otáčania~\cite{gyroskop}.
 
-Nevýhodou gyroskopu je postupná akumulácia chyby, ktorá vzniká integráciou meraných hodnôt v čase. Z tohto dôvodu sa jeho údaje často kombinujú s akcelerometrom, čím sa dosahuje presnejší odhad orientácie. Pri bludení podvozku v tejto práci sa gyroskop okrem toho využíva na sledovanie natočenia počas plánovaných otočení, kde je dôležité počítať s obmedzenou presnosťou pri dlhšom behu bez ďalšej korekcie. V digitálnej implementácii zodpovedá integrácii v podstate postupné sčítavanie príspevkov z jednotlivých vzoriek; každá malá chyba merania sa tak kumuluje do odchýlky uhla.~\cite{analog_devices_accel_gyro}.
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.5\textwidth]{obrazky/gyro.png}
+    \caption{Princíp fungovania gyroskopu}
+    \label{fig:gyro-principle}
+\end{figure}
 
-\subsubsection*{Fúzia senzorových dát (komplementárny filter)}
 
-Komplementárny filter kombinuje merania akcelerometra a gyroskopu tak, aby využil ich vzájomné výhody. Gyroskop poskytuje presný odhad krátkodobých zmien orientácie, avšak jeho výstup je zaťažený driftom. Naopak, akcelerometer poskytuje stabilný dlhodobý odhad, no jeho merania sú citlivé na šum a dynamické zrýchlenia.
-
-Z frekvenčného hľadiska možno tento prístup chápať ako kombináciu hornopriepustného filtra pre gyroskop a dolnopriepustného filtra pre akcelerometer. Tým sa potláča vysokofrekvenčný šum akcelerometra a zároveň aj nízkofrekvenčný drift gyroskopu.
-
-V diskrétnej implementácii sa z akcelerometra vypočíta uhol, zatiaľ čo z gyroskopu jeho prírastok ako súčin uhlovej rýchlosti a periódy vzorkovania. Aktuálny odhad orientácie sa následne určí ako vážená kombinácia predchádzajúceho odhadu upraveného o prírastok z gyroskopu a uhla z akcelerometra. Váhy predstavujú parametre ladenia; typicky sa volí vyšší podiel gyroskopu (napr. približne 0,99) a menší podiel akcelerometra (napr. 0,01)~\cite{complementary_filter}. Počiatočný odhad je vhodné inicializovať na základe akcelerometra.
-
-Pri výpočte uhla z akcelerometra mimo aproximácie malých uhlov je vhodné najprv vyhladiť surové merania dolnopriepustným filtrom, aby sa minimalizoval vplyv šumu. Pre presnejšie odhady je možné použiť aj pokročilejšie metódy, napríklad rozšírený Kalmanov filter~\cite{complementary_filter}.
-
+\subsubsection*{Fúzia údajov pre navigáciu}
+Údaje z akcelerometra a gyroskopu sa zvyčajne kombinujú (napríklad komplementárnym alebo Kalmanovým filtrom), aby sa získala stabilnejšia odhadnutá orientácia. V nasadenej zostave sa vo firmware pre Arduino Nano používa komplementárny filter (obr.~\ref{fig:complementary_filter}).
 
 \begin{figure}[H] 
     \centering
     \includegraphics[width=\linewidth]{obrazky/complementary.png} 
-    \caption[Bloková schéma komplementárneho filtra]{Bloková predstava komplementárneho filtra (prepojenie akcelerometra a gyroskopu); teoretický rámec podľa~\cite{complementary_filter}.}
+    \caption{Komplementárny filter~\cite{complementary_filter}}
     \label{fig:complementary_filter} 
 \end{figure}
 
 
-\section{LiDAR a snímač LD19}
+\section{General Driver Board for Robots}
 
-LiDAR (\emph{Light Detection and Ranging}) je optická metóda diaľkového merania, kde laser vyšle impulz , senzor zachytí odraz od predmetu a z času návratu signálu (prípad súvisiacich veličín) sa určí vzdialenosť; z viacerých meraní v rôznych smeroch alebo z polohy lietadla či auta sa potom skladajú mapy a modely povrchu. Používa sa napríklad v presnom mapovaní, archeológii, meteorológii či v navigácii autonómnych vozidiel~\cite{britannica_lidar}.
+Driver Board slúži ako medzičlánok medzi mikrokontrolérom (v štandardnom návrhu výrobcu často ESP32) a motormi robota v konfigurácii \emph{UGV Base General}. Umožňuje riadenie rýchlosti a smeru pohybu; na doske môže byť integrované aj ďalšie periférie podľa variantu. V kontexte Wave Rover ide o alternatívu voči priamemu riadeniu motorov z Raspberry Pi cez Motor Driver HAT: v tejto práci je primárne rozvinutá HAT vetva, zatiaľ čo HTTP komunikácia s ESP32 je popísaná ako referenčná implementácia (sek.~\ref{sec:ugv-esp32-alternativa}).
+
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.9\textwidth]{obrazky/general-driver-for-robots-4.png} 
+    \caption{General Driver Board for Robots}
+    \label{fig:general-driver-board}
+\end{figure}
+
+\subsection*{Ako funguje Driver Board}
+
+Driver Board prijíma signály z mikrokontroléra, ktoré obsahujú informácie o smere a rýchlosti pohybu. Tieto signály sú spracované tranzistormi alebo H-mostmi na doske ovládača, ktoré zabezpečujú riadenie prúdu pre motory. Ak napríklad mikrokontrolér vyšle signál PWM s rôznymi frekvenciami, doska ovládača tento signál prevedie na riadenie prúdu do motora, čím riadi jeho rýchlosť. Ak mikrokontrolér zmení polaritu signálu, potom doska ovládača zmení smer prúdu a motor sa otáča opačným smerom. Takto je možné plynule meniť rýchlosť a smer otáčania motorov~\cite{waveshare_driver}.
+
+
+\section{LiDAR a snímač LD19}
+\subsection*{Čo je LiDAR}
+LIDAR (Light Detection and Ranging) je technológia, ktorá využíva laserové svetlo na
+meranie vzdialeností, ako aj na vytváranie trojrozmerných modelov prostredia.
+
+
+\subsection*{Princíp fungovania LiDAR}
+Snímač vysiela krátke impulzy (alebo modulované kontinuálne svetlo) a z merania času návratu alebo fázového posunu odvádza vzdialenosť k odrazovej ploche. LiDAR sa bežne používa v mobilnej robotike, autonómnych vozidlách a geodézii~\cite{behroozpour2017lidar}.
+
 
 \begin{figure}[H] 
     \centering
     \includegraphics[width=0.6\textwidth]{obrazky/lidar.png} 
-    \caption[Princíp LiDAR]{Ilustrácia merania vzdialenosti laserom}
+    \caption{Meranie vzdialenosti LiDARom}
     \label{fig:lidar-principle}
 \end{figure}
 
-Rotujúce alebo iné viacsmerové snímanie zlučuje jednotlivé úseky do obrysu okolia . V tejto práci sa takýto laserový sken v ROS2 reprezentuje správou \texttt{LaserScan}.
+Rotujúce alebo viaclúčové snímače dokážu pokryť okolie v plnom azimute; merania sa ukladajú ako mračno bodov alebo ako 2D prierez (napr.\ \texttt{LaserScan} v ROS), čo umožňuje mapovanie a detekciu prekážok v autonómnych mobilných systémoch~\cite{behroozpour2017lidar}.
 
-Na platforme Wave Rover je v tejto práci modul \emph{LD19}. Podľa dokumentácie výrobcu je meracie jadro založené na \emph{direct time of flight}. Laserový impulz sa odrazí od cieľa, prijímač zaznamená čas príchodu a z intervalu letu sa vypočíta vzdialenosť; údaje sa spájajú s uhlom z jednotky merania otáčania a odovzdávajú ako sken~\cite{waveshare_ld19_wiki}. 
+\subsection*{Snímač LD19 a prepojenie na Raspberry Pi}
+Na platforme Wave Rover je v tejto práci použitý kompaktný 2D laserový skener radu D300 / LD19 (triangulačný princíp, jedno alebo viac lúčov podľa variantu). Senzor vystupuje sériovým protokolom (TTL úroveň); v praxi je často pripojený cez USB--UART prevodník k Raspberry Pi, takže v Linuxe pribudne zariadenie typu \path{/dev/ttyUSB0} (alebo ekvivalent). Balík \texttt{ldlidar\_ros2} číta binárne rámce, skladá správu \rostopic{sensor_msgs/msg/LaserScan} a publikuje ju na téme \rostopic{/scan} --- presné parametre portu a baud rate sú v launch súboroch (fyzické rozhranie v sek.~\ref{sec:architektura-auticko}, logika skenu pri bludení v sek.~\ref{sec:waverower-riadenie}).
 
 
 
 \section{Raspberry Pi Camera Module 3}
 
-V tejto práci je na platforme Wave Rover použitý oficiálny modul Raspberry Pi Camera Module~3. Technické údaje o radu Camera Module uvádza výrobca v dokumentácii príslušenstva~\cite{raspberrypi_camera_module}. Snímač využíva Sony IMX708 , podporuje HDR snímanie a fázové zaostrovanie , čo uľahčuje ostrenie pri rôznych vzdialenostiach objektov v scéne.
+V tejto práci je na platforme Wave Rover použitý oficiálny modul Raspberry Pi Camera Module 3 pripojený k Raspberry Pi~5 cez CSI rozhranie (flexibilný pásikový kábel). Modul využíva snímač typu Sony IMX708 (približne 12\,MP), podporuje HDR snímanie a fázové zaostrovanie (PDAF), čo uľahčuje ostrenie pri rôznych vzdialenostiach objektov v scéne -- praktické pri teleprezencii aj pri algoritmoch počítačového videnia~\cite{raspberrypi_camera_module}.
+
+Kamera v systéme slúži predovšetkým na teleprezenciu (stream do webového rozhrania), vizualizáciu v RViz a na experimenty s optickým tokom a sledovaním farebného objektu. Podrobný postup integrácie do ROS~2 (balík \texttt{camera\_ros}, \texttt{libcamera}, konfigurácia na Ubuntu~24.04) je v nasledujúcej sekcii~\ref{sec:kamera-rpi5-ros2}.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.4\textwidth]{obrazky/camera_module_3.jpg}
-    \caption[Raspberry Pi Camera Module 3]{Raspberry Pi Camera Module~3 (Sony IMX708)}
+    \includegraphics[width=0.62\textwidth]{obrazky/camera_module_3.jpg}
+    \caption[Raspberry Pi Camera Module 3]{Raspberry Pi Camera Module~3 (Sony IMX708) pripojená k Raspberry Pi~5 cez CSI pásikový kábel; modul je uchytený na podvozku Wave Rover}
     \label{fig:camera-module-3-photo}
 \end{figure}
 
-Inštalácia a konfigurácia softvéru (libcamera, balík \texttt{camera\_ros}, témy obrazu v ROS~2) a väzba na ostatné uzly sú v kapitole~\ref{kap:implementacia}, sek.~\ref{sec:kamera-rpi5-ros2}.
+\section{Kamera na Raspberry Pi 5 s Ubuntu 24.04 a ROS~2 Jazzy}
+\label{sec:kamera-rpi5-ros2}
+
+Integrácia kamery na Raspberry Pi 5 s operačným systémom Ubuntu 24.04 (Noble) a ROS~2 Jazzy vyžaduje špecifický postup oproti starším verziam OS alebo iným kamerám. Táto sekcia stručne popisuje odôvodnenie zvoleného riešenia a používané komponenty podľa dokumentácie inštalácie pre RPi5~\cite{RPCameraRP5}.
+
+\subsection*{Prečo nie štandardný v4l2 ovládač}
+
+Na Raspberry Pi 5 s Ubuntu 24.04 nie je vhodné používať balík \path{ros-jazzy-v4l2-camera}. Kamerový subsystém RPi5 využíva \emph{libcamera} (resp.\ nástupcu \emph{rpicam}), nie klasický V4L2 legacy stack. Preto sa používa balík \path{camera_ros}~\cite{camera_ros}, ktorý pracuje s libcamera a publikuje obraz na ROS~2 témy.
+
+\subsection*{Inštalácia a konfigurácia (prehľad)}
+
+Typický postup zahŕňa:
+\begin{enumerate}
+    \item pridanie používateľa do skupiny \texttt{video};
+    \item inštaláciu knižníc \emph{libcamera} z PPA (napr.\ Marco Sonic rasppios) pre arm64 a Ubuntu~24.04;
+    \item úpravu konfiguračného súboru firmware (napr.\ \path{/boot/firmware/config.txt}): \path{camera_auto_detect=0} a \path{dtoverlay=imx708,cam0} pre Pi Camera~3;
+    \item \emph{udev} pravidlo pre DMA heap (napr.\ zariadenie \texttt{dma\_heap} so skupinou \texttt{video} a právami zápisu pre skupinu);
+    \item inštaláciu balíkov \path{ros-jazzy-camera-ros} a voliteľne \path{ros-jazzy-image-transport-plugins}.
+\end{enumerate}
+Po reboote sa kamera spúšťa príkazom \path{ros2}\allowbreak\ \path{run}\allowbreak\ \path{camera_ros}\allowbreak\ \path{camera_node} (prípadne s parametrami \path{width} a \path{height}).
+
+\subsection*{Témy a uzly z camera\_ros}
+
+Balík \texttt{camera\_ros} publikuje napr.\ témy \rostopic{/camera/image_raw}, \rostopic{/camera/camera_info} a komprimovanú vetvu \rostopic{/camera/image_raw/compressed}.
+Pre teleprezenciu alebo ďalšie spracovanie obrazu v ROS~2 sa môže použiť komprimovaný topic (\texttt{CompressedImage}) na zníženie záťaže siete; prípadne \texttt{image\_transport republish} z \texttt{image\_raw} na \texttt{compressed}.
+
+\subsection*{Kalibrácia a camera\_info}
+
+Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hlásiť chýbajúci súbor v \texttt{\textasciitilde/.ros/camera\_info/} (napr. pre \texttt{imx708\_\_...\_640x480.yaml}). Odporúča sa vykonať kalibráciu podľa návodu (napr. NAV2 camera calibration) a uložiť výsledný YAML s názvom zodpovedajúcim očakávanému \texttt{camera\_name} a rozlíšeniu.
+
+\subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
+
+V ROS~2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \rostopic{/camera/image_raw} (alebo komprimovaný topic).
+RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom.
+Pri vizualizácii ďalších senzorov (napr.\ LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr.\ \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach.
+Pri module Raspberry Pi Camera ide o CMOS senzor; konštrukciu snímania popisuje výrobca~\cite{raspberrypi_camera_module}.
+Farebné informácie sa získavajú cez masku farebných filtrov pred snímačom; interpoláciu z mozaiky (demosaicing) podrobne rozoberajú napr.~\cite{gunturk2005demosaicking}.
+
+\subsection*{Súvis s implementáciou v tejto práci}
+
+Na reálnom robote sa obraz z CSI kamery získava uzlami balíka \texttt{camera\_ros}, ktoré publikujú typicky témy \rostopic{/camera/image_raw} a \rostopic{/camera/camera_info}.
+Na zníženie záťaže CPU a siete sa často používa komprimovaný obraz (\rostopic{sensor_msgs/msg/CompressedImage}) na témach s príponou \texttt{/compressed}.
+V projekte je voliteľný uzol \texttt{waverower\_camera} (balík \texttt{waverower}) na ďalšie spracovanie; pre webové ovládanie sa obraz čerpá z komprimovaného topicu podľa konfigurácie rozhrania.
+
+Korekcia dráhy z obrazu využíva knižnicu OpenCV podľa tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}.
+V launch súboroch (napr.\ \texttt{runtime\_stack.launch.py}) beží uzol \texttt{optical\_flow}: riedky tok Lucas--Kanade sleduje vybrané body medzi snímkami (\texttt{calcOpticalFlowPyrLK}).
+Voliteľne je k dispozícii aj hustý tok Farnebäck (\texttt{calcOpticalFlowFarneback}) ako samostatný spustiteľný súbor; v texte nižšie sa predpokladá Lucas--Kanade, ak nie je uvedené inak.
+Uzol z komprimovaného JPEG počíta stredný horizontálny posun bodov a z neho odvádza korekciu \texttt{angular.z}; tú pripočíta k poslednému \texttt{Twist} z teleopu a publikuje na \rostopic{/teleop_cmd_vel_corrected}.
+Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v deadzone).
+
+Na tvorbu mapy (SLAM) a na reaktívne autonómne správanie slúži predovšetkým LiDAR na téme \rostopic{/scan} --- na reálnom robote aj v simulácii. Globálna navigácia Nav2 je však v rámci tejto práce zapojená a overená \emph{len} v simulácii Gazebo, nie na fyzickom podvozku. IMU (\rostopic{/imu}) môže byť použitá na doplnkovú stabilizáciu alebo odhad orientácie podľa konfigurácie. Kamera slúži predovšetkým teleprezencii, vizualizácii v RViz a experimentom s počítačovým videním; väzba na mapovanie je v tejto práci typicky cez LiDAR (nie priama vizuálna SLAM vetva).
 
 \section{Komunikačné rozhrania}
 
-\subsection*{I\textsuperscript{2}C komunikačné rozhranie}
+\subsection*{I2C komunikačné rozhranie}
 
-I\textsuperscript{2}C (Inter-Integrated Circuit) je synchronné sériové komunikačné rozhranie určené na prepojenie integrovaných obvodov a periférnych zariadení na spoločnej zbernici. Komunikácia prebieha po dvoch vodičoch: dátovej linke SDA a hodinovej linke SCL, ktorú generuje riadiace zariadenie (master).
-
-Zbernica umožňuje pripojenie viacerých zariadení paralelne, pričom každé zariadenie je identifikované jedinečnou adresou. Master iniciuje komunikáciu vyslaním podmienky START, následne odošle adresu cieľového zariadenia spolu s bitom určujúcim smer prenosu. Prenos dát prebieha po bajtoch, pričom po každom bajte nasleduje potvrdzovací bit ACK zo strany prijímateľa. Komunikácia je ukončená podmienkou STOP.
-
-Fyzická realizácia zbernice využíva tzv. open-drain výstupy, čo znamená, že zariadenia aktívne ťahajú linky k logickej nule, zatiaľ čo logická jednotka je zabezpečená pomocou pull-up rezistorov pripojených na napájacie napätie. Toto riešenie umožňuje bezpečné zdieľanie zbernice viacerými zariadeniami \cite{i2c}.
-
-V rámci tejto práce je I\textsuperscript{2}C zbernica využitá najmä na komunikáciu s riadiacim obvodom motorov a inerciálnym senzorom.
+I2C je sériové komunikačné rozhranie, ktoré umožňuje pripojenie
+rôznych zariadení na spoločnú dvojvodičovú zbernicu. Vďaka svojej jednoduchej architektúre je
+vhodné pre nízkorýchlostné periférne zariadenia, ako sú snímače, displeje alebo rozširujúce moduly.
 
 \begin{figure}[H] 
     \centering
-    \includegraphics[width=1\textwidth]{obrazky/i2c2.png} 
+    \includegraphics[width=0.7\textwidth]{obrazky/i2c1.png} 
+    \caption{Pripojenie zariadení na spoločnú I\textsuperscript{2}C zbernicu}
+    \label{fig:i2c-bus}
+\end{figure}
+
+Základné vlastnosti:
+\begin{itemize}
+    \item I\textsuperscript{2}C používa iba dva vodiče: SDA (dátová linka) a SCL (hodinový signál), takže na jednu zbernicu je možné pripojiť viacero periférií.
+    \item Komunikácia prebieha medzi jedným \emph{masterom}, ktorý iniciuje prenos, a jedným alebo viacerými \emph{slave} zariadeniami.
+    \item Jedinečné adresovanie: Každé zariadenie má jedinečnú adresu, ktorú master použije na identifikáciu a komunikáciu s konkrétnym zariadením na zbernici.
+    \item Prenos dát: Dáta sa prenášajú po bajtoch s potvrdením (ACK) po každom bajte. Komunikácia končí signálom STOP~\cite{i2c}.
+\end{itemize}
+
+\begin{figure}[H] 
+    \centering
+    \includegraphics[width=0.8\textwidth]{obrazky/i2c2.png} 
     \caption{Príklad prenosu dát po I\textsuperscript{2}C}
     \label{fig:i2c-transfer}
 \end{figure}
 
-
 \subsection*{UART a USB v tejto práci (LiDAR, IMU)}
 
-UART (Universal Asynchronous Receiver-Transmitter) je asynchrónne sériové komunikačné rozhranie, ktoré prenáša dáta po jednotlivých bitoch bez použitia spoločného hodinového signálu. Komunikácia prebieha pomocou dvoch liniek TX (transmit) a RX (receive), pričom zariadenia musia byť nakonfigurované na rovnakú prenosovú rýchlosť. Dáta sú prenášané v rámcoch obsahujúcich start bit, data bity, voliteľný paritný bit a jeden alebo viac stop bitov, čo umožňuje synchronizáciu prijímača \cite{uart}.
+UART (sériová linka) sa na podvozku používa najmä pre LiDAR LD19: prevodník USB--UART spája vývody senzora s USB portom Raspberry Pi. Rýchlosť linky (baud rate) musí zodpovedať dokumentácii výrobcu; ovládač v ROS~2 očakáva konkrétny formát rámcov.
 
-UART sa na podvozku používa najmä pre LiDAR LD19: prevodník USB--UART spája vývody senzora s USB portom Raspberry Pi.
+Pre MPU-6050 v nasadenej zostave s Motor Driver HAT nevedie fyzický UART priamo z čipu IMU na Raspberry Pi; údaje prichádzajú ako textový CSV stream po USB z mikrokontroléra Arduino Nano (virtuálny sériový port CDC, napr.\ \path{/dev/ttyACM0}), ktorý číta uzol \path{imu_serial_fusion_bridge.py} (odôvodnenie oddelenia od I\textsuperscript{2}C pri HAT-e v sek.~\ref{sec:mpu6050-nano-usb}).
 
-Pre MPU-6050 v nasadenej zostave s Motor Driver HAT nevedie fyzický UART priamo z čipu IMU na Raspberry Pi; údaje prichádzajú ako textový CSV stream po USB z mikrokontroléra Arduino Nano. V operačnom systéme Linux sa zariadenie správa ako virtuálny sériový port, ktorý je následne spracovaný uzlom \path{imu_serial_fusion_bridge.py}. Toto riešenie zároveň umožňuje oddeliť komunikáciu IMU od zbernice I\textsuperscript{2}C využívanej Motor Driver HAT-om.
 
 \chapter{Robot Operating System 2}
 \label{kapitoly}
@@ -629,59 +607,6 @@ Spúšťanie: po zostavení workspace (\path{colcon}\allowbreak\ \path{build}) a
 \end{figure}
 
 
-\section{Kamera na Raspberry Pi~5 s Ubuntu~24.04 a ROS~2 Jazzy}
-\label{sec:kamera-rpi5-ros2}
-
-Kamera v systéme slúži predovšetkým na teleprezenciu (stream do webového rozhrania), vizualizáciu v RViz a na experimenty s optickým tokom a sledovaním farebného objektu. Hardvér modulu je v kapitole~\ref{chap:hardware} (obr.~\ref{fig:camera-module-3-photo}). Nasledujúci text popisuje integráciu na Raspberry Pi~5 s Ubuntu~24.04 (Noble) a ROS~2 Jazzy podľa dokumentácie pre RPi5~\cite{RPCameraRP5}.
-
-\subsection*{Prečo nie štandardný v4l2 ovládač}
-
-Na Raspberry Pi 5 s Ubuntu 24.04 nie je vhodné používať balík \path{ros-jazzy-v4l2-camera}. Kamerový subsystém RPi5 využíva \emph{libcamera} (resp.\ nástupcu \emph{rpicam}), nie klasický V4L2 legacy stack. Preto sa používa balík \path{camera_ros}~\cite{camera_ros}, ktorý pracuje s libcamera a publikuje obraz na ROS~2 témy.
-
-\subsection*{Inštalácia a konfigurácia (prehľad)}
-
-Typický postup zahŕňa:
-\begin{enumerate}
-    \item pridanie používateľa do skupiny \texttt{video};
-    \item inštaláciu knižníc \emph{libcamera} z PPA (napr.\ Marco Sonic rasppios) pre arm64 a Ubuntu~24.04;
-    \item úpravu konfiguračného súboru firmware (napr.\ \path{/boot/firmware/config.txt}): \path{camera_auto_detect=0} a \path{dtoverlay=imx708,cam0} pre Pi Camera~3;
-    \item \emph{udev} pravidlo pre DMA heap (napr.\ zariadenie \texttt{dma\_heap} so skupinou \texttt{video} a právami zápisu pre skupinu);
-    \item inštaláciu balíkov \path{ros-jazzy-camera-ros} a voliteľne \path{ros-jazzy-image-transport-plugins}.
-\end{enumerate}
-Po reboote sa kamera spúšťa príkazom \path{ros2}\allowbreak\ \path{run}\allowbreak\ \path{camera_ros}\allowbreak\ \path{camera_node} (prípadne s parametrami \path{width} a \path{height}).
-
-\subsection*{Témy a uzly z camera\_ros}
-
-Balík \texttt{camera\_ros} publikuje napr.\ témy \rostopic{/camera/image_raw}, \rostopic{/camera/camera_info} a komprimovanú vetvu \rostopic{/camera/image_raw/compressed}.
-Pre teleprezenciu alebo ďalšie spracovanie obrazu v ROS~2 sa môže použiť komprimovaný topic (\texttt{CompressedImage}) na zníženie záťaže siete; prípadne \texttt{image\_transport republish} z \texttt{image\_raw} na \texttt{compressed}.
-
-\subsection*{Kalibrácia a camera\_info}
-
-Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hlásiť chýbajúci súbor v \texttt{\textasciitilde/.ros/camera\_info/} (napr. pre \texttt{imx708\_\_...\_640x480.yaml}). Odporúča sa vykonať kalibráciu podľa návodu (napr. NAV2 camera calibration) a uložiť výsledný YAML s názvom zodpovedajúcim očakávanému \texttt{camera\_name} a rozlíšeniu.
-
-\subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
-
-V ROS~2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \rostopic{/camera/image_raw} (alebo komprimovaný topic).
-RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom.
-Pri vizualizácii ďalších senzorov (napr.\ LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr.\ \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach.
-Pri module Raspberry Pi Camera ide o CMOS senzor; konštrukciu snímania popisuje výrobca~\cite{raspberrypi_camera_module}.
-Farebné informácie sa získavajú cez masku farebných filtrov pred snímačom; interpoláciu z mozaiky (demosaicing) podrobne rozoberajú napr.~\cite{gunturk2005demosaicking}.
-
-\subsection*{Súvis s implementáciou v tejto práci}
-
-Na reálnom robote sa obraz z CSI kamery získava uzlami balíka \texttt{camera\_ros}, ktoré publikujú typicky témy \rostopic{/camera/image_raw} a \rostopic{/camera/camera_info}.
-Na zníženie záťaže CPU a siete sa často používa komprimovaný obraz (\rostopic{sensor_msgs/msg/CompressedImage}) na témach s príponou \texttt{/compressed}.
-V projekte je voliteľný uzol \texttt{waverower\_camera} (balík \texttt{waverower}) na ďalšie spracovanie; pre webové ovládanie sa obraz čerpá z komprimovaného topicu podľa konfigurácie rozhrania.
-
-Korekcia dráhy z obrazu využíva knižnicu OpenCV podľa tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}.
-V launch súboroch (napr.\ \texttt{runtime\_stack.launch.py}) beží uzol \texttt{optical\_flow}: riedky tok Lucas--Kanade sleduje vybrané body medzi snímkami (\texttt{calcOpticalFlowPyrLK}).
-Voliteľne je k dispozícii aj hustý tok Farnebäck (\texttt{calcOpticalFlowFarneback}) ako samostatný spustiteľný súbor; v texte nižšie sa predpokladá Lucas--Kanade, ak nie je uvedené inak.
-Uzol z komprimovaného JPEG počíta stredný horizontálny posun bodov a z neho odvádza korekciu \texttt{angular.z}; tú pripočíta k poslednému \texttt{Twist} z teleopu a publikuje na \rostopic{/teleop_cmd_vel_corrected}.
-Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v deadzone).
-
-Na tvorbu mapy (SLAM) a na reaktívne autonómne správanie slúži predovšetkým LiDAR na téme \rostopic{/scan} --- na reálnom robote aj v simulácii. Globálna navigácia Nav2 je však v rámci tejto práce zapojená a overená \emph{len} v simulácii Gazebo, nie na fyzickom podvozku. IMU (\rostopic{/imu}) môže byť použitá na doplnkovú stabilizáciu alebo odhad orientácie podľa konfigurácie. Kamera slúži predovšetkým teleprezencii, vizualizácii v RViz a experimentom s počítačovým videním; väzba na mapovanie je v tejto práci typicky cez LiDAR (nie priama vizuálna SLAM vetva).
-
-
 \section{Implementácia uzlov a komunikácia s UGV Base General}
 \label{sec:ugv-esp32-alternativa}
 
@@ -787,7 +712,7 @@ V ROS~2 sa dáta stretávajú na témach (\rostopic{/cmd_vel}, \rostopic{/scan},
     \item IMU (MPU-6050 + Arduino Nano): medzi Raspberry Pi a Nanom nevedie I\textsuperscript{2}C. Na strane Nano je MPU-6050 na lokálnej I\textsuperscript{2}C (len medzi čipom a Nanom); z Nano do RPi ide USB ako virtuálny sériový port (CDC), v systéme napr.\ \texttt{/dev/ttyACM\textit{n}} alebo stabilná cesta \texttt{/dev/serial/by-id/...}. Pythonový most číta textový CSV stream (napr.\ 115200~Bd) a publikuje \rostopic{/imu}.
 \end{itemize}
 
-Zhrnutie: pohon = I\textsuperscript{2}C (RPi $\rightarrow$ PCA9685/HAT), LiDAR = UART (často cez USB) , IMU = USB sériový link z Nano (samotný MPU-6050 nie je na I\textsuperscript{2}C priamo u RPi kvôli konfliktu s HATom, pozri sek.~\ref{sec:mpu6050-nano-usb}). Kamera (ak je v zostave) používa CSI (ribbon); softvérová integrácia je v sek.~\ref{sec:kamera-rpi5-ros2}.
+Zhrnutie: pohon = I\textsuperscript{2}C (RPi $\rightarrow$ PCA9685/HAT), LiDAR = UART (často cez USB) , IMU = USB sériový link z Nano (samotný MPU-6050 nie je na I\textsuperscript{2}C priamo u RPi kvôli konfliktu s HATom, pozri sek.~\ref{sec:mpu6050-nano-usb}). Kamera (ak je v zostave) používa CSI (ribbon) alebo iné rozhranie podľa modulu; to je popísané v kapitole o \texttt{camera\_ros}.
 
 \subsection*{Launch súbory a typické témy}
 
