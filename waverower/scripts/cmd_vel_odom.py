@@ -30,6 +30,7 @@ class CmdVelOdom(Node):
         self.declare_parameter("use_imu_yaw",    False)
         self.declare_parameter("imu_topic",      "/imu")
         self.declare_parameter("linear_scale",   1.0)
+        self.declare_parameter("auto_linear_vel_negate", True)
 
         cmd_topic      = self.get_parameter("cmd_topic").value
         cmd_topic_auto = self.get_parameter("cmd_topic_auto").value
@@ -42,6 +43,7 @@ class CmdVelOdom(Node):
         self.use_imu_yaw      = bool(self.get_parameter("use_imu_yaw").value)
         imu_topic             = self.get_parameter("imu_topic").value
         self._linear_scale    = float(self.get_parameter("linear_scale").value)
+        self._auto_negate     = bool(self.get_parameter("auto_linear_vel_negate").value)
 
         self.x   = 0.0
         self.y   = 0.0
@@ -105,9 +107,12 @@ class CmdVelOdom(Node):
         # Prednost: auto zdroj ak ma cerstvy NENULOVY prikaz (wander bezi)
         # inak pouzijeme manual (teleop / web)
         if fresh_auto and self._auto_nonzero:
-            # lidar_wander posiela zaporne linear.x pre pohyb dopredu -> invertujeme
-            vx = -self._linear_scale * float(self._cmd_auto.linear.x)
-            wz =  float(self._cmd_auto.angular.z)
+            lx = float(self._cmd_auto.linear.x)
+            if self._auto_negate:
+                vx = -self._linear_scale * lx
+            else:
+                vx = self._linear_scale * lx
+            wz = float(self._cmd_auto.angular.z)
         elif fresh_manual:
             vx = self._linear_scale * float(self._cmd_manual.linear.x)
             wz = float(self._cmd_manual.angular.z)
