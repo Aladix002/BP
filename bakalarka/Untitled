@@ -270,13 +270,13 @@ ROS~2 umožňuje efektívnu komunikáciu medzi týmito komponentmi vďaka použi
 
 \subsection*{Architektúra: klientske knižnice a RCL}
 
-Aplikácie sa píšu pomocou klientskych knižníc: v ekosystéme sú oficiálne predovšetkým \texttt{rclpy} (Python) a \texttt{rclcpp} (C++); ďalšie jazykové väzby často udržiava komunita~\cite{ros2_doc_client_libraries}. Spoločná vrstva ROS Client Library (RCL) v jazyku C poskytuje jednotné správanie uzlov pre vyššie uvedené API~\cite{ros2_doc_client_libraries}. Pod ňou DDS zabezpečuje transport medzi procesmi~\cite{ros2}.
+Aplikácie sa píšu pomocou klientskych knižníc: v ekosystéme sú oficiálne predovšetkým \texttt{rclpy} (Python) a \texttt{rclcpp} (C++); ďalšie jazykové väzby často udržiava komunita (\emph{Concepts → Basic Concepts → About client libraries})~\cite{ros2_doc}. Spoločná vrstva ROS Client Library (RCL) v jazyku C poskytuje jednotné správanie uzlov pre vyššie uvedené API~\cite{ros2_doc}. Pod ňou DDS zabezpečuje transport medzi procesmi~\cite{ros2}.
 
 \subsection*{Rozdiel medzi ROS~1 a ROS~2}
 
-ROS~1 dlho predstavoval široko používaný rámec pre výskumné a výukové robotické systémy; ROS~2 na ňom stavia, ale mení vnútornú architektúru kvôli robustnejšiemu a škálovateľnejšiemu nasadeniu~\cite{ros2}. Jednou z najvýznamnejších zmien je odstránenie centrálneho uzla \emph{ROS master} z ROS~1: ak master prestal odpovedať, komunikácia medzi uzlami prestala fungovať. ROS~2 využíva decentralizovaný model založený na DDS; uzly sa objavujú v spoločnej doméne a nadväzujú spojenia podľa dokumentácie~\cite{ros2_doc_discovery}.
+ROS~1 dlho predstavoval široko používaný rámec pre výskumné a výukové robotické systémy; ROS~2 na ňom stavia, ale mení vnútornú architektúru kvôli robustnejšiemu a škálovateľnejšiemu nasadeniu~\cite{ros2}. Jednou z najvýznamnejších zmien je odstránenie centrálneho uzla \emph{ROS master} z ROS~1: ak master prestal odpovedať, komunikácia medzi uzlami prestala fungovať. ROS~2 využíva decentralizovaný model založený na DDS; uzly sa objavujú v spoločnej doméne (\emph{Concepts → Basic Concepts → About discovery}) a nadväzujú spojenia podľa dokumentácie Jazzy~\cite{ros2_doc}.
 
-ROS~2 umožňuje nastavovať kvalitu služby (Quality of Service, QoS) pri publikovaní a odberu správ, čo pomáha pri synchronizácii, stratách paketov a požiadavkách na odozvu~\cite{ros2_doc_qos}.
+ROS~2 umožňuje nastavovať kvalitu služby (Quality of Service, QoS) pri publikovaní a odberu správ (\emph{Concepts → Intermediate Concepts → About Quality of Service settings}), čo pomáha pri synchronizácii, stratách paketov a požiadavkách na odozvu~\cite{ros2_doc}.
 
 ROS~2 podporuje aj zostavovanie viacerých uzlov do jedného procesu ako \emph{komponenty}, čo znižuje režijné náklady komunikácie.
 
@@ -290,7 +290,7 @@ Táto sekcia stručne predstavuje základné prvky ROS~2: uzly (\emph{nodes}), t
 \subsubsection*{Uzly}
 Uzly sú základnými stavebnými prvkami systému ROS~2, pričom každý uzol predstavuje
 samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
-alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v tutoriáli ROS~2~\cite{ros2_doc_understanding_topics}; štandardné typy správ sú definované v repozitári \emph{common\_interfaces}~\cite{ros2_common_interfaces}.
+alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v \emph{Beginner: CLI tools → Understanding ROS 2 topics}; štandardné typy správ sú v balíkoch ekosystému ROS~2 (dohľadateľné cez \emph{Package Docs})~\cite{ros2_doc}.
 
 Metóda \texttt{spin()} v uzle spracováva prichádzajúce správy a udržiava uzol aktívny v slučke udalostí.
 
@@ -315,7 +315,7 @@ Metóda \texttt{spin()} v uzle spracováva prichádzajúce správy a udržiava u
 Každý uzol beží vo svojom vlastnom výpočtovom cykle. ROS~2 poskytuje funkciu \texttt{rclpy.spin()}, ktorá udržiava uzol aktívny a zabezpečí, že môže reagovať na prichádzajúce správy alebo udalosti.
 
 \subsubsection*{Témy}
-Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy. Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát~\cite{ros2_doc_understanding_topics}.
+Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy (\emph{Concepts → Basic Concepts → Topics}). Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát~\cite{ros2_doc}.
 
 \paragraph{Publikovanie na tému:} Uzol môže publikovať správy na konkrétnu tému. Publikované správy sú odosielané všetkým uzlom, ktoré sa na danú tému odoberajú.
 
@@ -405,11 +405,11 @@ Akcie sú rozšírením služieb a sú navrhnuté na vykonávanie dlhších úlo
 \paragraph{Sledovanie akcie:} Klient môže posielať požiadavky a prijímať spätné informácie o priebehu úlohy. To umožňuje komplexné spracovanie a interaktívne operácie.
 
 \subsubsection*{Rozhrania správ}
-Typ správy na téme alebo v službe je daný rozhraním (\emph{interface}). Štandardné definície sú v balíkoch ako \texttt{geometry\_msgs} či \texttt{sensor\_msgs}~\cite{ros2_common_interfaces}. Vlastné typy sa definujú v súboroch \path{.msg} (témy), \path{.srv} (služby) a \path{.action} (akcie)~\cite{ros2_doc}.
+Typ správy na téme alebo v službe je daný rozhraním (\emph{interface}; \emph{Concepts → Basic Concepts → Interfaces}). Štandardné definície sú v balíkoch ako \texttt{geometry\_msgs} či \texttt{sensor\_msgs}~\cite{ros2_doc}. Vlastné typy sa definujú v súboroch \path{.msg} (témy), \path{.srv} (služby) a \path{.action} (akcie)~\cite{ros2_doc}.
 
 \subsection*{Vývoj v ROS~2}
 
-Vývoj začína vytvorením workspace: zdroje v \path{src/}, po príkaze \texttt{colcon build} vznikajú priečinky \path{build/}, \path{install/} a \path{log/}~\cite{ros2_doc_workspace}. Pred spustením uzlov sa prostredie aktivuje príkazom \path{source install/setup.bash}. Systémová inštalácia ROS~2 tvorí často \emph{underlay}, vlastný workspace je \emph{overlay}~\cite{ros2_doc_workspace}. Zdrojové súbory sú organizované do balíkov (\emph{packages}) s \path{package.xml} a pravidlami zostavenia (napr.\ \path{setup.py} pre Python)~\cite{ros2_doc_workspace}.
+Vývoj začína vytvorením workspace (\emph{Beginner: Client libraries → Creating a workspace}): zdroje v \path{src/}, po príkaze \texttt{colcon build} vznikajú priečinky \path{build/}, \path{install/} a \path{log/}~\cite{ros2_doc}. Pred spustením uzlov sa prostredie aktivuje príkazom \path{source install/setup.bash}. Systémová inštalácia ROS~2 tvorí často \emph{underlay}, vlastný workspace je \emph{overlay}~\cite{ros2_doc}. Zdrojové súbory sú organizované do balíkov (\emph{packages}; \emph{Creating a package}) s \path{package.xml} a pravidlami zostavenia (napr.\ \path{setup.py} pre Python)~\cite{ros2_doc}.
 
 \begin{verbatim}
 Workspace/
@@ -428,11 +428,11 @@ Workspace/
 
 \subsection*{Parametre, YAML a launch súbory}
 
-Uzly môžu mať parametre deklarované v kóde a meniteľné za behu cez parametrové služby ROS~2; hodnoty sa typicky načítavajú z YAML súborov v priečinku \path{config/} balíka~\cite{ros2_doc_launch}. Na spustenie viacerých uzlov a predanie parametrov slúžia launch súbory --- v tejto práci hlavne v Pythone (funkcia \path{generate_launch_description}, akcie \texttt{Node}, \path{IncludeLaunchDescription}, remapovanie tém)~\cite{ros2_doc_launch}.
+Uzly môžu mať parametre deklarované v kóde a meniteľné za behu cez parametrové služby ROS~2 (\emph{Concepts → Basic Concepts → Parameters}); hodnoty sa typicky načítavajú z YAML súborov v priečinku \path{config/} balíka~\cite{ros2_doc}. Na spustenie viacerých uzlov a predanie parametrov slúžia launch súbory (\emph{Beginner: CLI tools → Launching launch files}, podrobnejšie \emph{Intermediate → Launch}) --- v tejto práci hlavne v Pythone (funkcia \path{generate_launch_description}, akcie \texttt{Node}, \path{IncludeLaunchDescription}, remapovanie tém)~\cite{ros2_doc}.
 
 \subsection*{Príkazový riadok a súvisiace nástroje}
 
-Na ladenie sa používajú príkazy tvaru \path{ros2 <príkaz> <podpríkaz>}, napr.~\path{ros2 topic list}, \path{ros2 topic echo}, \path{ros2 topic hz} (odhad frekvencie publikovania), \path{ros2 node list}, \path{ros2 node info}, \path{ros2 interface show}, \path{ros2 service list}, \path{ros2 param list}~\cite{ros2_doc_cli}. Na rýchlu kontrolu prostredia slúži aj \path{ros2 doctor}. Záznam a prehrávanie behu bez zmeny kódu zabezpečujú \path{ros2 bag record} a \path{ros2 bag play}~\cite{ros2_doc_cli}.
+Na ladenie sa používajú príkazy tvaru \path{ros2 <príkaz> <podpríkaz>} podľa prehľadu \emph{Beginner: CLI tools}, napr.~\path{ros2 topic list}, \path{ros2 topic echo}, \path{ros2 topic hz} (odhad frekvencie publikovania), \path{ros2 node list}, \path{ros2 node info}, \path{ros2 interface show}, \path{ros2 service list}, \path{ros2 param list}~\cite{ros2_doc}. Na rýchlu kontrolu prostredia slúži aj \path{ros2 doctor} (\emph{Using ros2doctor to identify issues}). Záznam a prehrávanie behu bez zmeny kódu zabezpečujú \path{ros2 bag record} a \path{ros2 bag play} (\emph{Recording and playing back data})~\cite{ros2_doc}.
 
 Grafické rozhranie rqt združuje pluginy, ktoré sa spúšťajú z jedného okna (\path{rqt}) alebo samostatne. Medzi často používané patria:
 \begin{itemize}
@@ -446,7 +446,7 @@ K uvedeným nástrojom sa odkazuje aj v prednáškach predmetu BPC-PRP~\cite{bpc
 
 \subsection*{Transformácie (tf2)}
 
-Subsystém tf2 udržiava strom súradnicových rámov (\emph{frames}) --- napr.\ \path{base_link}, \path{odom}, rám senzora. Dynamické vzťahy sa typicky publikujú na \rostopic{/tf}, pevné montážne na \rostopic{/tf_static}~\cite{ros2_doc_tf2}. V kóde sa používa napr.~\texttt{tf2\_ros.TransformBroadcaster} alebo dotazy cez \texttt{Buffer} / \texttt{TransformListener}~\cite{ros2_doc_tf2}.
+Subsystém tf2 udržiava strom súradnicových rámov (\emph{frames}; \emph{Intermediate → tf2}) --- napr.\ \path{base_link}, \path{odom}, rám senzora. Dynamické vzťahy sa typicky publikujú na \rostopic{/tf}, pevné montážne na \rostopic{/tf_static}~\cite{ros2_doc}. V kóde sa používa napr.~\texttt{tf2\_ros.TransformBroadcaster} alebo dotazy cez \texttt{Buffer} / \texttt{TransformListener}~\cite{ros2_doc}.
 
 
 \section{Základné komponenty a nástroje ROS~2}
@@ -502,14 +502,14 @@ Senzory často vyžadujú kalibráciu a konfiguráciu, aby správne fungovali. R
 
 \subsection*{Súvis s príbuznými implementáciami (ROS~2)}
 
-Podobné bakalárske práce na FIT využívajú rovnaké stavebné kamene: modulárne balíčky, témy pre senzory a riadenie, launch súbory, tf2 medzi rámami, YAML konfigurácie a prepínanie medzi manuálnym a autonómnym režimom. Ako príklad modularity a senzorických tém na Raspberry Pi slúži napr. práca Skoleka~\cite{balancujici_robot}; ďalšie práce z rovnakého okruhu často kombinujú teleprezenciu, SLAM alebo Nav2 v simulácii. Táto práca na týchto princípoch stavia vlastnú zostavu pre Wave Rover a LiDAR LD19 bez nutnosti odkazovať na konkrétny cudzí zdrojový kód.
+Podobné bakalárske práce na FIT využívajú rovnaké stavebné kamene: modulárne balíčky, témy pre senzory a riadenie, launch súbory, tf2 medzi rámami, YAML konfigurácie a prepínanie medzi manuálnym a autonómnym režimom. Ako príklad modularity a senzorických tém na Raspberry Pi možno spomenúť podobné bakalárske práce z rovnakého odboru na FIT VUT; ďalšie práce z rovnakého okruhu často kombinujú teleprezenciu, SLAM alebo Nav2 v simulácii. Táto práca na týchto princípoch stavia vlastnú zostavu pre Wave Rover a LiDAR LD19 bez nutnosti odkazovať na konkrétny cudzí zdrojový kód.
 
 \subsection*{micro-ROS a integrácia s embedded zariadeniami}
 
-micro-ROS~\cite{microros} je rozšírenie ekosystému ROS~2 pre mikrokontroléry a embedded zariadenia s obmedzenou pamäťou a výkonom. Umožňuje, aby takéto zariadenia (napr. ESP32, STM32) vystupovali ako plnohodnotní účastníci ROS~2 siete: publikovali témy, odoberali témy, poskytovali alebo volali služby a pracovali s parametrami. Tým sa odstráni potreba vlastného protokolu (napr. HTTP alebo proprietárneho UART protokolu) medzi hlavným počítačom (Raspberry Pi) a riadiacou jednotkou na báze mikrokontroléra.
+micro-ROS je rozšírenie ekosystému ROS~2 pre mikrokontroléry a embedded zariadenia s obmedzenou pamäťou a výkonom (prehľad projektu a nástrojov je verejne dostupný na \texttt{https://micro.ros.org} a v súvisiacich repozitároch). Umožňuje, aby takéto zariadenia (napr. ESP32, STM32) vystupovali ako plnohodnotní účastníci ROS~2 siete: publikovali témy, odoberali témy, poskytovali alebo volali služby a pracovali s parametrami. Tým sa odstráni potreba vlastného protokolu (napr. HTTP alebo proprietárneho UART protokolu) medzi hlavným počítačom (Raspberry Pi) a riadiacou jednotkou na báze mikrokontroléra.
 
 \paragraph{Funkčnosť a prepojenie s ROS~2.}
-micro-ROS beží na embedded zariadení nad real-time operačným systémom (typicky FreeRTOS). Knižnica micro-ROS využíva rovnaké koncepty ako ROS~2 (DDS, témy, typy správ), ale s redukovanou závislosťou a pamäťovou náročnosťou. Komunikácia medzi mikrokontrolérom a zvyškom ROS~2 siete prebieha cez \emph{micro-ROS agenta}, ktorý beží na Linuxe (napr. na Raspberry Pi alebo na vývojovom PC). Agent prijíma dáta z embedded zariadenia cez transport (sériový port UART, WiFi alebo Ethernet) a premostí ich do DDS siete. Uzly bežiace na RPi a uzly bežiace na mikrokontroléri tak vidia navzájom svoje témy v rámci jednej ROS~2 doméne. micro-ROS je kompatibilný s distribúciami ROS~2 Humble a novšími (Iron, Jazzy)~\cite{microros_setup}.
+micro-ROS beží na embedded zariadení nad real-time operačným systémom (typicky FreeRTOS). Knižnica micro-ROS využíva rovnaké koncepty ako ROS~2 (DDS, témy, typy správ), ale s redukovanou závislosťou a pamäťovou náročnosťou. Komunikácia medzi mikrokontrolérom a zvyškom ROS~2 siete prebieha cez \emph{micro-ROS agenta}, ktorý beží na Linuxe (napr. na Raspberry Pi alebo na vývojovom PC). Agent prijíma dáta z embedded zariadenia cez transport (sériový port UART, WiFi alebo Ethernet) a premostí ich do DDS siete. Uzly bežiace na RPi a uzly bežiace na mikrokontroléri tak vidia navzájom svoje témy v rámci jednej ROS~2 doméne. micro-ROS je kompatibilný s distribúciami ROS~2 Humble a novšími (Iron, Jazzy); zostavenie firmwaru spravidla rieši balík \texttt{micro\_ros\_setup} v dokumentácii projektu.
 
 \paragraph{Vzorové uzly pre motor a IMU.}
 Ako alternatíva k HTTP rozhraniu existuje ekosystém micro-ROS: mikrokontrolér môže cez agenta vystupovať priamo v ROS~2 sieti (témy, služby). V rámci tejto práce boli zvážené vzorové ukážky (adresár \texttt{micro\_ros\_examples}): subscriber na príkazy pohonu a publisher IMU. V praktickej implementácii použitej v texte nižšie je však primárne riešenie \emph{HTTP JSON príkazy} medzi Raspberry Pi a firmwareom UGV Base General na ESP32 (pozri kapitolu~\ref{kap:implementacia}), pretože priamo zodpovedá dokumentovanému API výrobcu dosky. Micro-ROS ostáva voľbou do budúcna pri požiadavke na jednotnú DDS doménu bez vlastného HTTP mosta; podrobné merania latencie agenta v tejto práci nie sú uvedené.

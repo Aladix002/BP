@@ -136,6 +136,15 @@
   note         = {Distribúcia Jazzy; tutoriály a koncepty.}
 }
 
+@misc{microros,
+  author       = {{micro-ROS}},
+  title        = {micro-{ROS} Documentation},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://micro.ros.org/},
+  cited        = {2026-04-11},
+}
+
 @article{ros2,
   author  = {Macenski, Steven and Foote, Tully and Gerkey, Brian and Lalancette, Chris and Woodall, William},
   title   = {Robot Operating System 2: Design, architecture, and uses in the wild},
@@ -151,10 +160,12 @@
 
 @misc{bpc_prp_ros2_materials,
   author       = {Cihl{\'a}{\v{r}}, Milo{\v{s}} and Mina{\v{r}}{\'\i}k, Jakub},
-  title        = {{BPC-PRP}: Robotika a po{\v{c}}{\'\i}ta{\v{c}}ov{\'e} viden{\'\i} -- materi{\'a}ly k {ROS}~2},
-  howpublished = {Predn{\'a}{\v{s}}ky {FIT} {VUT}, Brno},
-  year         = {2023},
-  note         = {Intern{\'y} v{\'y}ukov{\'y} materi{\'a}l (napr. prezent{\'a}cia \emph{{ROS}~2 -- {Overview}}).}
+  title        = {{BPC-PRP}: Robotika a po{\v{c}}{\'\i}ta{\v{c}}ov{\'e} viden{\'\i} -- Keynotes 2025},
+  howpublished = {online},
+  year         = {2025},
+  url          = {https://github.com/Robotics-BUT/BPC-PRP/tree/master/keynotes/2025},
+  cited        = {2026-04-13},
+  note         = {Predn{\'a}{\v{s}}ky predmetu BPC-PRP na FEKTT VUT (repozit{\'a}r Robotics-BUT).}
 }
 
 @webpage{dds_foundation_what_is_dds,
@@ -165,126 +176,6 @@
   url          = {https://www.dds-foundation.org/what-is-dds-3/},
   cited        = {2026-03-28},
   note         = {Štandard middleware pod ROS 2.}
-}
-
-@webpage{ros2_doc_client_libraries,
-  author       = {{Open Robotics}},
-  title        = {About {ROS} 2 client libraries},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Concepts/Basic/About-Client-Libraries.html},
-  cited        = {2026-04-11},
-  note         = {rclpy, rclcpp, RCL, jednotné API.}
-}
-
-@webpage{ros2_doc_discovery,
-  author       = {{Open Robotics}},
-  title        = {About discovery},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Concepts/Basic/About-Discovery.html},
-  cited        = {2026-03-28},
-  note         = {Vyhľadávanie uzlov v DDS doméne.}
-}
-
-@webpage{ros2_doc_qos,
-  author       = {{Open Robotics}},
-  title        = {About Quality of Service settings},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Quality-of-Service-Settings.html},
-  cited        = {2026-03-28},
-  note         = {History, reliability, durability a ďalšie QoS politiky.}
-}
-
-@webpage{ros2_doc_understanding_topics,
-  author       = {{Open Robotics}},
-  title        = {Understanding {ROS} 2 topics},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Topics/Understanding-ROS2-Topics.html},
-  cited        = {2026-03-28},
-  note         = {Témy, publisher/subscriber, typy správ.}
-}
-
-@webpage{ros2_common_interfaces,
-  author       = {{Open Robotics}},
-  title        = {common\_interfaces: standard message definitions for {ROS} 2},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://github.com/ros2/common_interfaces},
-  cited        = {2026-04-08},
-  note         = {geometry\_msgs, sensor\_msgs, nav\_msgs a ďalšie.}
-}
-
-@webpage{ros2_doc_workspace,
-  author       = {{Open Robotics}},
-  title        = {Creating a workspace},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Creating-A-Workspace/Creating-A-Workspace.html},
-  cited        = {2026-04-11},
-  note         = {colcon, src/build/install, overlay.}
-}
-
-@webpage{ros2_doc_launch,
-  author       = {{Open Robotics}},
-  title        = {Creating launch files},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Launching-Launch-Files.html},
-  cited        = {2026-04-11},
-  note         = {Python launch, LaunchDescription.}
-}
-
-@webpage{ros2_doc_cli,
-  author       = {{Open Robotics}},
-  title        = {Beginner CLI tools},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools.html},
-  cited        = {2026-04-11},
-  note         = {ros2 topic, node, interface, param.}
-}
-
-@webpage{ros2_doc_tf2,
-  author       = {{Open Robotics}},
-  title        = {tf2},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.ros.org/en/jazzy/Tutorials/Intermediate/Tf2/Tf2-Main.html},
-  cited        = {2026-04-11},
-  note         = {Transformácie rámov, /tf, /tf\_static.}
-}
-
-@mastersthesis{balancujici_robot,
-  author  = {Skolek, Tom{\'a}{\v{s}}},
-  title   = {Balancuj{\'i}c{\'i} dvoukolov{\'y} robot},
-  school  = {Vysok{\'e} u{\v{c}}en{\'i} technick{\'e} v Brn{\v{e}}, Fakulta informa{\v{c}}n{\'i}ch technologi{\'i}},
-  year    = {2025},
-  address = {Brno},
-  type    = {Bakal{\'a}{\v{r}}sk{\'a} pr{\'a}ce},
-  note    = {Vedouc{\'i} pr{\'a}ce doc. Ing. Vladim{\'i}r Janou{\v{s}}ek, Ph.D. ROS2 (Humble), RPi4B, PID, IMU, enkod{\'e}ry, Bluetooth, autonomn{\'i} pohyb.}
-}
-
-@webpage{microros,
-  author       = {{micro-ROS Project}},
-  title        = {micro-{ROS} -- {ROS} 2 for microcontrollers},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://micro.ros.org/},
-  cited        = {2025-02-22},
-  note         = {Oficiálna stránka projektu micro-ROS.}
-}
-
-@webpage{microros_setup,
-  author       = {{micro-ROS Project}},
-  title        = {micro\_ros\_setup -- Building and flashing micro-{ROS}},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://github.com/micro-ROS/micro_ros_setup},
-  cited        = {2025-02-22},
-  note         = {Nástroje na zostavenie a nahratie micro-ROS firmware.}
 }
 
 @book{siegwart2011introduction,
@@ -310,8 +201,8 @@
   title        = {Raspberry Pi Camera Installation on Raspberry Pi 5 / Ubuntu 24.04 Noble / ROS 2 Jazzy},
   howpublished = {online},
   year         = {2026},
-  url          = {https://github.com/ARLunan/Raspberry-Pi-Camera-ROS/blob/main/Documents/RPCamera-Installation-RP5.md},
-  cited        = {2026-02-21},
+  url          = {https://github.com/ARLunan/Raspberry-Pi-Camera-ROS/blob/main/Documents/RPCamera-Installation-RP5.md#1-raspberry-pi-camera-installation-on-raspberry-pi-5--ubuntu-2404-noble-ros-2-jazzy},
+  cited        = {2026-04-13},
   note         = {Dokumentácia inštalácie kamery pre RPi5, Ubuntu 24.04 a ROS 2 Jazzy.}
 }
 

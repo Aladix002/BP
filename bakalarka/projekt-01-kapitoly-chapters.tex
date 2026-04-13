@@ -281,405 +281,383 @@ Pre MPU-6050 v nasadenej zostave s Motor Driver HAT nevedie fyzický UART priamo
 
 \section{Úvod do ROS~2}
 
-Kapitola stručne predstavuje ROS~2: účel ako middleware nad operačným systémom, rozdiely voči ROS~1, komunikáciu cez DDS, organizáciu workspace a balíkov, základné vzory (témy, služby, akcie), parametre a launch súbory, bežné CLI nástroje a transformácie tf2. Podklady sú oficiálna dokumentácia distribúcie Jazzy~\cite{ros2_doc}, prehľadový článok o návrhu ROS~2~\cite{ros2} a výukové materiály predmetu BPC-PRP (prednášky o ROS~2)~\cite{bpc_prp_ros2_materials}.
+ROS~2 (Robot Operating System 2) je middleware platforma určená na vývoj robotických aplikácií. Ide o sadu knižníc, nástrojov a rozhraní, ktoré zjednocujú komunikáciu medzi komponentmi robotického systému. ROS~2 poskytuje štandardizovaný spôsob práce s uzlami, správami, témami, službami, akciami, parametrami a transformáciami, čím uľahčuje návrh modulárnych a distribuovaných aplikácií.
 
-\subsection*{Robot Operating System 2}
+V porovnaní s ROS~1 je ROS~2 navrhnutý s dôrazom na robustnejšie nasadenie v distribuovaných systémoch, podporu viacerých platforiem a flexibilnejšiu komunikáciu cez DDS. V dokumentácii Jazzy je táto vrstva rozvedená v časti \emph{Concepts → Basic Concepts → About client libraries} spolu s opisom RCL, RMW a výberu DDS implementácie. Architektúra oddeľuje aplikačný kód od transportnej vrstvy a umožňuje meniť middleware bez zásahu do logiky uzlov.
 
+Väčšina tejto kapitoly vychádza z oficiálnej dokumentácie ROS~2 (distribúcia Jazzy) a z podkladov k predmetu BPC-PRP. Priebežné vysvetlenia a príklady sú spracované na základe týchto dvoch zdrojov~\cite{ros2_doc,bpc_prp_ros2_materials}.
 
-ROS~2 (Robot Operating System~2) je sada knižníc a nástrojov na stavanie robotických aplikácií; v praxi ide o middleware --- vrstvu nad OS, ktorá štandardizuje komunikáciu medzi procesmi, typy správ a odporúčaný spôsob organizácie kódu~\cite{ros2,ros2_doc}. Projekt je open source a okolo neho existuje rozsiahla komunita balíkov a dokumentácie~\cite{ros2}. V tejto práci sa používa ROS~2 Jazzy na Ubuntu~24.04~\cite{ros2_doc}.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.88\textwidth]{obrazky/ros_client_library_api_stack.png}
+    \caption[Zásobník klientskych knižníc ROS~2]{Zásobník klientskych knižníc a rozhraní: aplikácia cez \texttt{rclpy}/\texttt{rclcpp}, spoločná vrstva RCL, RMW a DDS ako transport }
+    \label{fig:ros2-client-library-stack}
+\end{figure}
 
-ROS~2 umožňuje efektívnu komunikáciu medzi týmito komponentmi vďaka použitiu štandardu DDS (Data Distribution Service), ktorý je osvedčený aj v kritických oblastiach, ako sú vojenské či finančné systémy. DDS prináša aj výhody, ako sú zabudovaná bezpečnosť, podpora pre reálne časové aplikácie a schopnosť pracovať v nestabilných sieťových podmienkach, napríklad pri Wi-Fi alebo satelitnej komunikácii~\cite{ros2}. Štandard DDS a jeho úloha v dátocentrickom modeli sú zhrnuté v materiáloch DDS Foundation~\cite{dds_foundation_what_is_dds}.
+\subsection*{DDS a discovery}
 
-\subsection*{Architektúra: klientske knižnice a RCL}
+Komunikačný základ ROS~2 tvorí DDS \cite{dds_foundation_what_is_dds}, teda decentralizovaný publish--subscribe middleware.Po spustení uzla dochádza k jeho automatickému oznámeniu v rámci rovnakej domény a následnému vytvoreniu spojení s kompatibilnými účastníkmi komunikácie.
 
-Aplikácie sa píšu pomocou klientskych knižníc: v ekosystéme sú oficiálne predovšetkým \texttt{rclpy} (Python) a \texttt{rclcpp} (C++); ďalšie jazykové väzby často udržiava komunita~\cite{ros2_doc_client_libraries}. Spoločná vrstva ROS Client Library (RCL) v jazyku C poskytuje jednotné správanie uzlov pre vyššie uvedené API~\cite{ros2_doc_client_libraries}. Pod ňou DDS zabezpečuje transport medzi procesmi~\cite{ros2}.
+Ktorá logická DDS doména sa použije, sa v praxi riadi premennou prostredia \texttt{ROS\_DOMAIN\_ID}: uzly so zhodnou hodnotou patria do jednej skupiny pre discovery a výmenu správ, odlišná hodnota oddelí napríklad viac nezávislých behov ROS~2 na jednom počítači alebo susedné robotické systémy v lokálnej sieti.
 
-\subsection*{Rozdiel medzi ROS~1 a ROS~2}
+\subsection*{micro-ROS a embedded systémy}
 
-ROS~1 dlho predstavoval široko používaný rámec pre výskumné a výukové robotické systémy; ROS~2 na ňom stavia, ale mení vnútornú architektúru kvôli robustnejšiemu a škálovateľnejšiemu nasadeniu~\cite{ros2}. Jednou z najvýznamnejších zmien je odstránenie centrálneho uzla \emph{ROS master} z ROS~1: ak master prestal odpovedať, komunikácia medzi uzlami prestala fungovať. ROS~2 využíva decentralizovaný model založený na DDS; uzly sa objavujú v spoločnej doméne a nadväzujú spojenia podľa dokumentácie~\cite{ros2_doc_discovery}.
+Pre mikrokontroléry s obmedzenou pamäťou a výkonom nie je plný ROS~2 stack na zariadení reálny; v ekosystéme preto existuje \emph{micro-ROS}; ide o zjednodušené klientske knižnice, ktoré na MCU zachovávajú základné koncepty ROS~2 (uzly, témy, služby, parametre). Typicky beží \emph{micro-ROS klient} na zariadení ako ESP32 či STM32 a \emph{micro-ROS agent} na výkonnejšom uzle (Raspberry Pi alebo PC) zabezpečí premostenie do tej istej DDS domény ako ostatné uzly; spojenie medzi klientom a agentom môže ísť cez UART/USB, Wi-Fi alebo Ethernet a pod transportom sa často používa Micro XRCE-DDS~\cite{microros}.
 
-ROS~2 umožňuje nastavovať kvalitu služby (Quality of Service, QoS) pri publikovaní a odberu správ, čo pomáha pri synchronizácii, stratách paketov a požiadavkách na odozvu~\cite{ros2_doc_qos}.
+\subsection*{Uzly a klientské knižnice}
 
-ROS~2 podporuje aj zostavovanie viacerých uzlov do jedného procesu ako \emph{komponenty}, čo znižuje režijné náklady komunikácie.
+Základnou jednotkou aplikácie je uzol (\emph{node}). Uzol predstavuje samostatný proces alebo logickú časť procesu, ktorá vykonáva určitú funkcionalitu, napríklad čítanie senzora, spracovanie dát alebo riadenie pohybu. 
 
-ROS~2 oficiálne podporuje viac platforiem než ROS~1 (okrem Linuxu aj Windows a macOS), čo uľahčuje vývoj a integráciu nástrojov na rôznych počítačoch~\cite{ros2}.
-
-\section{Práca s ROS~2}
-
-Táto sekcia stručne predstavuje základné prvky ROS~2: uzly (\emph{nodes}), témy (\emph{topics}), služby (\emph{services}) a akcie (\emph{actions}).
-
-
-\subsubsection*{Uzly}
-Uzly sú základnými stavebnými prvkami systému ROS~2, pričom každý uzol predstavuje
-samostatný proces vykonávajúci špecifickú úlohu, napríklad spracovanie údajov zo senzorov alebo výpočty pre navigáciu. Uzly medzi sebou komunikujú pomocou tém, služieb
-alebo akcií. Model témy, publishera a subscribera a súvis so správami je podrobne rozvedený v tutoriáli ROS~2~\cite{ros2_doc_understanding_topics}; štandardné typy správ sú definované v repozitári \emph{common\_interfaces}~\cite{ros2_common_interfaces}.
-
-Metóda \texttt{spin()} v uzle spracováva prichádzajúce správy a udržiava uzol aktívny v slučke udalostí.
-
-\paragraph{Vytvorenie uzla:} V ROS~2 sa uzol vytvára pomocou triedy \texttt{Node} v rámci knižnice \texttt{rclpy}. Uzol musí byť inicializovaný a registrovaný v rámci ROS~2 siete~\cite{ros2_doc}.
-
-\begin{algorithm}
-\caption{Implementácia jednoduchého uzlu}
-\begin{algorithmic}[1]
-\State class TurtleBot4FirstNode(Node):
-\State \hspace{1em}def \_\_init\_\_(self):
-\State \hspace{2em}super().\_\_init\_\_('turtlebot4\_first\_python\_node')
-
-\State def main(args = None):
-\State \hspace{1em}rclpy.init(args)
-\State \hspace{1em}node = TurtleBot4FirstNode()
-\State \hspace{1em}rclpy.spin(node)
-\State \hspace{1em}node.destroy\_node()
-\State \hspace{1em}rclpy.shutdown()
-\end{algorithmic}
-\end{algorithm}
-
-Každý uzol beží vo svojom vlastnom výpočtovom cykle. ROS~2 poskytuje funkciu \texttt{rclpy.spin()}, ktorá udržiava uzol aktívny a zabezpečí, že môže reagovať na prichádzajúce správy alebo udalosti.
-
-\subsubsection*{Témy}
-Témy sú asynchrónne komunikačné kanály, ktoré umožňujú uzlom vymieňať si správy. Každá téma má definovaný typ správy, ktorý určuje štruktúru posielaných dát~\cite{ros2_doc_understanding_topics}.
-
-\paragraph{Publikovanie na tému:} Uzol môže publikovať správy na konkrétnu tému. Publikované správy sú odosielané všetkým uzlom, ktoré sa na danú tému odoberajú.
-
-\begin{algorithm}[H]
-\caption{Implementácia publikácie na Topic}
-\begin{algorithmic}[1]
-\State class TalkerNode(Node):
-\State \hspace{1em}def \_\_init\_\_(self):
-\State \hspace{2em}self.counter = 0
-\State \hspace{2em}super().\_\_init\_\_('talker\_node\_py')
-\State \hspace{2em}self.publisher\_ = self.create\_publisher(String, 'my\_topic', 10)
-\State \hspace{2em}self.timer\_ = self.create\_timer(0.5, self.publish\_callback)
-\State \hspace{2em}self.get\_logger().info("Talker Python node has been started")
-
-\State \hspace{1em}def publish\_callback(self):
-\State \hspace{2em}msg = String()
-\State \hspace{2em}msg.data = f'Hello \{self.counter\}'
-\State \hspace{2em}self.publisher\_.publish(msg)
-\State \hspace{2em}self.counter += 1
-\end{algorithmic}
-\end{algorithm}
-
-\paragraph{Odber na tému:} Uzol má možnosť odberu témy, aby prijímal správy publikované inými uzlami. Pri prijatí správy sa spustí callback funkcia, ktorá spracuje prijaté dáta.
-
-\begin{algorithm}[H]
-\caption{Implementácia odberu Topicu}
-\begin{algorithmic}[1]
-\State def \_\_init\_\_(self):
-\State \hspace{1em}super().\_\_init\_\_("listener\_node\_py")
-\State \hspace{1em}self.get\_logger().info("Listener Python node has been created")
-\State \hspace{1em}self.subscriber\_ = self.create\_subscription(String, 'my\_topic', self.subscriber\_callback, 10)
-
-\State def subscriber\_callback(self, msg):
-\State \hspace{1em}data = msg.data
-\State \hspace{1em}self.get\_logger().info(f'received data: \{data\}')
-\end{algorithmic}
-\end{algorithm}
-
-\subsubsection*{Služby (services)}
-Služby umožňujú synchrónnu komunikáciu medzi uzlami, kde jeden uzol poskytuje službu a druhý uzol posiela požiadavku na túto službu.
-
-\paragraph{Vytvorenie služby:} Uzol poskytujúci službu musí definovať callback funkciu, ktorá spracuje požiadavky a vráti odpoveď~\cite{ros2_doc}.
-
-\begin{algorithm}[H]
-\caption{Implementácia Service}
-\begin{algorithmic}[1]
-\State class MinimalService(Node):
-\State \hspace{1em}def \_\_init\_\_(self):
-\State \hspace{2em}super().\_\_init\_\_('minimal\_service')
-\State \hspace{2em}self.srv = self.create\_service(AddTwoInts, 'add\_two\_ints', self.add\_two\_ints\_callback)
-
-\State \hspace{1em}def add\_two\_ints\_callback(self, request, response):
-\State \hspace{2em}response.sum = request.a + request.b
-\State \hspace{2em}self.get\_logger().info('Incoming request\textbackslash{}na: \%d b: \%d' \% (request.a, request.b))
-\State \hspace{2em}return response
-
-\State def main(args=None):
-\State \hspace{1em}rclpy.init(args=args)
-\State \hspace{1em}minimal\_service = MinimalService()
-\State \hspace{1em}rclpy.spin(minimal\_service)
-\State \hspace{1em}rclpy.shutdown()
-
-\State if \_\_name\_\_ == '\_\_main\_\_':
-\end{algorithmic}
-\end{algorithm}
-
-\paragraph{Použitie služby:} Uzol môže poslať požiadavku na službu a čakať na odpoveď. Používa sa na úlohy, ktoré vyžadujú okamžité spracovanie a odpoveď.
-
-\subsubsection*{Akcie (actions)}
-Akcie sú rozšírením služieb a sú navrhnuté na vykonávanie dlhších úloh. Poskytujú mechanizmus na sledovanie priebehu úlohy a umožňujú posielať priebežné aktualizácie.
-
-\paragraph{Vytvorenie akcie:} Akcia pozostáva z dvoch hlavných častí: servera, ktorý vykonáva úlohu, a klienta, ktorý iniciuje požiadavku na úlohu~\cite{ros2_doc}.
-
-\begin{algorithm}
-\caption{Akcia na generovanie Fibonacciho čísel}
-\begin{algorithmic}[1]
-\Procedure{execute\_callback}{goal\_handle}
-\State sequence = [0, 1]
-\For{$i = 2$ to goal\_handle.request.order}
-\State sequence.append(sequence[i-1] + sequence[i-2])
-\EndFor
-\State \Return Fibonacci.Result(sequence=sequence)
-\EndProcedure
-\end{algorithmic}
-\end{algorithm}
-
-\paragraph{Sledovanie akcie:} Klient môže posielať požiadavky a prijímať spätné informácie o priebehu úlohy. To umožňuje komplexné spracovanie a interaktívne operácie.
-
-\subsubsection*{Rozhrania správ}
-Typ správy na téme alebo v službe je daný rozhraním (\emph{interface}). Štandardné definície sú v balíkoch ako \texttt{geometry\_msgs} či \texttt{sensor\_msgs}~\cite{ros2_common_interfaces}. Vlastné typy sa definujú v súboroch \path{.msg} (témy), \path{.srv} (služby) a \path{.action} (akcie)~\cite{ros2_doc}.
-
-\subsection*{Vývoj v ROS~2}
-
-Vývoj začína vytvorením workspace: zdroje v \path{src/}, po príkaze \texttt{colcon build} vznikajú priečinky \path{build/}, \path{install/} a \path{log/}~\cite{ros2_doc_workspace}. Pred spustením uzlov sa prostredie aktivuje príkazom \path{source install/setup.bash}. Systémová inštalácia ROS~2 tvorí často \emph{underlay}, vlastný workspace je \emph{overlay}~\cite{ros2_doc_workspace}. Zdrojové súbory sú organizované do balíkov (\emph{packages}) s \path{package.xml} a pravidlami zostavenia (napr.\ \path{setup.py} pre Python)~\cite{ros2_doc_workspace}.
+Nasledujúca ukážka ilustruje najjednoduchšiu kostru uzla v \texttt{rclpy}:
 
 \begin{verbatim}
-Workspace/
-|-- build/
-|-- install/
-|-- log/
-|-- src/
-    |-- my_package/
-        |-- launch/
-        |-- config/
-        |-- resource/
-        |-- test/
-        |-- package.xml
-        |-- setup.py
+import rclpy
+from rclpy.node import Node
+
+class SimpleNode(Node):
+    def __init__(self):
+        super().__init__('simple_node')
+        self.get_logger().info('Uzol bol spustený')
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SimpleNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 \end{verbatim}
 
-\subsection*{Parametre, YAML a launch súbory}
+\subsection*{Správy a rozhrania}
 
-Uzly môžu mať parametre deklarované v kóde a meniteľné za behu cez parametrové služby ROS~2; hodnoty sa typicky načítavajú z YAML súborov v priečinku \path{config/} balíka~\cite{ros2_doc_launch}. Na spustenie viacerých uzlov a predanie parametrov slúžia launch súbory --- v tejto práci hlavne v Pythone (funkcia \path{generate_launch_description}, akcie \texttt{Node}, \path{IncludeLaunchDescription}, remapovanie tém)~\cite{ros2_doc_launch}.
+Komunikácia medzi uzlami prebieha pomocou správ (\emph{messages}), ktorých formát je pevne definovaný rozhraním. Štandardné typy správ sú súčasťou balíkov ako \texttt{std\_msgs}, \texttt{geometry\_msgs}, \texttt{sensor\_msgs} alebo \texttt{nav\_msgs} (definície typov sú súčasťou ekosystému ROS~2).
 
-\subsection*{Príkazový riadok a súvisiace nástroje}
-
-Na ladenie sa používajú príkazy tvaru \path{ros2 <príkaz> <podpríkaz>}, napr.~\path{ros2 topic list}, \path{ros2 topic echo}, \path{ros2 topic hz} (odhad frekvencie publikovania), \path{ros2 node list}, \path{ros2 node info}, \path{ros2 interface show}, \path{ros2 service list}, \path{ros2 param list}~\cite{ros2_doc_cli}. Na rýchlu kontrolu prostredia slúži aj \path{ros2 doctor}. Záznam a prehrávanie behu bez zmeny kódu zabezpečujú \path{ros2 bag record} a \path{ros2 bag play}~\cite{ros2_doc_cli}.
-
-Grafické rozhranie rqt združuje pluginy, ktoré sa spúšťajú z jedného okna (\path{rqt}) alebo samostatne. Medzi často používané patria:
+Pre mobilnú robotiku sú dôležité napríklad typy:
 \begin{itemize}
-    \item \texttt{rqt\_graph} --- graf uzlov a tém (kto čo publikuje a odoberá); vhodné na overenie, či launch naozaj prepojil očakávané bloky.
-    \item \texttt{rqt\_plot} --- časové priebehy číselných veličín z tém (napr.\ chyby riadenia, odhady zo spracovania); v tejto práci využiteľné pri ladení sledovania objektu.
-    \item \texttt{rqt\_image\_view} --- výber témy s obrazom (\texttt{sensor\_msgs/Image} alebo komprimovaná varianta); pri kamere a pri debug výstupoch z počítačového videnia.
-    \item \texttt{rqt\_console} --- prehľad logov z uzlov podľa úrovne a zdroja.
-    \item \texttt{rqt\_tf\_tree} (príp. \path{view_frames} z balíka \texttt{tf2\_tools}) --- vizualizácia stromu rámov tf2 a kontrola chýbajúcich transformácií.
-\end{itemize}
-K uvedeným nástrojom sa odkazuje aj v prednáškach predmetu BPC-PRP~\cite{bpc_prp_ros2_materials}. V implementácii sa reálne využili najmä RViz2 (mapa, laser, plán, obraz), \texttt{rqt\_graph} a ďalšie okná \texttt{rqt} pri analýze laseru a behu SLAM (obr.~\ref{fig:runtime-rqt-graph}, \ref{fig:wander-rqt-scan}, \ref{fig:manual-slam-rqt-graph}), \texttt{rqt\_image\_view} na obraz z kamery a na ladenie sledovania gule (obr.~\ref{fig:ball-follow-debug}) a podľa potreby \texttt{rqt\_plot} na signály z uzla sledovania.
-
-\subsection*{Transformácie (tf2)}
-
-Subsystém tf2 udržiava strom súradnicových rámov (\emph{frames}) --- napr.\ \path{base_link}, \path{odom}, rám senzora. Dynamické vzťahy sa typicky publikujú na \rostopic{/tf}, pevné montážne na \rostopic{/tf_static}~\cite{ros2_doc_tf2}. V kóde sa používa napr.~\texttt{tf2\_ros.TransformBroadcaster} alebo dotazy cez \texttt{Buffer} / \texttt{TransformListener}~\cite{ros2_doc_tf2}.
-
-
-\section{Základné komponenty a nástroje ROS~2}
-
-Táto sekcia sa zaoberá nástrojmi na vizualizáciu, modelovanie a simuláciu v ROS~2.
-
-\subsection*{Rviz2 – vizualizácia dát a stavu robota}
-
-Rviz2 je vizualizačný nástroj, ktorý umožňuje zobraziť dáta zo senzorov a stav robota v reálnom čase.
-
-\subsubsection*{Funkcie Rviz2}
-Rviz2 je súčasťou distribúcie ROS~2 a je možné ho spustiť pomocou príkazu \texttt{rviz2}.
-Rviz2 poskytuje nasledujúce funkcionality:
-\begin{itemize}
-    \item Vizualizácia 3D modelu robota.
-    \item Zobrazovanie dát zo senzorov ako napríklad LIDAR alebo kamera.
-    \item Vizualizácia plánovaných trás a interakcií s prostredím.
+    \item \texttt{sensor\_msgs/msg/LaserScan} pre 2D lidar,
+    \item \texttt{sensor\_msgs/msg/Image} pre kameru,
+    \item \texttt{sensor\_msgs/msg/Imu} pre inerciálnu jednotku,
+    \item \texttt{geometry\_msgs/msg/Twist} pre rýchlostné príkazy,
+    \item \texttt{nav\_msgs/msg/Odometry} pre odometriu.
 \end{itemize}
 
+\subsection*{Témy a model publisher--subscriber}
 
-\subsection*{Gazebo simulátor}
+Témy (\emph{topics}) sú asynchrónne komunikačné kanály určené na priebežnú výmenu správ medzi uzlami. Publisher odosiela správy na tému a subscriber ich prijíma. Tento model je vhodný najmä pre kontinuálne dátové toky, napríklad zo senzorov alebo z riadiacich uzlov.
 
-Gazebo využíva súbory vo formáte xacro na definovanie robotov, senzorov a prostredí. Tieto súbory špecifikujú fyzikálne vlastnosti, vizuálne prvky a správanie jednotlivých komponentov. Po zostavení a načítaní týchto súborov Gazebo spustí simuláciu.
+Príklad jednoduchého publishera v jazyku Python:
 
+\begin{verbatim}
+from std_msgs.msg import String
+import rclpy
+from rclpy.node import Node
 
-\subsubsection*{Integrácia s ROS~2}
-Pre ROS~2 Jazzy a novší simulátor \emph{Gazebo Sim} (predtým Ignition) sa používajú balíky \texttt{ros\_gz\_sim}, \texttt{ros\_gz\_bridge} a súvisiace mosty namiesto staršieho balíka \texttt{gazebo\_ros} z prostredia Gazebo Classic. Simulátor načíta SDF svet a model robota; senzory (kamera, laser) publikujú témy v priestore Gazebo, ktoré most prepojí na štandardné ROS~2 správy (\texttt{sensor\_msgs}, \texttt{nav\_msgs}, \texttt{tf2}).
+class Talker(Node):
+    def __init__(self):
+        super().__init__('talker')
+        self.pub = self.create_publisher(String, 'demo_topic', 10)
+        self.timer = self.create_timer(0.5, self.timer_callback)
+        self.counter = 0
 
-\subsubsection*{Praktický príklad}
-V rámci vývoja sa simulácia spúšťa z pracovného priestoru s balíkmi \texttt{waver\_sim} / \texttt{waver\_nav}, napr.\ príkazom \texttt{ros2 launch waver\_sim launch\_sim.launch.py} alebo jednotným skriptom \texttt{run\_sim.sh}, ktorý zdrojuje prostredie ROS~2 Jazzy, vyčistí staré procesy a voliteľne spustí teleop v samostatnom termináli. Parametre mosta (mapovanie tém Gazebo $\rightarrow$ ROS) sú v konfiguračnom súbore YAML; obraz z kamery je v ROS často dostupný na \rostopic{/camera/image_raw}.
+    def timer_callback(self):
+        msg = String()
+        msg.data = f'Sprava {self.counter}'
+        self.pub.publish(msg)
+        self.counter += 1
+\end{verbatim}
 
-\section{Integrácia senzorov a akčných členov}
+Zodpovedajúci subscriber môže mať tvar:
 
-Táto sekcia pokrýva všeobecné princípy integrácie senzorov a akčných členov do robotických systémov s použitím ROS~2.
+\begin{verbatim}
+from std_msgs.msg import String
+import rclpy
+from rclpy.node import Node
 
+class Listener(Node):
+    def __init__(self):
+        super().__init__('listener')
+        self.sub = self.create_subscription(
+            String, 'demo_topic', self.callback, 10)
 
-\subsubsection*{Pripojenie senzorov a spracovanie dát}
-Senzory môžu byť pripojené k riadiacej jednotke cez rôzne komunikačné rozhrania. ROS~2 balíky poskytujú ovládače, vďaka ktorým je ľahké pripojenie a konfigurácia senzorov.
+    def callback(self, msg):
+        self.get_logger().info(f'Prijata sprava: {msg.data}')
+\end{verbatim}
 
-Na asynchrónnu výmenu dát medzi senzorickými uzlami a ostatnými komponentmi systému sa využívajú vyššie spomenuté témy. Napríklad LIDAR môže publikovať dáta o vzdialenostiach na tému \rostopic{/scan}, ktoré potom odoberajú uzly zodpovedné za mapovanie alebo vyhýbanie sa prekážkam.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{obrazky/publisher_subscriber.png}
+    \caption[Model publisher a subscriber na téme]{Publisher publikuje správy na tému a jeden alebo viac subscriberov ich odoberá}
+    \label{fig:ros2pubsub}
+\end{figure}
 
-\begin{algorithm}
-\caption{Odber dát zo senzora}
-\begin{algorithmic}[1]
-\State \texttt{def callback(msg):}
-\State \quad \texttt{print("Received data: ", msg.data)}
-\State \texttt{subscription = create\_subscription(SensorMsgType, 'sensor\_topic', callback, 10)}
-\end{algorithmic}
-\end{algorithm}
+\subsection*{Služby}
 
-\subsubsection*{Kalibrácia a nastavenie}
-Senzory často vyžadujú kalibráciu a konfiguráciu, aby správne fungovali. ROS~2 podporuje používanie parametrov a konfiguračných súborov, ktoré umožňujú dynamické nastavenie parametrov senzorov bez nutnosti zmeny kódu.
+Služby (\emph{services}) realizujú synchrónny model request--response. Klient odošle požiadavku a server vráti odpoveď. Tento spôsob komunikácie je vhodný pre jednorazové operácie, ktoré majú mať jednoznačný výsledok, napríklad reset modulu, prepnutie režimu alebo získanie konfigurácie.
 
-\subsection*{Súvis s príbuznými implementáciami (ROS~2)}
+Zjednodušený príklad servera služby:
 
-Podobné bakalárske práce na FIT využívajú rovnaké stavebné kamene: modulárne balíčky, témy pre senzory a riadenie, launch súbory, tf2 medzi rámami, YAML konfigurácie a prepínanie medzi manuálnym a autonómnym režimom. Ako príklad modularity a senzorických tém na Raspberry Pi slúži napr. práca Skoleka~\cite{balancujici_robot}; ďalšie práce z rovnakého okruhu často kombinujú teleprezenciu, SLAM alebo Nav2 v simulácii. Táto práca na týchto princípoch stavia vlastnú zostavu pre Wave Rover a LiDAR LD19 bez nutnosti odkazovať na konkrétny cudzí zdrojový kód.
+\begin{verbatim}
+from example_interfaces.srv import AddTwoInts
+import rclpy
+from rclpy.node import Node
 
-\subsection*{micro-ROS a integrácia s embedded zariadeniami}
+class AddService(Node):
+    def __init__(self):
+        super().__init__('add_service')
+        self.srv = self.create_service(
+            AddTwoInts, 'add_two_ints', self.callback)
 
-micro-ROS~\cite{microros} je rozšírenie ekosystému ROS~2 pre mikrokontroléry a embedded zariadenia s obmedzenou pamäťou a výkonom. Umožňuje, aby takéto zariadenia (napr. ESP32, STM32) vystupovali ako plnohodnotní účastníci ROS~2 siete: publikovali témy, odoberali témy, poskytovali alebo volali služby a pracovali s parametrami. Tým sa odstráni potreba vlastného protokolu (napr. HTTP alebo proprietárneho UART protokolu) medzi hlavným počítačom (Raspberry Pi) a riadiacou jednotkou na báze mikrokontroléra.
+    def callback(self, request, response):
+        response.sum = request.a + request.b
+        return response
+\end{verbatim}
 
-\paragraph{Funkčnosť a prepojenie s ROS~2.}
-micro-ROS beží na embedded zariadení nad real-time operačným systémom (typicky FreeRTOS). Knižnica micro-ROS využíva rovnaké koncepty ako ROS~2 (DDS, témy, typy správ), ale s redukovanou závislosťou a pamäťovou náročnosťou. Komunikácia medzi mikrokontrolérom a zvyškom ROS~2 siete prebieha cez \emph{micro-ROS agenta}, ktorý beží na Linuxe (napr. na Raspberry Pi alebo na vývojovom PC). Agent prijíma dáta z embedded zariadenia cez transport (sériový port UART, WiFi alebo Ethernet) a premostí ich do DDS siete. Uzly bežiace na RPi a uzly bežiace na mikrokontroléri tak vidia navzájom svoje témy v rámci jednej ROS~2 doméne. micro-ROS je kompatibilný s distribúciami ROS~2 Humble a novšími (Iron, Jazzy)~\cite{microros_setup}.
+\subsection*{Akcie}
 
-\paragraph{Vzorové uzly pre motor a IMU.}
-Ako alternatíva k HTTP rozhraniu existuje ekosystém micro-ROS: mikrokontrolér môže cez agenta vystupovať priamo v ROS~2 sieti (témy, služby). V rámci tejto práce boli zvážené vzorové ukážky (adresár \texttt{micro\_ros\_examples}): subscriber na príkazy pohonu a publisher IMU. V praktickej implementácii použitej v texte nižšie je však primárne riešenie \emph{HTTP JSON príkazy} medzi Raspberry Pi a firmwareom UGV Base General na ESP32 (pozri kapitolu~\ref{kap:implementacia}), pretože priamo zodpovedá dokumentovanému API výrobcu dosky. Micro-ROS ostáva voľbou do budúcna pri požiadavke na jednotnú DDS doménu bez vlastného HTTP mosta; podrobné merania latencie agenta v tejto práci nie sú uvedené.
+Akcie (\emph{actions}) sú určené pre dlhšie trvajúce operácie. Na rozdiel od služieb umožňujú priebežnú spätnú väzbu, vrátenie konečného výsledku a zrušenie požiadavky. V robotike sa používajú napríklad pri navigácii, manipulácii alebo vykonávaní komplexnej sekvencie pohybov.
 
+Typická akcia zahŕňa:
+\begin{itemize}
+    \item odoslanie cieľa (\emph{goal}),
+    \item priebežný feedback,
+    \item finálny výsledok (\emph{result}).
+\end{itemize}
 
+Zjednodušená myšlienka callbacku akčného servera:
 
+\begin{verbatim}
+def execute_callback(self, goal_handle):
+    sequence = [0, 1]
+    for i in range(2, goal_handle.request.order):
+        sequence.append(sequence[i-1] + sequence[i-2])
+        goal_handle.publish_feedback(...)
+    goal_handle.succeed()
+    result = Fibonacci.Result()
+    result.sequence = sequence
+    return result
+\end{verbatim}
+
+\subsection*{QoS}
+
+Kľúčovou vlastnosťou ROS~2 je podpora Quality of Service. (QoS)  Nastavenia QoS určujú správanie komunikácie, napríklad či je dôležitejšia spoľahlivosť alebo nízka latencia. Medzi najdôležitejšie politiky patria:
+\begin{itemize}
+    \item \textbf{history} a \textbf{depth},
+    \item \textbf{reliability} (\emph{reliable} alebo \emph{best effort}),
+    \item \textbf{durability},
+    \item \textbf{deadline},
+    \item \textbf{lifespan},
+    \item \textbf{liveliness}.
+\end{itemize}
+
+Pri práci so senzormi, ako je LiDAR alebo kamera, je QoS dôležité kvôli tomu, že publisher a subscriber sa spoja len pri kompatibilných nastaveniach. V praxi sa preto pri ladení systému často kontroluje nielen názov témy a typ správy, ale aj jej QoS profil.
+
+\subsection*{Workspace, balíky a build systém}
+
+Vývoj v ROS~2 prebieha vo workspace, ktorého zdrojová časť sa spravidla nachádza v priečinku \path{src/}. Po príkaze \texttt{colcon build} vznikajú priečinky \path{build/}, \path{install/} a \path{log/}. Dokumentácia Jazzy rozlišuje aj vzťah \emph{underlay} a \emph{overlay}, kde systémová inštalácia ROS~2 tvorí základ a vlastný workspace na ňu nadväzuje.
+
+Príklad typickej štruktúry Python balíka:
+
+\begin{verbatim}
+my_package/
+├── package.xml
+├── setup.py
+├── setup.cfg
+├── resource/
+├── my_package/
+│   ├── __init__.py
+│   └── my_node.py
+├── launch/
+└── config/
+\end{verbatim}
+
+Balík je základnou jednotkou organizácie kódu a obsahuje vykonateľné súbory, launch súbory, konfiguračné dáta a prípadne vlastné rozhrania.
+
+\subsection*{Launch súbory}
+
+Launch súbory slúžia na spustenie viacerých uzlov, nastavenie parametrov, remapovanie tém a celkové zostavenie aplikácie. V ROS~2 sa bežne používajú Python launch súbory, ktoré vracajú objekt \texttt{LaunchDescription}.
+
+Jednoduchý launch súbor môže vyzerať nasledovne:
+
+\begin{verbatim}
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='demo_nodes_py',
+            executable='talker',
+            name='demo_talker'
+        )
+    ])
+\end{verbatim}
+
+\subsection*{Parametre}
+
+Parametre sú konfiguračné hodnoty viazané na konkrétny uzol. Možno ich nastavovať pri štarte aj za behu a ich životnosť je zviazaná so životnosťou uzla.
+
+Príklad deklarácie a čítania parametra v \texttt{rclpy}:
+
+\begin{verbatim}
+import rclpy
+from rclpy.node import Node
+
+class ParamNode(Node):
+    def __init__(self):
+        super().__init__('param_node')
+        self.declare_parameter('gain', 0.5)
+        gain = self.get_parameter('gain').value
+        self.get_logger().info(f'gain = {gain}')
+\end{verbatim}
+
+V praxi sa parametre často ukladajú do YAML súborov a predávajú cez launch súbory, čo zjednodušuje konfiguráciu viacerých uzlov bez zásahu do zdrojového kódu.
+
+\subsection*{Príkazový riadok a introspekcia systému}
+
+ROS~2 obsahuje rozsiahle CLI nástroje na introspekciu systému, ktoré umožňujú sledovať stav uzlov, komunikáciu a konfiguráciu bez zásahu do kódu. Medzi najdôležitejšie patria:
+\begin{itemize}
+    \item \texttt{ros2 node list} -- zobrazí zoznam všetkých aktívnych uzlov v systéme, \texttt{ros2 node info} poskytne detailné informácie o konkrétnom uzle (publikované a odoberané témy, služby),
+    
+    \item \texttt{ros2 topic list} -- vypíše dostupné témy, \texttt{ros2 topic echo} umožňuje sledovať obsah správ publikovaných na téme, \texttt{ros2 topic hz} odhaduje frekvenciu publikovania,
+    
+    \item \texttt{ros2 service list} -- zobrazí dostupné služby, \texttt{ros2 service call} umožňuje manuálne zavolať službu s konkrétnymi parametrami,
+    
+    \item \texttt{ros2 param list} -- vypíše parametre uzlov, \texttt{ros2 param get} a \texttt{ros2 param set} slúžia na čítanie a zmenu hodnôt parametrov počas behu,
+    
+    \item \texttt{ros2 interface show} -- zobrazí definíciu typu správy, služby alebo akcie (napr.\ štruktúru \texttt{sensor\_msgs/msg/LaserScan}),
+    
+    \item \texttt{ros2 doctor} -- diagnostický nástroj, ktorý kontroluje správnosť konfigurácie ROS~2 prostredia a upozorňuje na možné problémy.
+\end{itemize}
+
+Tieto nástroje sú kľúčové najmä pri ladení a testovaní systému, keďže umožňujú rýchlo overiť, či uzly komunikujú správne, či sú témy publikované a či majú očakávanú frekvenciu a obsah.
+
+\subsection*{tf2 a súradnicové rámce}
+
+Subsystém tf2 slúži na reprezentáciu vzťahov medzi súradnicovými rámami robota. Každá transformácia má rodičovský a detský rám, čím vzniká strom transformácií. Bežne sa používajú rámce ako \path{map}, \path{odom}, \path{base_link} alebo rámce jednotlivých senzorov.
+
+Statické transformácie opisujú pevné geometrické vzťahy, napríklad montáž senzora na podvozok, zatiaľ čo dynamické transformácie sa menia v čase, napríklad poloha robota voči odometrii. V \texttt{rclpy} sa na publikovanie transformácií používa \texttt{TransformBroadcaster} a na ich odoberanie kombinácia \texttt{Buffer} a \texttt{TransformListener}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.45\textwidth]{obrazky/ros2_tf2_frames.png}
+    \caption[Strom súradnicových rámov tf2]{Príklad stromu súradnicových rámov prepojených transformáciami tf2, rodičovské a detské rámce zodpovedajú vzťahom medzi mapou, odometriou, podvozkom a senzormi}
+    \label{fig:ros2-tf2-frames}
+\end{figure}
+
+\subsection*{RViz2, rqt a rosbag}
+
+RViz2 je hlavný vizualizačný nástroj v prostredí ROS~2, ktorý umožňuje zobrazenie stavu robota a dát zo senzorov v reálnom čase. Podporuje vizualizáciu 3D modelu robota, laserových skenov, obrazových dát, markerov, máp, plánovaných trajektórií a transformácií medzi súradnicovými rámami. Používateľ si môže dynamicky pridávať jednotlivé zobrazovacie prvky a konfigurovať ich parametre podľa potreby.
+
+Balík rqt združuje sadu grafických nástrojov, ktoré slúžia na analýzu a ladenie systému. Medzi najčastejšie používané patria:
+\begin{itemize}
+    \item \texttt{rqt\_graph} -- zobrazuje graf uzlov a tém, čo umožňuje overiť štruktúru komunikácie a prepojenie jednotlivých komponentov,
+    
+    \item \texttt{rqt\_plot} -- umožňuje sledovať časový priebeh číselných veličín publikovaných na témach, napríklad výstupy regulátora alebo hodnoty zo senzorov,
+    
+    \item \texttt{rqt\_image\_view} -- slúži na zobrazenie obrazových dát zo senzorov, napríklad kamery alebo spracovaného obrazu.
+\end{itemize}
+
+Na záznam a prehrávanie dát v ROS~2 sa používa nástroj \texttt{ros2 bag}. Umožňuje zaznamenávať správy z vybraných tém počas behu systému a následne ich prehrávať bez potreby fyzického hardvéru.
+
+\subsection*{Gazebo a simulácia}
+
+ROS~2 podporuje simuláciu robotických systémov. Gazebo simulácia umožňuje testovanie algoritmov bez fyzického robota, vrátane simulovaných senzorov a fyziky prostredia. Integrácia s Gazebo Sim môže využívať balíky ako \texttt{ros\_gz\_sim} a \texttt{ros\_gz\_bridge}, ktoré prepájajú simulačné entity s témami ROS~2.
 
 \chapter{Implementácia}
 \label{kap:implementacia}
 
-V tejto kapitole je popísaný návrh a priebeh implementácie v poradí skladania systému: najprv model a simulácia, potom ESP32/HTTP ako alternatíva výrobcu, hlavná zostava HAT na Raspberry Pi (základný bringup, IMU a optický tok, wander, webové rozhranie, runtime stack), sledovanie lopty, prevádzka a súborový systém, SLAM/Nav2 v simulácii a záverečný prehľad uzlov. 
+V tejto kapitole je popísaný návrh a priebeh implementácie v poradí, v akom bol systém reálne skladaný a overovaný. Postup je usporiadaný takto:
+\begin{itemize}
+    \item stručný setup prostredia a inštalácia potrebných balíkov,
+    \item model robota, URDF/Xacro a simulácia v Gazebo a RViz,
+    \item ESP32/HTTP vetva ako alternatíva výrobcu,
+    \item hlavná zostava s Motor Driver HAT na Raspberry Pi (bringup, IMU a optický tok, wander, webové rozhranie, runtime stack),
+    \item sledovanie lopty, prevádzka a súborový systém,
+    \item SLAM/Nav2 v simulácii a záverečný prehľad uzlov.
+\end{itemize}
+
+\section{Krátky setup prostredia pred spojazdnením robota}
+\label{sec:setup-pred-spojazdnenim}
+
+Pred samotným spojazdnením fyzickej zostavy bola pripravená jednotná softvérová báza na Raspberry Pi 5 s Ubuntu 24.04. V stručnosti išlo o inštaláciu ROS~2 Jazzy z oficiálnych Debian balíkov, nicializáciu prostredia (\path{source /opt/ros/jazzy/setup.bash}) a kontrolu základných nástrojov a nastavenie siete a domény cez \texttt{ROS\_DOMAIN\_ID}, aby sa uzly videli len v požadovanej skupine zariadení.
+Postup inštalácie a organizácia tutoriálov sú v oficiálnej dokumentácii Jazzy~\cite{ros2_doc}.
+
+Pre kameru na Raspberry Pi 5 sa v Ubuntu vetve použil balík \path{camera_ros} nad \emph{libcamera}/\emph{rpicam} vrstvou; prakticky sa osvedčilo overenie členstva používateľa v skupine \texttt{video}, kontrola zariadení \path{/dev/video*} a spustenie uzla \path{ros2 run camera_ros camera_node}. Pri tejto platforme sa nevyužíva legacy prístup cez \path{ros-jazzy-v4l2-camera}; vhodnejšia je cesta cez \path{camera_ros} a správne nastavenie RPi5 kamerového stacku.
+
+V priebehu implementácie sa vyskytol problém, že kamera bola fyzicky pripojená a systém ju čiastočne detegoval, avšak uzol neposkytoval použiteľný obraz alebo nepublikoval očakávané dáta. Tento stav bol spôsobený najmä rozdielom medzi starším V4L2 prístupom a novou architektúrou \emph{libcamera}, ktorú Raspberry Pi~5 využíva.
+
+Riešenie spočívalo v zosúladení konfigurácie systému podľa odporúčaného postupu pre Raspberry Pi~5 a ROS~2 Jazzy~\cite{RPCameraRP5}. Najskôr bolo potrebné správne nastaviť kamerový overlay v súbore \path{/boot/firmware/config.txt}, aby bol senzor korektne inicializovaný už na úrovni systému. Následne bola overená funkčnosť kamery mimo ROS prostredia pomocou nástroja \path{rpicam-hello}, čím sa potvrdilo, že problém nesúvisí s hardvérom, ale s konfiguráciou softvéru. Ďalším krokom bolo zabezpečenie prístupových práv, konkrétne pridanie používateľa do skupiny \texttt{video}, čo umožnilo prístup k zariadeniam reprezentovaným v systéme ako \path{/dev/video*}. Po týchto úpravách bolo možné použiť balík \path{camera_ros}, ktorý je navrhnutý pre prácu s \emph{libcamera} vrstvou. Po aplikovaní uvedených krokov začal uzol korektne publikovať obrazové dáta do ROS~2 prostredia.
 
 \section{Model robota, URDF/Xacro a simulácia v Gazebo a RViz}
 \label{sec:sim-gazebo}
 
-Pri modelovaní robota som použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov -- LiDARu a kamery. Podvozok zodpovedá koncepcii diferenciálneho pohonu~\cite{siegwart2011introduction}. Komponenty sú cez \texttt{xacro:include} rozdelené do samostatných súborov: účel je jednoduchá úprava montážnych osov (napr.\ posun laseru) bez prepisovania celého URDF a znovupoužitie rovnakých fragmentov v simulácii aj pri generovaní TF pre RViz.
-
-
-Hlavný súbor obsahuje odkazy na jednotlivé časti robota, ktoré sú pre prehľadnosť implementované v samostatných súboroch.
+Pri modelovaní robota sa použil formát Xacro. Celý model pozostáva z viacerých častí, vrátane podvozku, kolies a senzorov -- LiDARu a kamery. Komponenty sú cez \texttt{xacro:include} rozdelené do samostatných súborov, aby to umožnilo jednoduché úpravy.
 
 \subsection*{Definícia tela}
 
-Základný podvozok robota tvorí spoj (\texttt{fixed joint}) s jeho základňou (\texttt{base\_link}). Podvozok je obdĺžnikový blok s definovanými vizuálnymi a kolíznymi vlastnosťami:
+Základ modelu je \texttt{base\_link}, na ktorom je definované telo podvozku ako box s kolíziou a zotrvačnosťou:
 
 \begin{lstlisting}[caption=Definícia podvozku]
-<link name="chassis">
+<link name="base_link">
+    <inertial>
+        <mass value="1.2"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="0.003" iyy="0.005" izz="0.006"/>
+    </inertial>
     <visual>
-        <origin xyz="0.15 0 0.02"/>
-        <geometry>
-            <box size="0.16 0.16 0.07"/>
-        </geometry>
-        <material name="white"/>
+        <origin xyz="0 0 0"/>
+        <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
+        <material name="dark_gray"/>
     </visual>
     <collision>
-        <origin xyz="0.15 0 0.02"/>
-        <geometry>
-            <box size="0.16 0.16 0.07"/>
-        </geometry>
+        <origin xyz="0 0 0"/>
+        <geometry><box size="${body_l} ${body_w} ${body_h}"/></geometry>
     </collision>
-    <xacro:inertial_box mass="0.5" x="0.16" y="0.16" z="0.07">
-        <origin xyz="0.15 0 0.02" rpy="0 0 0"/>
-    </xacro:inertial_box>
 </link>
 \end{lstlisting}
 
 
-Kolesá boli pripojené k základni robota pomocou rotačných kĺbov (\texttt{continuous joint}). Každé koleso bolo definované ako valec s vizuálnymi a kolíznymi vlastnosťami.
-
-Každý má definovaný materiál aj vlastnosti, ktorý Gazebo využíva na vizualizáciu a simuláciu.
+Kolesá sú pripojené k \texttt{base\_link} rotačnými kĺbmi typu \texttt{continuous}  a v Gazebo majú nastavené materiálové aj trecie parametre.
 
 
 \subsection*{Kamera a LIDAR}
 
-V súbore \texttt{camera.xacro} je definované, ako je kamera pripevnená na robotovi. Kamera je umiestnená na podvozku robota pomocou pevného kĺbu.
-
-Kamera je pripojená na určité miesto na podvozku v definovaných súradniciach. Tento kód ukazuje, ako je to nastavené:
+V \texttt{camera.xacro} a \texttt{lidar.xacro} sú oba senzory pripojené k \texttt{base\_link} pevnými kĺbmi:
 
 \begin{verbatim}
 <joint name="camera_joint" type="fixed">
-    <parent link="chassis"/>
+    <parent link="base_link"/>
     <child link="camera_link"/>
-    <origin xyz="0.22 0 0.07" rpy="0 0 0"/>
+    <origin xyz="0.097 0 0.005" rpy="0 0 0"/>
 </joint>
 \end{verbatim}
-
-Rovnako ako kamera, aj LIDAR je pripojený k podvozku pomocou pevného kĺbu. Tento kĺb spája podvozok (link \texttt{chassis}) s rámom LIDARu (link \texttt{laser\_frame}).
 
 \begin{verbatim}
-<joint name="laser_joint" type="fixed">
-    <parent link="chassis"/>
-    <child link="laser_frame"/>
-    <origin xyz="0.1 0 0.07" rpy="0 0 0"/>
+<joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.04 0 0.092" rpy="0 0 0"/>
 </joint>
 \end{verbatim}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.92\textwidth]{obrazky/model_rviz.png}
-    \caption[Model robota v RViz2]{Model robota Wave Rover v RViz2 podľa URDF/Xacro (podvozok, kolesá, LiDAR, kamera)}
-    \label{fig:model-rviz-waver}
-\end{figure}
-
 
 \subsection*{Gazebo simulátor a RViz}
 
-V simulátore Gazebo Sim som v prostredí workspace pripravil model robota Wave Rover v súradniciach URDF/Xacro (podvozok, kolesá, LiDAR, kamera) a svet s prekážkami na demonštráciu senzorov a navigácie~\cite{gazebo}. Senzory v simulácii sú napojené cez \path{ros_gz_bridge}\allowbreak: laser poskytuje dáta vhodné pre SLAM a Nav2, kamera obraz na tému kompatibilnú s vizualizáciou v RViz (napr.\ \rostopic{/camera/image_raw}).
-
-Spúšťanie: po zostavení workspace (\path{colcon}\allowbreak\ \path{build}) a zdrojovaní (\path{source}\allowbreak\ \path{install/setup.bash}) napr.\ \path{ros2}\allowbreak\ \path{launch}\allowbreak\ \path{waver_sim}\allowbreak\ \path{launch_sim.launch.py}, prípadne skript \path{./run_sim.sh} v priečinku simulácie; ten môže spustiť teleop a bringup s Nav2 a \path{slam_toolbox}, ak sú príslušné balíky v workspace. RViz používa uloženú konfiguráciu (napr.\ \path{main.rviz} v \path{waver_sim}) so zobrazeniami mapy, laseru, plánu a obrazu z kamery.
+Po definovaní geometrie v Xacro bol rovnaký model použitý v RViz aj v Gazebo Sim, takže vizualizácia aj fyzikálna simulácia vychádzajú z jednej štruktúry. V Gazebo je kamera a LiDAR napojený cez \path{ros_gz_bridge}, preto sú dostupné štandardné ROS témy (napr.\ \rostopic{/camera/image_raw} a \rostopic{/scan})~\cite{gazebo}.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.88\textwidth]{obrazky/gazebo.png}
-    \caption{Simulovaný model Wave Rovera v prostredí Gazebo Sim}
+    \begin{minipage}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{obrazky/model_rviz.png}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{obrazky/gazebo.png}
+    \end{minipage}
+    \caption[Model v RViz2 a Gazebo Sim]{Model Wave Rovera: vľavo RViz2, vpravo Gazebo Sim}
+    \label{fig:model-rviz-waver}
     \label{fig:gazebo-waver}
 \end{figure}
-
-
-\section{Kamera na Raspberry Pi~5 s Ubuntu~24.04 a ROS~2 Jazzy}
-\label{sec:kamera-rpi5-ros2}
-
-Kamera v systéme slúži predovšetkým na teleprezenciu (stream do webového rozhrania), vizualizáciu v RViz a na experimenty s optickým tokom a sledovaním farebného objektu. Hardvér modulu je v kapitole~\ref{chap:hardware} (obr.~\ref{fig:camera-module-3-photo}). Nasledujúci text popisuje integráciu na Raspberry Pi~5 s Ubuntu~24.04 (Noble) a ROS~2 Jazzy podľa dokumentácie pre RPi5~\cite{RPCameraRP5}.
-
-\subsection*{Prečo nie štandardný v4l2 ovládač}
-
-Na Raspberry Pi 5 s Ubuntu 24.04 nie je vhodné používať balík \path{ros-jazzy-v4l2-camera}. Kamerový subsystém RPi5 využíva \emph{libcamera} (resp.\ nástupcu \emph{rpicam}), nie klasický V4L2 legacy stack. Preto sa používa balík \path{camera_ros}~\cite{camera_ros}, ktorý pracuje s libcamera a publikuje obraz na ROS~2 témy.
-
-\subsection*{Inštalácia a konfigurácia (prehľad)}
-
-Typický postup zahŕňa:
-\begin{enumerate}
-    \item pridanie používateľa do skupiny \texttt{video};
-    \item inštaláciu knižníc \emph{libcamera} z PPA (napr.\ Marco Sonic rasppios) pre arm64 a Ubuntu~24.04;
-    \item úpravu konfiguračného súboru firmware (napr.\ \path{/boot/firmware/config.txt}): \path{camera_auto_detect=0} a \path{dtoverlay=imx708,cam0} pre Pi Camera~3;
-    \item \emph{udev} pravidlo pre DMA heap (napr.\ zariadenie \texttt{dma\_heap} so skupinou \texttt{video} a právami zápisu pre skupinu);
-    \item inštaláciu balíkov \path{ros-jazzy-camera-ros} a voliteľne \path{ros-jazzy-image-transport-plugins}.
-\end{enumerate}
-Po reboote sa kamera spúšťa príkazom \path{ros2}\allowbreak\ \path{run}\allowbreak\ \path{camera_ros}\allowbreak\ \path{camera_node} (prípadne s parametrami \path{width} a \path{height}).
-
-\subsection*{Témy a uzly z camera\_ros}
-
-Balík \texttt{camera\_ros} publikuje napr.\ témy \rostopic{/camera/image_raw}, \rostopic{/camera/camera_info} a komprimovanú vetvu \rostopic{/camera/image_raw/compressed}.
-Pre teleprezenciu alebo ďalšie spracovanie obrazu v ROS~2 sa môže použiť komprimovaný topic (\texttt{CompressedImage}) na zníženie záťaže siete; prípadne \texttt{image\_transport republish} z \texttt{image\_raw} na \texttt{compressed}.
-
-\subsection*{Kalibrácia a camera\_info}
-
-Ak nie je k dispozícii kalibračný súbor, uzol \texttt{camera\_ros} môže hlásiť chýbajúci súbor v \texttt{\textasciitilde/.ros/camera\_info/} (napr. pre \texttt{imx708\_\_...\_640x480.yaml}). Odporúča sa vykonať kalibráciu podľa návodu (napr. NAV2 camera calibration) a uložiť výsledný YAML s názvom zodpovedajúcim očakávanému \texttt{camera\_name} a rozlíšeniu.
-
-\subsection*{Vizualizácia (RViz2, rqt\_image\_view)}
-
-V ROS~2 sa na zobrazenie obrazu z kamery používa \texttt{rqt\_image\_view} s témou \rostopic{/camera/image_raw} (alebo komprimovaný topic).
-RViz2 umožňuje pridať zobrazenie \texttt{Image} a zvoliť topic s obrazom.
-Pri vizualizácii ďalších senzorov (napr.\ LIDAR) v tej istej scéne sa nastaví spoločný \texttt{Fixed Frame} (napr.\ \texttt{base\_link} alebo \texttt{base\_laser}) a konzistentné \texttt{frame\_id} v správach.
-Pri module Raspberry Pi Camera ide o CMOS senzor; konštrukciu snímania popisuje výrobca~\cite{raspberrypi_camera_module}.
-Farebné informácie sa získavajú cez masku farebných filtrov pred snímačom; interpoláciu z mozaiky (demosaicing) podrobne rozoberajú napr.~\cite{gunturk2005demosaicking}.
-
-\subsection*{Súvis s implementáciou v tejto práci}
-
-Na reálnom robote sa obraz z CSI kamery získava uzlami balíka \texttt{camera\_ros}, ktoré publikujú typicky témy \rostopic{/camera/image_raw} a \rostopic{/camera/camera_info}.
-Na zníženie záťaže CPU a siete sa často používa komprimovaný obraz (\rostopic{sensor_msgs/msg/CompressedImage}) na témach s príponou \texttt{/compressed}.
-V projekte je voliteľný uzol \texttt{waverower\_camera} (balík \texttt{waverower}) na ďalšie spracovanie; pre webové ovládanie sa obraz čerpá z komprimovaného topicu podľa konfigurácie rozhrania.
-
-Korekcia dráhy z obrazu využíva knižnicu OpenCV podľa tutoriálu o optickom toku~\cite{opencv_optical_flow_tutorial}.
-V launch súboroch (napr.\ \texttt{runtime\_stack.launch.py}) beží uzol \texttt{optical\_flow}: riedky tok Lucas--Kanade sleduje vybrané body medzi snímkami (\texttt{calcOpticalFlowPyrLK}).
-Voliteľne je k dispozícii aj hustý tok Farnebäck (\texttt{calcOpticalFlowFarneback}) ako samostatný spustiteľný súbor; v texte nižšie sa predpokladá Lucas--Kanade, ak nie je uvedené inak.
-Uzol z komprimovaného JPEG počíta stredný horizontálny posun bodov a z neho odvádza korekciu \texttt{angular.z}; tú pripočíta k poslednému \texttt{Twist} z teleopu a publikuje na \rostopic{/teleop_cmd_vel_corrected}.
-Korekcia sa uplatní len pri jazde vpred a ak operátor aktívne netočí (\texttt{angular.z} v deadzone).
-
-Na tvorbu mapy (SLAM) a na reaktívne autonómne správanie slúži predovšetkým LiDAR na téme \rostopic{/scan} --- na reálnom robote aj v simulácii. Globálna navigácia Nav2 je však v rámci tejto práce zapojená a overená \emph{len} v simulácii Gazebo, nie na fyzickom podvozku. IMU (\rostopic{/imu}) môže byť použitá na doplnkovú stabilizáciu alebo odhad orientácie podľa konfigurácie. Kamera slúži predovšetkým teleprezencii, vizualizácii v RViz a experimentom s počítačovým videním; väzba na mapovanie je v tejto práci typicky cez LiDAR (nie priama vizuálna SLAM vetva).
 
 
 \section{Implementácia uzlov a komunikácia s UGV Base General}
@@ -687,13 +665,13 @@ Na tvorbu mapy (SLAM) a na reaktívne autonómne správanie slúži predovšetk�
 
 Poznámka: Táto sekcia popisuje \emph{prvú} hardvérovú konfiguráciu podľa výrobcu: komunikáciu s firmwareom UGV (ESP32, HTTP) a referenčné C++ uzly v \texttt{waverower/src/esp32}. Hlavná nasadená vetva v práci je v balíku \texttt{waverower} s Motor Driver HAT na Raspberry Pi (sek.~\ref{sec:architektura-auticko}); typické témy (\rostopic{/scan}, \rostopic{/imu}, teleop a autonómny \rostopic{/cmd_vel}) sú tam tiež stručne zhrnuté.
 
-Nižšie sú HTTP požiadavky firmwaru \emph{UGV Base General} na ESP32 a referenčné C++ uzly v \texttt{waverower/src/esp32}. Samostatný uzol s názvom „ESP32 Bridge`` v tomto repozitári nemusí existovať -- mostenie je rozdelené medzi uvedené spustiteľné súbory a prípadné príklady Waveshare. Oficiálna dokumentácia a firmware sú v repozitári \texttt{ugv\_base\_general}~\cite{ugv_base_general_repo}; lokálna kópia je v \texttt{ugv\_base\_general/}, súbor \texttt{General\_Driver/json\_cmd.h} enumeruje konštanty príkazov (\texttt{CMD\_*}) a ukážkové JSON reťazce.
+Nižšie sú HTTP požiadavky firmwaru \emph{UGV Base General} na ESP32 a referenčné C++ uzly v \texttt{waverower/src/esp32}. Samostatný uzol s názvom „ESP32 Bridge`` v tomto repozitári nemusí existovať -- mostenie je rozdelené medzi uvedené spustiteľné súbory a prípadné príklady Waveshare. Oficiálna dokumentácia a firmware sú v repozitári \texttt{ugv\_base\_general}~\cite{ugv_base_general_repo}; lokálna kópia je v \texttt{ugv\_base\_general/}, súbor \texttt{General\_Driver/json\_cmd.h} enumeruje konštanty príkazov (\texttt{CMD\_*}) a ukážkové JSON reťazce. Pre ESP32 vetvu v tejto práci sa teda vychádza práve z projektu \texttt{waveshareteam/ugv\_base\_general} ako referenčného firmwaru dolného počítača.
 
 Firmware umožňuje ovládanie v lokálnej sieti cez HTTP (JSON v GET parametri); podľa dokumentácie výrobcu existujú aj iné režimy (napr.\ manuálne riadenie cez I\textsuperscript{2}C na doske). V rámci tejto bakalárskej práce bola táto vetva využitá najmä na mapovanie (LiDAR a ROS~2 na RPi, pohon cez ESP32) a základné manuálne jazdenie; ďalšie vrstvy (IMU PID, optický tok, wander, web UI podľa nižšie uvedeného) sú rozvinuté pri zostave s Motor Driver HAT.
 
 \subsection*{Úloha Raspberry Pi a ESP32 (master--slave)}
 
-V konfigurácii s doskou \emph{General Driver} (ESP32) plní Raspberry Pi úlohu horného počítača (master): beží na ňom ROS~2, senzorové uzly (napr.\ LiDAR cez USB), plánovanie a uzol mosta. ESP32 je dolný počítač (slave): priamo riadi motory (PID podľa dokumentácie výrobcu), číta IMU pripojené k doske a vystavuje rozhranie pre príkazy. Komunikácia neprebieha cez ROS~2 DDS priamo na mikrokontroléri, ale HTTP GET (alebo podľa výrobcu aj sériový UART/USB s rovnakým JSON) --- Raspberry Pi teda posiela textové príkazy a pri pollingu IMU číta JSON odpovede. Tým sa oddelí reálny čas riadenia na ESP32 od linuxového stacku na RPi.
+V konfigurácii s doskou \emph{General Driver} (ESP32) plní Raspberry Pi úlohu horného počítača (master): beží na ňom ROS~2, senzorové uzly (napr.\ LiDAR cez USB), plánovanie a uzol mosta. ESP32 je dolný počítač (slave): priamo riadi motory (PID podľa dokumentácie výrobcu), číta IMU pripojené k doske a vystavuje rozhranie pre príkazy. Komunikácia neprebieha cez ROS~2 DDS priamo na mikrokontroléri, ale HTTP GET (alebo podľa výrobcu aj sériový UART/USB s rovnakým JSON) --- Raspberry Pi teda posiela textové príkazy a pri pollingu IMU číta JSON odpovede. Tým sa oddelí reálny čas riadenia na ESP32 od linuxového stacku na RPi. (Úvodná kapitola o ROS~2 spomína \emph{micro-ROS} ako alternatívu s priamou účasťou MCU v DDS; táto práca ho však v implementácii nevyužíva.)
 
 \subsection*{Referenčné C++ uzly v \texttt{waverower/src/esp32}}
 
@@ -832,6 +810,13 @@ target_r_  = std::clamp(-fb - tr, -1.0, 1.0);
 \end{lstlisting}
 
 Po zmiešaní príkazu (\texttt{apply\_manual\_twist} pre teleop, \texttt{cmd\_vel\_cb} pre plánovač) sa v periodickom \texttt{timer\_cb} aplikuje vyhladenie (EMA), voliteľná korekcia podľa IMU (podsekcia nižšie, výpis~\ref{lst:drive-imu-pid}), mapovanie na PWM (\texttt{to\_duty}) a zápis na HAT (\texttt{apply\_drive}). Mapovanie na \emph{tank} riadenie (ľavé/pravé koleso) zodpovedá hardwareu štyroch motorov na podvozku a zjednodušuje ovládanie z jedného \texttt{Twist} bez modelu „ackermann“. Praktický vstup do tejto vetvy je základný bringup launch: motorový uzol v \texttt{manual}, voliteľne LiDAR, IMU most a kamera podľa parametrov.
+
+\subsection*{Kamera v behu po manuálnom bringupe}
+\label{sec:kamera-rpi5-ros2}
+
+Po zapnutí kamery v \texttt{manual\_bringup.launch.py} beží na Raspberry Pi uzol \texttt{camera\_ros} (CSI kamera, stack \emph{libcamera}/\emph{rpicam}; poznámky k Ubuntu~24.04 sú v úvodnom setupe kapitoly). Prakticky sa používajú tri výstupy: \rostopic{/camera/image_raw}, \rostopic{/camera/camera_info} a \rostopic{/camera/image_raw/compressed}. Pre teleprezenciu a webové UI je preferovaný komprimovaný stream kvôli nižšiemu zaťaženiu CPU a siete.
+
+Táto kamera je v práci napojená najmä na operátorské rozhranie a na korekciu driftu cez uzol \texttt{optical\_flow}, ktorý odoberá komprimovaný obraz a publikuje upravený teleop príkaz na \rostopic{/teleop_cmd_vel_corrected}. Ak chýba kalibračný súbor v \path{\textasciitilde/.ros/camera_info/}, uzol \texttt{camera\_ros} hlási upozornenie; riešením je doplnenie YAML pre príslušný \texttt{camera\_name}/rozlíšenie.
 
 \subsection*{Zarovnanie jazdy: optický tok a IMU (stručný prehľad)}
 
