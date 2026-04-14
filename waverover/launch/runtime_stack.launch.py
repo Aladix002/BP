@@ -305,17 +305,30 @@ def _opaque(context, *args, **kwargs):
                     output="screen",
                     parameters=[slam_params],
                 ),
+                # Dva samostatne ros2 lifecycle casto zlyhaju: (1) daemon vs. novy uzol → "Node not found",
+                # (2) activate skor ako configure → "Unknown transition ... available: configure, shutdown".
+                # Jeden bash: opakovane configure, potom az activate (--no-daemon = priama discovery).
                 TimerAction(
                     period=2.0,
                     actions=[ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
-                        output="screen",
-                    )],
-                ),
-                TimerAction(
-                    period=4.0,
-                    actions=[ExecuteProcess(
-                        cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                        cmd=[
+                            "bash",
+                            "-c",
+                            "cfg=0; "
+                            "for i in $(seq 1 120); do "
+                            "if ros2 lifecycle set --no-daemon --spin-time 5 /slam_toolbox configure; then "
+                            "echo '[runtime_stack] slam_toolbox: configure OK'; cfg=1; break; fi; "
+                            "sleep 0.25; "
+                            "done; "
+                            "if [ \"$cfg\" != 1 ]; then "
+                            "echo '[runtime_stack] slam_toolbox: configure FAILED (skusaj colcon build + znovu launch)'; exit 1; fi; "
+                            "for i in $(seq 1 120); do "
+                            "if ros2 lifecycle set --no-daemon --spin-time 5 /slam_toolbox activate; then "
+                            "echo '[runtime_stack] slam_toolbox: activate OK'; exit 0; fi; "
+                            "sleep 0.25; "
+                            "done; "
+                            "echo '[runtime_stack] slam_toolbox: activate FAILED'; exit 1",
+                        ],
                         output="screen",
                     )],
                 ),

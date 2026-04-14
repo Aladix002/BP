@@ -10,13 +10,13 @@
 
 | Launch | Príkaz |
 |--------|--------|
-| Hlavný stack (motor, wander prepínač, LiDAR, IMU, kamera, web, SLAM, …) | `ros2 launch waverower runtime_stack.launch.py` |
-| Motor + periférie, bez wander/web/SLAM v tomto súbore | `ros2 launch waverower manual_bringup.launch.py` |
-| Len wander (auto + LiDAR) | `ros2 launch waverower wander.launch.py` |
-| Web + rosbridge | `ros2 launch waverower web_teleop_ui.launch.py` |
-| Lopta (action + BT) | `ros2 launch waverower ball_follow_standalone.launch.py` |
+| Hlavný stack (motor, wander prepínač, LiDAR, IMU, kamera, web, SLAM, …) | `ros2 launch waverover runtime_stack.launch.py` |
+| Motor + periférie, bez wander/web/SLAM v tomto súbore | `ros2 launch waverover manual_bringup.launch.py` |
+| Len wander (auto + LiDAR) | `ros2 launch waverover wander.launch.py` |
+| Web + rosbridge | `ros2 launch waverover web_teleop_ui.launch.py` |
+| Lopta (action + BT) | `ros2 launch waverover ball_follow_standalone.launch.py` |
 | Simulácia Gazebo + Nav2 + RViz | `ros2 launch waver_sim launch_sim.launch.py` |
-| SLAM + jednoduchá navigácia **bez Nav2** (`simple_nav_node`, topic `/goal_pose`) | `ros2 launch waverower simple_nav.launch.py` |
+| SLAM + jednoduchá navigácia **bez Nav2** (`simple_nav_node`, topic `/goal_pose`) | `ros2 launch waverover simple_nav.launch.py` |
 | LiDAR LD19 | `ros2 launch ldlidar_ros2 ld19.launch.py` |
 
 **`simple_nav` a RViz:** nie je to Nav2. Tlačidlá z panelu **Navigation 2** / **Nav2 Goal** posielajú action do `bt_navigator` — tu nebeží, robot nereaguje. Vyber nástroj **2D Goal Pose** (Set Goal) na hornom paneli — publikuje na `/goal_pose`. Over: `ros2 topic echo /goal_pose --once` po kliknutí. Ak nič: skontroluj `ROS_DOMAIN_ID` a Fixed Frame = `map`.
@@ -26,16 +26,16 @@
 **Prepínač režimu (runtime_stack):**
 
 ```bash
-ros2 service call /waverower/switch_to_manual std_srvs/srv/Trigger
-ros2 service call /waverower/switch_to_wander std_srvs/srv/Trigger
+ros2 service call /waverover/switch_to_manual std_srvs/srv/Trigger
+ros2 service call /waverover/switch_to_wander std_srvs/srv/Trigger
 ```
 
 **Príklady:**
 
 ```bash
-ros2 launch waverower runtime_stack.launch.py stack_mode:=wander
-ros2 launch waverower runtime_stack.launch.py use_web:=false use_teleop:=true use_rviz:=true
-ros2 launch waverower ball_follow_standalone.launch.py ball_color:=orange image_topic:=/camera/image_raw
+ros2 launch waverover runtime_stack.launch.py stack_mode:=wander
+ros2 launch waverover runtime_stack.launch.py use_web:=false use_teleop:=true use_rviz:=true
+ros2 launch waverover ball_follow_standalone.launch.py ball_color:=orange image_topic:=/camera/image_raw
 ros2 launch waver_sim launch_sim.launch.py use_sim_time:=true
 ```
 
@@ -118,7 +118,7 @@ ros2 param set /lidar_wander_node enabled false
 - Server: `/follow_ball` (`ball_follower_action.py`)
 - Goal: `ball_color`, `max_duration_sec` (0 = bez limitu), `stop_when_found`, `fail_on_lost_sec`
 - BT uzol `ball_follow_bt_runner`: parametre `ball_color`, `tick_rate_hz`, `find_timeout_sec`, `fail_on_lost_sec` — topic `/ball_follow_bt/active_behaviour`
-- Follower YAML: `waverower/config/ball_follow.yaml`
+- Follower YAML: `waverover/config/ball_follow.yaml`
 
 ```bash
 ros2 action list -t
@@ -132,7 +132,7 @@ ros2 action list -t
 | Čo | Príkaz |
 |----|--------|
 | RViz | `rviz2` alebo `rviz2 -d <súbor.rviz>` |
-| SLAM config (robot) | `waverower/params/slam.rviz` |
+| SLAM config (robot) | `waverover/params/slam.rviz` |
 | Sim | `waver_sim/config/main.rviz` |
 | rqt | `rqt` |
 | Obrázok | `rqt_image_view` |
@@ -147,7 +147,7 @@ ros2 action list -t
 
 1. **Launch:** `ros2 launch … arg:=hodnota` (mená v `.launch.py`)
 2. **Beh:** `ros2 param set <node> <param> <hodnota>` (nižšie)
-3. **Súbory:** `waverower/config/ball_follow.yaml`, `waverower/params/slam.yaml`, `waverower/params/ekf.yaml` → zmena + reštart uzla/launchu
+3. **Súbory:** `waverover/config/ball_follow.yaml`, `waverover/params/slam.yaml`, `waverover/params/ekf.yaml` → zmena + reštart uzla/launchu
 4. **Topic remap:** `ros2 run … --ros-args -r starý:=nový`
 
 LiDAR (`ldlidar_ros2`): parametre priamo v `ld19.launch.py` (port, baud, `frame_id`, …), nie cez launch args.

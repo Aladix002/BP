@@ -1,5 +1,5 @@
 [Unit]
-Description=Waverower motor node (ROS 2, teleop/cmd_vel → Motor HAT)
+Description=Waverover motor node (ROS 2, teleop/cmd_vel → Motor HAT)
 After=network.target ld19-lidar.service camera-ros.service
 Wants=network-online.target ld19-lidar.service camera-ros.service
 
@@ -10,7 +10,7 @@ Group=aladix
 Environment="HOME=/home/aladix"
 Environment="USER=aladix"
 Environment="ROS_DOMAIN_ID=0"
-ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/aladix/Desktop/BP/install/setup.bash && ros2 run waverover waverover'
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source /home/aladix/Desktop/BP/install/setup.bash && ros2 run waverover waverover_motor'
 Restart=always
 RestartSec=5
 StandardOutput=journal
