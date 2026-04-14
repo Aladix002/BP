@@ -12,7 +12,7 @@ from launch.actions import (
     LogInfo,
     SetEnvironmentVariable,
 )
-from launch.conditions import IfCondition
+from launch.conditions import AndCondition, IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -140,8 +140,56 @@ def generate_launch_description():
 
     # PythonExpression: stringova kontrola parametru (correction_mode nie je vzdy C++ enum)
     use_imu_correction = PythonExpression(['"', correction_mode, '" == "imu"'])
+    use_optical_flow = PythonExpression(['"', correction_mode, '" == "optical_flow"'])
 
-    motor_twist_topic = "/teleop_cmd_vel"
+    optical_flow_stack = []
+    if not have_camera_ros:
+        optical_flow_stack.append(
+            LogInfo(
+                condition=IfCondition(use_optical_flow),
+                msg=(
+                    "correction_mode:=optical_flow vyzaduje nainstalovany balik camera_ros "
+                    "a use_camera:=true (napr. sudo apt install ros-jazzy-camera-ros)."
+                ),
+            )
+        )
+    else:
+        optical_flow_stack.extend(
+            [
+                LogInfo(
+                    condition=AndCondition(
+                        IfCondition(use_optical_flow),
+                        UnlessCondition(use_camera),
+                    ),
+                    msg="correction_mode:=optical_flow vyzaduje use_camera:=true.",
+                ),
+                Node(
+                    package="waverower",
+                    executable="optical_flow",
+                    name="optical_flow_node",
+                    output="screen",
+                    condition=AndCondition(
+                        IfCondition(use_camera),
+                        IfCondition(use_optical_flow),
+                    ),
+                    parameters=[{
+                        "enabled": True,
+                        "correction_gain": 2.4,
+                        "max_correction": 0.45,
+                        "forward_threshold": 0.05,
+                        "steer_deadzone": 0.12,
+                        "min_features": 15,
+                        "image_topic": "/camera/camera_node/image_raw/compressed",
+                        "teleop_topic": "/teleop_cmd_vel",
+                        "output_topic": "/teleop_cmd_vel_corrected",
+                        "debug_show": False,
+                        "debug_publish_image": False,
+                        "debug_window_scale": 2,
+                        "debug_window_name": "optical_flow",
+                    }],
+                ),
+            ]
+        )
 
     return LaunchDescription(
         [
@@ -202,7 +250,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "correction_mode",
                 default_value="imu",
-                description="zarovnanie rovno: imu | none",
+                description="zarovnanie rovno: imu | optical_flow | none (optical_flow vyzaduje use_camera:=true)",
             ),
             DeclareLaunchArgument("i2c_bus", default_value="1"),
             DeclareLaunchArgument("i2c_address", default_value="64"),
@@ -228,6 +276,7 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{
                     "control_mode":        control_mode,
+                    "correction_mode":     correction_mode,
                     "i2c_bus":             LaunchConfiguration("i2c_bus"),
                     "i2c_address":         LaunchConfiguration("i2c_address"),
                     # pwm_min: prah kedy H-bridge zacne hybat motorom (anti-cvakanie); pwm_max plny vykon PCA9685
@@ -311,6 +360,7 @@ def generate_launch_description():
             ),
             lidar_include,
             *camera_stack,
+            *optical_flow_stack,
             *robot_model_stack,
         ]
     )

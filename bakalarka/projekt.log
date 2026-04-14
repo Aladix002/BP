@@ -1,8 +1,8 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.11)  13 APR 2026 08:38
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.11)  13 APR 2026 21:04
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**projekt
+**projekt.tex
 (./projekt.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
@@ -104,4 +104,49 @@ Package: babel 2026/03/24 v26.5 The multilingual framework for LuaLaTeX, pdfLaTe
 LaTeX Encoding Info:    Redeclaring text command \ij (encoding OT1) on input line 2078.
 LaTeX Encoding Info:    Redeclaring text command \IJ (encoding OT1) on input line 2080.
 LaTeX Encoding Info:    Redeclaring text command \ij (encoding T1) on input line 2082.
-LaTeX Encoding 
+LaTeX Encoding Info:    Redeclaring text command \IJ (encoding T1) on input line 2083.
+LaTeX Encoding Info:    Ignoring declaration for text command \ij (encoding ?) on input line 2084.
+LaTeX Encoding Info:    Ignoring declaration for text command \IJ (encoding ?) on input line 2086.
+LaTeX Encoding Info:    Ignoring declaration for text command \SS (encoding ?) on input line 2111.
+\U@D=\dimen160
+\l@unhyphenated=\language3
+ (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/txtbabel.def)
+\bbl@readstream=\read2
+\bbl@dirlevel=\count297
+ (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/sk/babel-slovak.tex) (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/cs/babel-czech.tex) (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/sk/babel-slovak.tex) (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/locale/en/babel-english.tex)
+Package babel Info: Importing font and identification data for slovak
+(babel)             from babel-sk.ini. Reported on input line 4330.
+ (/home/aladix/.TinyTeX/texmf-dist/tex/generic/babel/errbabel.def)
+
+! Package babel Error: Unknown option 'slovak'.
+(babel)                Suggested actions:
+(babel)                * Make sure you haven’t misspelled it
+(babel)                * Check in the babel manual that it's supported
+(babel)                * If supported and it's a language, you may
+(babel)                  need in some distributions a separate
+(babel)                  installation
+(babel)                * If installed, check there isn’t an old
+(babel)                  version of the required files in your system
+(babel)                * If it's an unsupported language, create it with
+(babel)                \babelprovide(see the manual).
+
+See the babel package documentation for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.4330 \bbl@tempb
+                 
+Valid options are, among others: shorthands=, KeepShorthandsActive,
+activeacute, activegrave, noconfigs, safe=, main=, math=
+headfoot=, strings=, config=, hyphenmap=, or a language name.
+
+ 
+Here is how much of TeX's memory you used:
+ 2614 strings out of 469339
+ 39898 string characters out of 5466426
+ 453783 words of memory out of 5000000
+ 31481 multiletter control sequences out of 15000+600000
+ 628021 words of font info for 41 fonts, out of 8000000 for 9000
+ 14 hyphenation exceptions out of 8191
+ 71i,0n,79p,224b,85s stack positions out of 10000i,1000n,20000p,200000b,200000s
+!  ==> Fatal error occurred, no output PDF file produced!
