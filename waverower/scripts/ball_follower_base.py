@@ -27,7 +27,7 @@ class BallFollowerBase(Node):
         self.declare_parameter("image_topic", "/camera/camera_node/image_raw")
         self.declare_parameter("cmd_topic", "/cmd_vel")
         self.declare_parameter("ball_color", "orange")
-        # HSV range for orange ball; tuned for bright tangerine-like orange.
+        # HSV rozsah pre oranzu loptu (naladit podla konkretneho osvetlenia)
         self.declare_parameter("orange_h_min", 10)
         self.declare_parameter("orange_h_max", 24)
         self.declare_parameter("orange_s_min", 90)
@@ -78,7 +78,7 @@ class BallFollowerBase(Node):
         self.declare_parameter("approach_brake_band_px", 14.0)
         # Pri plnom priblizeni (koniec pasma) ostane tato cast otacania (0.35–0.55)
         self.declare_parameter("approach_turn_blend_min", 0.45)
-        # Diferencial L/R (obe kolesa dopredu) — musi sediet s motorom (drive_node)
+        # Diferencial L/R (obe kolesa dopredu): musi sediet s motorom (drive_node)
         self.declare_parameter("use_differential_track_cmd", True)
         self.declare_parameter("wheel_base_cmd", 2.0)
         self.declare_parameter("teleop_max_linear_cmd", 1.0)
@@ -277,7 +277,7 @@ class BallFollowerBase(Node):
                 np.array([180, 55, 220], dtype=np.uint8),
             )
             return cv2.bitwise_or(bright, shaded)
-        # Default fallback: white
+        # Predvoleny stav pre nezname farby: pouzij bielu
         bright = cv2.inRange(
             hsv,
             np.array([0, 0, 165], dtype=np.uint8),
@@ -335,15 +335,17 @@ class BallFollowerBase(Node):
         best = None
         for c in contours:
             area = cv2.contourArea(c)
-            if area < 50:
+            if area < 50:  # prilis maly kontur
                 continue
-            if max_area_r > 0.0 and (area / mask_area) > max_area_r:
+            if max_area_r > 0.0 and (area / mask_area) > max_area_r:  # prilis velky (nie lopta)
                 continue
+            # Filter pomeru stran bounding boxu: lopta je priberne stvorcova
             _bx, _by, bbw, bbh = cv2.boundingRect(c)
             if bbw > 0 and bbh > 0 and max_ar > 0.0:
                 aspect = max(bbw, bbh) / float(min(bbw, bbh))
                 if aspect > max_ar:
                     continue
+            # Solidity: pomer plochy konturu k plocha konvexneho obalu (lopta je konvexna)
             solidity = 1.0
             if min_sol > 0.0:
                 hull = cv2.convexHull(c)
@@ -353,29 +355,33 @@ class BallFollowerBase(Node):
                 solidity = area / ha
                 if solidity < min_sol:
                     continue
+            # Kruhovost: 4*pi*A / P^2 (1.0 = dokonaly kruh)
             peri = cv2.arcLength(c, True)
             if peri == 0:
                 continue
             circularity = 4.0 * np.pi * area / (peri * peri)
             if circularity < circ_thr:
                 continue
+            # Polomer z minimalnej obalky (priemer = r_full)
             (cx, _cy), r = cv2.minEnclosingCircle(c)
             r_full = r * 2.0
             if r_full < min_r:
                 continue
             if max_r > 0.0 and r_full > max_r:
                 continue
+            # Fill ratio: kolko z kruhu je vyplnene kontúrou (lopta = vysoke)
             circle_area = float(np.pi * r * r)
             if circle_area <= 1.0:
                 continue
             fill_ratio = area / circle_area
             if min_fill > 0.0 and fill_ratio < min_fill:
                 continue
+            # Celkova istota: vazeny priemerz kruhovosti, solidity, plochy a fill
             area_norm = float(np.clip(area / (mask_area * 0.06), 0.0, 1.0))
             conf = float(np.clip(0.40 * circularity + 0.35 * solidity + 0.15 * area_norm + 0.10 * np.clip(fill_ratio, 0.0, 1.0), 0.0, 1.0))
             if min_conf > 0.0 and conf < min_conf:
                 continue
-            if best is None or conf > best[2]:
+            if best is None or conf > best[2]:  # zachovaj kontur s najvyssou istotou
                 best = (cx * 2.0, r_full, conf)
 
         if best is None:
@@ -479,9 +485,11 @@ class BallFollowerBase(Node):
         v_ln: float = 0.0,
         v_rn: float = 0.0,
     ) -> None:
-        """Float64MultiArray pre rqt_plot: 0=state 1=x_err 2=r 3=conf 4=err_shaped 5=integral 6=d_err
-        7=effective_kp 8=pid_out_pre_clip 9=mix 10=v_ln 11=v_rn 12=cmd_lin 13=cmd_ang.
-        state: 0 idle 1 no_frame 2 verify 3 stop 4 track_diff 5 track_pid 6 approach_diff 7 approach_pid 8 search."""
+        # Float64MultiArray pre rqt_plot: indexy poli:
+        # 0=state 1=x_err 2=r 3=conf 4=err_shaped 5=integral 6=d_err
+        # 7=effective_kp 8=pid_out_pre_clip 9=mix 10=v_ln 11=v_rn 12=cmd_lin 13=cmd_ang
+        # state hodnoty: 0 idle 1 no_frame 2 verify 3 stop 4 track_diff 5 track_pid
+        #                6 approach_diff 7 approach_pid 8 search
         if not self.get_parameter("publish_debug_signals").get_parameter_value().bool_value:
             return
         msg = Float64MultiArray()
@@ -540,6 +548,7 @@ class BallFollowerBase(Node):
             )
             return
 
+        # --- TRACK: lopta viditelna (fresh = do lost_timeout s od poslednej detekcie) ---
         if fresh:
             confirm_sec = max(0.0, self.get_parameter("forward_confirm_sec").get_parameter_value().double_value)
             seen_for = 0.0 if self._seen_streak_start is None else (now - self._seen_streak_start)
@@ -577,6 +586,8 @@ class BallFollowerBase(Node):
                 turn_slowdown = float(np.clip(1.0 - sd_gain * err_abs, sd_min, 1.0))
                 use_diff = self.get_parameter("use_differential_track_cmd").get_parameter_value().bool_value
 
+                # --- Diferencial: obe kolesa dopredu, bocna chyba meni pomer L/R ---
+                # --- PID twist: klasicky regulátor na angular.z (use_differential_track_cmd=false) ---
                 if use_diff:
                     # Obe kolesa dopredu: v_l/v_r v [0,1] ako v drive_node; lopta vpravo (x_err>0) -> vacsie v_r.
                     base = float(np.clip(fwd_spd * fwd_scale * turn_slowdown, 0.08, 1.0))
@@ -724,7 +735,8 @@ class BallFollowerBase(Node):
                     else:
                         state = "TRACK"
                         dbg_state_id = 5.0
-            else:
+        # --- SEARCH: lopta strata -> burst otacanie (kratke ON + dlhe OFF pauzy) ---
+        else:
             if self._had_fresh_track:
                 self._cmd_lin_f = 0.0
                 self._cmd_ang_f = 0.0
@@ -758,7 +770,7 @@ class BallFollowerBase(Node):
         if fresh:
             self._had_fresh_track = True
 
-        # EMA na cmd_vel — plynulejsia jazda; po prechode na SEARCH vyssie reset filtrov
+        # EMA na cmd_vel: plynulejsia jazda; po prechode na SEARCH sa filter resetuje
         alpha = float(np.clip(
             self.get_parameter("cmd_smooth_alpha").get_parameter_value().double_value,
             0.05,

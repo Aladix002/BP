@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""
-simple_nav_node – otoc sa podla IMU smerom k cielu (v map_frame), potom jazdi vpred.
-
-  - Pozicia a vzdialenost k cielu: TF map -> base_link (SLAM ako pri slam.launch).
-  - ROTATING: dorovnaj heading k cielu podla IMU; default hotovo pri ~±10° (netreba stupen).
-  - DRIVING: pri |kurz| < ~10° ide rovno (deadband), inak jemna korekcia z map TF.
-
-Topics: sub /goal_pose, /imu ; pub /cmd_vel, /nav_status
-"""
+# simple_nav_node: otoc sa podla IMU smerom k cielu (v map_frame), potom jazdi vpred.
+# Pozicia a vzdialenost k cielu: TF map->base_link (SLAM).
+# ROTATING: dorovnaj heading podla IMU; hotovo pri ~+-10 deg (netreba presne na stupen).
+# DRIVING: pri malom kurze ide rovno (deadband), inak jemna korekcia z map TF.
+# Topics: sub /goal_pose, /imu; pub /cmd_vel, /nav_status
 
 import math
 
@@ -30,7 +26,7 @@ def yaw_from_quat(q) -> float:
 
 
 def imu_msg_yaw_rad(msg: Imu) -> float:
-    """Rovnaky vypocet yaw ako cmd_vel_odom._imu_cb (ROS Imu orientation)."""
+    # Yaw z ROS Imu orientation (rovnaky postup ako cmd_vel_odom)
     q = msg.orientation
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
     cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -71,7 +67,7 @@ class SimpleNavNode(Node):
         # Ak > 0, pevny strop [rad/s] namiesto vypoctu z teleop * scale
         self.declare_parameter("rotate_speed_max_override", -1.0)
         self.declare_parameter("rotate_kp", 4.5)
-        # Hotovo otacanie (IMU): |chyba| < tol [deg] (~±10° = netreba presne na stupen)
+        # Hotovo otacanie (IMU): |chyba| < tol [deg] (~+-10 deg = netreba presne na stupen)
         self.declare_parameter("rotate_done_deg", 10.0)
         # Nad tymto uhlom plny |omega| (nie pomaly P) – uzsie = rychlejsie otacanie celkovo
         self.declare_parameter("rotate_fast_deg", 12.0)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Vizualizacia/meranie — pozri tools/visualisation/README.md
+# Vizualizacia/meranie : pozri tools/visualisation/README.md
 # Zapisuje cas a angular_velocity.z z /imu do CSV.
 #   ros2 run waverower log_imu_wz_csv.py --ros-args -p output_file:=/tmp/imu.csv
 

@@ -50,6 +50,7 @@ Pca9685::~Pca9685() {
   }
 }
 
+// Zapis 1 bajtu do registra reg cez I2C
 void Pca9685::write_reg(uint8_t reg, uint8_t val) {
   uint8_t buf[2] = {reg, val};
   if (write(fd_, buf, sizeof(buf)) != static_cast<ssize_t>(sizeof(buf))) {
@@ -57,6 +58,7 @@ void Pca9685::write_reg(uint8_t reg, uint8_t val) {
   }
 }
 
+// Citanie 1 bajtu z registra reg cez I2C
 uint8_t Pca9685::read_reg(uint8_t reg) {
   if (write(fd_, &reg, 1) != 1) {
     throw std::runtime_error("I2C read addr zlyhal");
@@ -84,6 +86,7 @@ void Pca9685::set_pwm_freq_hz(double freq) {
   write_reg(kPcaMode1, static_cast<uint8_t>(oldmode | 0x80));
 }
 
+// Nastavi PWM pre 1 kanal: on = tick kedy zacne HIGH, off = tick kedy padne LOW (0-4095)
 void Pca9685::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, static_cast<uint8_t>(on & 0xFF));
@@ -92,6 +95,7 @@ void Pca9685::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   write_reg(base + 3, static_cast<uint8_t>((off >> 8) & 0xFF));
 }
 
+// Trvaly HIGH na kanali (duty 100%, bit LED_FULL_ON)
 void Pca9685::set_channel_full_on(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
@@ -100,6 +104,7 @@ void Pca9685::set_channel_full_on(int channel) {
   write_reg(base + 3, 0);
 }
 
+// Trvaly LOW na kanali (duty 0%, bit LED_FULL_OFF)
 void Pca9685::set_channel_full_off(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
@@ -108,6 +113,7 @@ void Pca9685::set_channel_full_off(int channel) {
   write_reg(base + 3, kPcaFullOffHigh);
 }
 
+// Duty v percentach 0-100; obalka nad set_duty_12bit
 void Pca9685::set_duty_percent(int channel, int percent) {
   percent = std::clamp(percent, 0, 100);
   if (percent <= 0) {
@@ -123,6 +129,7 @@ void Pca9685::set_duty_percent(int channel, int percent) {
   set_pwm_channel(channel, 0, off);
 }
 
+// Duty v 12-bit rozsahu 0-4095; 0 = vypnute, 4095 = plny vykon
 void Pca9685::set_duty_12bit(int channel, uint16_t duty) {
   duty = std::min<uint16_t>(duty, 4095);
   if (duty == 0) {
@@ -136,6 +143,7 @@ void Pca9685::set_duty_12bit(int channel, uint16_t duty) {
   set_pwm_channel(channel, 0, duty);
 }
 
+// Digitalny vystup: full_on alebo full_off (pre IN1/IN2 smerove piny TB6612)
 void Pca9685::set_level(int channel, bool high) {
   if (high) {
     set_channel_full_on(channel);
@@ -144,6 +152,7 @@ void Pca9685::set_level(int channel, bool high) {
   }
 }
 
+// Zastavi motor (0=lavy, 1=pravy): IN1=IN2=0, PWM=0
 void Pca9685::motor_stop(int motor) {
   set_level(motor == 0 ? kAin1 : kBin1, false);
   set_level(motor == 0 ? kAin2 : kBin2, false);

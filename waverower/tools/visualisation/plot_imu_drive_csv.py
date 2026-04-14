@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Vizualizacia/meranie — pozri tools/visualisation/README.md
+# Vizualizacia/meranie : pozri tools/visualisation/README.md
 # Grafy z CSV (bez ROS): python3 plot_imu_drive_csv.py meranie.csv -o graf.png
 
 import argparse

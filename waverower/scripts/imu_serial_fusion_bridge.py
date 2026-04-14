@@ -137,7 +137,7 @@ def _open_imu_serial_probed(
                 line = raw.decode("utf-8", errors="ignore").strip()
                 if _csv_line_looks_like_imu(line):
                     out_fp = fp
-                    fp = None  # nezatvarat v finally — vraciame otvoreny port
+                    fp = None  # nezatvarat v finally: vraciame otvoreny port
                     return out_fp, path
         except OSError as ex:
             log_warn(f"IMU scan: {path} — {ex}")

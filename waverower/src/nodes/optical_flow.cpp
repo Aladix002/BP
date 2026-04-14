@@ -81,6 +81,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
     cv::Mat frame = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_GRAYSCALE);
     if (frame.empty()) return;
 
+    // Downscale na max 320px sirky: znizi zataz CPU pri detekcii rohov
     if (frame.cols > 320) {
         cv::resize(frame, frame, cv::Size(320, frame.rows * 320 / frame.cols));
     }
@@ -110,6 +111,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
             return;
         }
 
+        // Detekcia rohov (Shi-Tomasi) na predchadzajucom snimku: body na sledovanie
         std::vector<cv::Point2f> prev_pts;
         cv::goodFeaturesToTrack(prev_gray_, prev_pts, 100, 0.01, 10);
         n_corners = static_cast<int>(prev_pts.size());
@@ -121,11 +123,13 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
             return;
         }
 
+        // Lucas-Kanade: sledovanie rohov z predchadzajuceho snimku do aktualneho
         std::vector<cv::Point2f> curr_pts;
         std::vector<uchar> status;
         std::vector<float> err;
         cv::calcOpticalFlowPyrLK(prev_gray_, frame, prev_pts, curr_pts, status, err);
 
+        // Priemer horizontalneho posunu (dx) uspesne sledovanych bodov
         double sum_dx = 0.0;
         int count = 0;
         for (size_t i = 0; i < status.size(); ++i) {
@@ -141,6 +145,7 @@ void OpticalFlowNode::image_cb(const sensor_msgs::msg::CompressedImage::SharedPt
             mean_dx_norm = mean_dx_px / static_cast<double>(W);
         }
 
+        // Korekcia = -mean_dx_norm * gain (opacny smer = kompenzacia driftu sceny)
         if (count >= min_features_) {
             const double raw = -mean_dx_norm * correction_gain_;
             flow_correction_ = std::clamp(raw, -max_correction_, max_correction_);

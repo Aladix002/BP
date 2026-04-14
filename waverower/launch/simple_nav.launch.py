@@ -217,7 +217,7 @@ def generate_launch_description():
                 "invert_linear": True,
                 "cmd_vel_invert_linear": False,
                 "cmd_vel_tank_mix": True,
-                "wheel_base": 1.0,   # half_b=0.5; pri angular.z=1.6 → v_l/r=±0.80 (80% PWM)
+                "wheel_base": 1.0,   # half_b=0.5; pri angular.z=1.6 -> v_l/r=+-0.80 (80% PWM)
                 "deadzone": 0.03,
                 "smooth_alpha": 0.35,
                 "cmd_vel_timeout_ms": 600,

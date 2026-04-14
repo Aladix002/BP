@@ -197,13 +197,13 @@ private:
         } else if (!fwd && !bwd && !left && right) {
             L = turn_in_place; R = -turn_in_place;   // otacanie vpravo na mieste
         } else if (fwd && !bwd && left && !right) {
-            L = curve; R = base;   // forward+left
+            L = curve; R = base;   // dopredu + vlavo
         } else if (fwd && !bwd && !left && right) {
-            L = base; R = curve;   // forward+right
+            L = base; R = curve;   // dopredu + vpravo
         } else if (bwd && left && !right) {
-            L = -curve; R = -base; // back+left
+            L = -curve; R = -base; // dozadu + vlavo
         } else if (bwd && !left && right) {
-            L = -base; R = -curve; // back+right
+            L = -base; R = -curve; // dozadu + vpravo
         } else {
             // Konflikt alebo obe horizontalne: preferencia ako v ugv (prvy stlaceny)
             if (fwd && left) { L = curve; R = base; }
