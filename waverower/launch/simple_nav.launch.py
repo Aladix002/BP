@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-simple_nav.launch.py – SLAM + IMU + navigacia: najprv otocenie podla IMU k cielu, potom jazda.
-Stack zosuladeny s runtime_stack (params/slam.yaml, cmd_vel_odom linear_scale).
-SLAM lifecycle: default oneskorenie 8 s / 11 s (IMU + LiDAR + uzol musia byt nahore); rychly stroj: slam_configure_delay_sec:=2 slam_activate_delay_sec:=4
+simple_nav.launch.py – SLAM + IMU, volitelne navigacia k cielu (simple_nav_node).
+Nahradzuje slam.launch.py: use_nav:=false = len SLAM mapovanie, use_nav:=true (default) = navigacia.
 
-  ros2 launch waverower simple_nav.launch.py
+SLAM lifecycle: default oneskorenie 8 s / 11 s (IMU + LiDAR + uzol musia byt nahore);
+  rychly stroj: slam_configure_delay_sec:=2 slam_activate_delay_sec:=4
+
+  ros2 launch waverower simple_nav.launch.py                   # SLAM + navigacia
+  ros2 launch waverower simple_nav.launch.py use_nav:=false    # len SLAM mapovanie
   ros2 launch waverower simple_nav.launch.py use_rviz:=true
 
-Ciel: RViz „2D Goal Pose“ → /goal_pose (NIE Nav2 panel).
+Ciel: RViz 2D Goal Pose -> /goal_pose (NIE Nav2 panel).
 """
 
 import os
@@ -22,7 +25,7 @@ from launch.actions import (
     SetEnvironmentVariable,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
@@ -105,6 +108,7 @@ def generate_launch_description():
     teleop_max_l = LaunchConfiguration("teleop_max_linear")
     teleop_max_a = LaunchConfiguration("teleop_max_angular")
     use_rviz = LaunchConfiguration("use_rviz")
+    use_nav = LaunchConfiguration("use_nav")
 
     return LaunchDescription([
         SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
@@ -168,6 +172,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("goal_tolerance_m", default_value="0.35"),
         DeclareLaunchArgument("approach_slowdown_m", default_value="0.60"),
+        DeclareLaunchArgument(
+            "use_nav",
+            default_value="true",
+            description="true = SLAM + simple_nav_node (navigacia k cieľu); false = len SLAM mapovanie",
+        ),
         DeclareLaunchArgument("use_rviz", default_value="false"),
 
         Node(
@@ -253,6 +262,7 @@ def generate_launch_description():
             executable="simple_nav_node.py",
             name="simple_nav_node",
             output="screen",
+            condition=IfCondition(use_nav),
             parameters=[{
                 "map_frame": "map",
                 "base_frame": "base_link",
