@@ -16,6 +16,7 @@ def _setup(context, *args, **kwargs):
     image_topic = LaunchConfiguration("image_topic").perform(context)
     cmd_topic = LaunchConfiguration("cmd_topic").perform(context)
     color = LaunchConfiguration("ball_color").perform(context)
+    find_timeout_sec = float(LaunchConfiguration("find_timeout_sec").perform(context))
 
     return [
         Node(
@@ -71,6 +72,7 @@ def _setup(context, *args, **kwargs):
             output="screen",
             parameters=[{
                 "ball_color": color,
+                "find_timeout_sec": find_timeout_sec,
             }],
         ),
     ]
@@ -81,5 +83,6 @@ def generate_launch_description():
         DeclareLaunchArgument("image_topic", default_value="/camera/image_raw"),
         DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
         DeclareLaunchArgument("ball_color", default_value="orange"),
+        DeclareLaunchArgument("find_timeout_sec", default_value="0.0"),
         OpaqueFunction(function=_setup),
     ])

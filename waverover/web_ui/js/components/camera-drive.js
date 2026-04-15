@@ -311,7 +311,6 @@ function DrivePanel({ ros, connected }) {
             className="w-full"
             aria-label="LiDAR distance threshold for wander stop and turn"
           />
-          <p className="text-[0.58rem] text-slate-600 mt-1 leading-snug">Ak je prekazka blizsie, wander zastavi a otoci sa.</p>
         </div>
       </div>
     </div>

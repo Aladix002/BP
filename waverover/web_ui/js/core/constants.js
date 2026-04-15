@@ -22,14 +22,6 @@ Object.assign(window.WR, {
   // Rovnaky pomer ako WANDER_TURN_RATIO v runtime_stack.launch.py
   WANDER_TURN_RATIO: 18.0,
   WANDER_THRESHOLD_RANGE: { min: 0.05, max: 1.5, step: 0.01 },
-  IMU_DEFAULTS: {
-    imu_correction: true,
-    imu_kp: 0.30,
-    imu_ki: 0.05,
-    imu_kd: 0.01,
-    imu_deadband: 0.02,
-    imu_windup: 0.30,
-  },
   PTYPE_BOOL: 1,
   PTYPE_DOUBLE: 3,
   PTYPE_STRING: 4,

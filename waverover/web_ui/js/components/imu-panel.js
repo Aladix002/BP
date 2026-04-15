@@ -14,13 +14,9 @@ function ImuPanel({ ros, connected }) {
   const [dbg, setDbg] = React.useState(null);
   const dbgSubRef = React.useRef(null);
 
-  const [pid, setPid] = React.useState({ ...WR.IMU_DEFAULTS });
   const [correctionMode, setCorrectionMode] = React.useState("imu");
-  const [fetchMsg, setFetchMsg] = React.useState("");
-  const [applyMsg, setApplyMsg] = React.useState("");
+  const [modeMsg, setModeMsg] = React.useState("");
   const [modeBusy, setModeBusy] = React.useState(false);
-  const [fetchBusy, setFetchBusy] = React.useState(false);
-  const [applyBusy, setApplyBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!ros || !connected) {
@@ -69,56 +65,23 @@ function ImuPanel({ ros, connected }) {
     };
   }, [ros, connected]);
 
-  async function fetchParams() {
-    if (!connected || fetchBusy) return;
-    setFetchBusy(true);
-    setFetchMsg("Fetching...");
-    setApplyMsg("");
-    try {
-      const names = Object.keys(WR.IMU_DEFAULTS).concat(["correction_mode"]);
-      const r = await WR.rosGetParams(ros, WR.MOTOR_NODE, names);
-      if (!r?.values) throw new Error("No response");
-      const upd = { ...pid };
-      names.forEach((name, i) => {
-        const v = r.values[i];
-        if (!v) return;
-        if (name === "correction_mode" && v.type === WR.PTYPE_STRING) {
+  React.useEffect(() => {
+    if (!connected || !ros) return;
+    (async () => {
+      try {
+        const r = await WR.rosGetParams(ros, WR.MOTOR_NODE, ["correction_mode"]);
+        const v = r?.values?.[0];
+        if (v?.type === WR.PTYPE_STRING) {
           setCorrectionMode(v.string_value === "optical_flow" ? "optical_flow" : "imu");
-          return;
         }
-        if (v.type === WR.PTYPE_BOOL) upd[name] = v.bool_value;
-        if (v.type === WR.PTYPE_DOUBLE) upd[name] = v.double_value;
-      });
-      setPid(upd);
-      setFetchMsg("Fetched OK");
-    } catch (e) {
-      setFetchMsg("Error: " + (e.message ?? e));
-    } finally {
-      setFetchBusy(false);
-    }
-  }
-
-  async function applyParams() {
-    if (!connected || applyBusy) return;
-    setApplyBusy(true);
-    setApplyMsg("Applying...");
-    setFetchMsg("");
-    try {
-      const params = Object.entries(pid).map(([k, v]) => WR.makeParam(k, v));
-      const r = await WR.rosSetParams(ros, WR.MOTOR_NODE, params);
-      setApplyMsg(r?.results?.every(x => x.successful) ? "Applied OK" : "Partial error");
-    } catch (e) {
-      setApplyMsg("Error: " + (e.message ?? e));
-    } finally {
-      setApplyBusy(false);
-    }
-  }
+      } catch (_) {}
+    })();
+  }, [connected, ros]);
 
   async function switchCorrectionMode(nextMode) {
     if (!connected || modeBusy || nextMode === correctionMode) return;
     setModeBusy(true);
-    setApplyMsg("Switching mode...");
-    setFetchMsg("");
+    setModeMsg("Switching mode...");
     try {
       const enableImu = nextMode === "imu";
       const motorRes = await WR.rosSetParams(ros, WR.MOTOR_NODE, [
@@ -141,10 +104,9 @@ function ImuPanel({ ros, connected }) {
       }
 
       setCorrectionMode(nextMode);
-      setPid(p => ({ ...p, imu_correction: enableImu }));
-      setApplyMsg(nextMode === "imu" ? "IMU correction active" : "Optical flow active");
+      setModeMsg(nextMode === "imu" ? "IMU correction active" : "Optical flow active");
     } catch (e) {
-      setApplyMsg("Error: " + (e.message ?? e));
+      setModeMsg("Error: " + (e.message ?? e));
     } finally {
       setModeBusy(false);
     }
@@ -157,20 +119,6 @@ function ImuPanel({ ros, connected }) {
     disconnected: "text-slate-600",
   };
   const ST_LABEL = { ok: "OK", stale: "No /imu", waiting: "Waiting...", disconnected: "Disconnected" };
-
-  const NumField = ({ name, label, step }) => (
-    <div>
-      <span className="block text-[0.6rem] font-bold uppercase tracking-wider text-slate-500 mb-1">{label}</span>
-      <input
-        type="number" step={step} min={0}
-        value={pid[name]}
-        onChange={e => setPid(p => ({ ...p, [name]: parseFloat(e.target.value) || 0 }))}
-        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950/60 border border-slate-700
-                   text-sm text-slate-200 tabular-nums
-                   focus:outline-none focus:border-blue-500/50 transition-colors"
-      />
-    </div>
-  );
 
   return (
     <WR.Card className="p-3">
@@ -239,7 +187,7 @@ function ImuPanel({ ros, connected }) {
 
       <div className="border-t border-slate-800 -mx-3 mb-4" />
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-500">PID Parameters</span>
+        <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-500">Correction Mode</span>
         <div className="flex rounded-lg overflow-hidden border border-slate-700 shrink-0">
           {[
             ["imu", "IMU"],
@@ -260,32 +208,8 @@ function ImuPanel({ ros, connected }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
-        <NumField name="imu_kp" label="Kp" step={0.01} />
-        <NumField name="imu_ki" label="Ki" step={0.01} />
-        <NumField name="imu_kd" label="Kd" step={0.001} />
-        <NumField name="imu_deadband" label="Deadband" step={0.001} />
-        <NumField name="imu_windup" label="Int. Limit" step={0.05} />
-      </div>
-
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-3 flex-wrap">
-          {fetchMsg && <span className={`text-xs ${fetchMsg.includes("Error") ? "text-red-400" : "text-emerald-400"}`}>{fetchMsg}</span>}
-          {applyMsg && <span className={`text-xs ${applyMsg.includes("Error") ? "text-red-400" : "text-emerald-400"}`}>{applyMsg}</span>}
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={fetchParams} disabled={!connected || fetchBusy}
-            className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-slate-800 text-slate-300
-                       border border-slate-700 hover:bg-slate-700 active:scale-95 disabled:opacity-40
-                       transition-all touch-manipulation"
-          >{fetchBusy ? "..." : "Fetch"}</button>
-          <button
-            onClick={applyParams} disabled={!connected || applyBusy}
-            className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-blue-500 text-white
-                       hover:bg-blue-400 active:scale-95 disabled:opacity-40 transition-all touch-manipulation"
-          >{applyBusy ? "..." : "Apply"}</button>
-        </div>
+      <div className="flex items-center justify-end">
+        {modeMsg && <span className={`text-xs ${modeMsg.includes("Error") ? "text-red-400" : "text-emerald-400"}`}>{modeMsg}</span>}
       </div>
     </WR.Card>
   );

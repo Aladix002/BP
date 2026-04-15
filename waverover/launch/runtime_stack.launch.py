@@ -398,7 +398,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "optical_flow_debug_publish_image",
-            default_value="false",
+            default_value="true",
             description="JPEG vizualizacia na /optical_flow/viz/compressed — rqt_image_view na PC (rovnaky ROS_DOMAIN_ID)",
         ),
         DeclareLaunchArgument("use_teleop", default_value="false"),
