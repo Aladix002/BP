@@ -4,6 +4,37 @@
 
 var WR = window.WR;
 
+const IMU_TUNE_KEYS = ["imu_kp", "imu_ki", "imu_kd", "imu_deadband", "imu_windup"];
+const FLOW_TUNE_KEYS = ["correction_gain", "max_correction", "forward_threshold", "steer_deadzone"];
+
+const IMU_TUNE_LABELS = {
+  imu_kp: "Kp",
+  imu_ki: "Ki",
+  imu_kd: "Kd",
+  imu_deadband: "Deadband rad/s",
+  imu_windup: "I windup limit",
+};
+const FLOW_TUNE_LABELS = {
+  correction_gain: "Gain",
+  max_correction: "Max |corr.|",
+  forward_threshold: "Forward thresh.",
+  steer_deadzone: "Steer deadzone",
+};
+
+const IMU_TUNE_STEPS = {
+  imu_kp: 0.01, imu_ki: 0.005, imu_kd: 0.005, imu_deadband: 0.005, imu_windup: 0.05,
+};
+const FLOW_TUNE_STEPS = {
+  correction_gain: 0.1, max_correction: 0.05, forward_threshold: 0.01, steer_deadzone: 0.02,
+};
+
+function readParamDouble(pv) {
+  if (!pv) return null;
+  if (pv.type === WR.PTYPE_DOUBLE && typeof pv.double_value === "number") return pv.double_value;
+  if (pv.double_value != null) return parseFloat(pv.double_value);
+  return null;
+}
+
 function ImuPanel({ ros, connected }) {
   const [wz, setWz] = React.useState(null);
   const [imuSt, setImuSt] = React.useState("disconnected");
@@ -17,6 +48,16 @@ function ImuPanel({ ros, connected }) {
   const [correctionMode, setCorrectionMode] = React.useState("imu");
   const [modeMsg, setModeMsg] = React.useState("");
   const [modeBusy, setModeBusy] = React.useState(false);
+
+  const [imuTune, setImuTune] = React.useState({
+    imu_kp: 0.3, imu_ki: 0.05, imu_kd: 0.01, imu_deadband: 0.02, imu_windup: 0.3,
+  });
+  const [flowTune, setFlowTune] = React.useState({
+    correction_gain: 1.5, max_correction: 0.3, forward_threshold: 0.05, steer_deadzone: 0.12,
+  });
+  const [tuneMsg, setTuneMsg] = React.useState("");
+  const [imuTuneBusy, setImuTuneBusy] = React.useState(false);
+  const [flowTuneBusy, setFlowTuneBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!ros || !connected) {
@@ -67,16 +108,111 @@ function ImuPanel({ ros, connected }) {
 
   React.useEffect(() => {
     if (!connected || !ros) return;
+    let cancelled = false;
     (async () => {
       try {
-        const r = await WR.rosGetParams(ros, WR.MOTOR_NODE, ["correction_mode"]);
-        const v = r?.values?.[0];
-        if (v?.type === WR.PTYPE_STRING) {
-          setCorrectionMode(v.string_value === "optical_flow" ? "optical_flow" : "imu");
+        const r = await WR.rosGetParams(ros, WR.MOTOR_NODE, ["correction_mode", ...IMU_TUNE_KEYS]);
+        if (cancelled) return;
+        const vals = r?.values || [];
+        const cm = vals[0];
+        if (cm?.type === WR.PTYPE_STRING) {
+          setCorrectionMode(cm.string_value === "optical_flow" ? "optical_flow" : "imu");
         }
+        const patch = {};
+        IMU_TUNE_KEYS.forEach((k, i) => {
+          const d = readParamDouble(vals[i + 1]);
+          if (d != null) patch[k] = d;
+        });
+        if (Object.keys(patch).length) setImuTune((prev) => ({ ...prev, ...patch }));
+      } catch (_) {}
+
+      try {
+        const r2 = await WR.rosGetParams(ros, WR.OPTICAL_NODE, FLOW_TUNE_KEYS);
+        if (cancelled) return;
+        const vals2 = r2?.values || [];
+        const patch2 = {};
+        FLOW_TUNE_KEYS.forEach((k, i) => {
+          const d = readParamDouble(vals2[i]);
+          if (d != null) patch2[k] = d;
+        });
+        if (Object.keys(patch2).length) setFlowTune((prev) => ({ ...prev, ...patch2 }));
       } catch (_) {}
     })();
+    return () => { cancelled = true; };
   }, [connected, ros]);
+
+  async function refreshTuneFromRobot() {
+    if (!connected || !ros) return;
+    setTuneMsg("Refreshing…");
+    try {
+      const r = await WR.rosGetParams(ros, WR.MOTOR_NODE, ["correction_mode", ...IMU_TUNE_KEYS]);
+      const vals = r?.values || [];
+      const cm = vals[0];
+      if (cm?.type === WR.PTYPE_STRING) {
+        setCorrectionMode(cm.string_value === "optical_flow" ? "optical_flow" : "imu");
+      }
+      const patch = {};
+      IMU_TUNE_KEYS.forEach((k, i) => {
+        const d = readParamDouble(vals[i + 1]);
+        if (d != null) patch[k] = d;
+      });
+      setImuTune((prev) => ({ ...prev, ...patch }));
+    } catch (e) {
+      setTuneMsg("Motor read failed: " + (e.message ?? e));
+      return;
+    }
+    try {
+      const r2 = await WR.rosGetParams(ros, WR.OPTICAL_NODE, FLOW_TUNE_KEYS);
+      const vals2 = r2?.values || [];
+      const patch2 = {};
+      FLOW_TUNE_KEYS.forEach((k, i) => {
+        const d = readParamDouble(vals2[i]);
+        if (d != null) patch2[k] = d;
+      });
+      setFlowTune((prev) => ({ ...prev, ...patch2 }));
+      setTuneMsg("Parameters refreshed");
+    } catch (e) {
+      setTuneMsg("Optical flow node offline or unreadable (IMU OK)");
+    }
+  }
+
+  async function applyImuTune() {
+    if (!connected || !ros) return;
+    setImuTuneBusy(true);
+    setTuneMsg("");
+    try {
+      const parameters = IMU_TUNE_KEYS.map((k) => WR.makeParam(k, Number(imuTune[k])));
+      const res = await WR.rosSetParams(ros, WR.MOTOR_NODE, parameters);
+      if (!res?.results?.every((x) => x.successful)) {
+        const why = res?.results?.find((r) => !r.successful)?.reason || "set_parameters failed";
+        throw new Error(why);
+      }
+      setTuneMsg("IMU PID saved");
+    } catch (e) {
+      setTuneMsg("IMU save: " + (e.message ?? e));
+    } finally {
+      setImuTuneBusy(false);
+    }
+  }
+
+  async function applyFlowTune() {
+    if (!connected || !ros) return;
+    setFlowTuneBusy(true);
+    setTuneMsg("");
+    try {
+      const parameters = FLOW_TUNE_KEYS.map((k) => WR.makeParam(k, Number(flowTune[k])));
+      const res = await WR.rosSetParams(ros, WR.OPTICAL_NODE, parameters);
+      if (!res?.results?.every((x) => x.successful)) {
+        const why = res?.results?.find((r) => !r.successful)?.reason || "set_parameters failed";
+        throw new Error(why);
+      }
+      setTuneMsg("Optical flow saved");
+    } catch (e) {
+      setTuneMsg("Flow save: " + (e.message ?? e));
+    } finally {
+      setFlowTuneBusy(false);
+    }
+  }
 
   async function switchCorrectionMode(nextMode) {
     if (!connected || modeBusy || nextMode === correctionMode) return;
@@ -208,9 +344,84 @@ function ImuPanel({ ros, connected }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2 mb-2">
         {modeMsg && <span className={`text-xs ${modeMsg.includes("Error") ? "text-red-400" : "text-emerald-400"}`}>{modeMsg}</span>}
       </div>
+
+      <div className="border-t border-slate-800 -mx-3 mb-3" />
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+               <span className="block text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-500">Tune · motor_hat_node (IMU PID)</span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={refreshTuneFromRobot}
+            disabled={!connected}
+            className="px-2.5 py-1 text-[0.65rem] font-semibold rounded-lg border border-slate-600 text-slate-300
+              bg-slate-800/60 hover:bg-slate-800 disabled:opacity-40 touch-manipulation"
+          >Refresh</button>
+          <button
+            type="button"
+            onClick={applyImuTune}
+            disabled={!connected || imuTuneBusy}
+            className="px-2.5 py-1 text-[0.65rem] font-semibold rounded-lg border border-emerald-600/50 text-emerald-400
+              bg-emerald-950/40 hover:bg-emerald-950/60 disabled:opacity-40 touch-manipulation"
+          >Apply IMU</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-4">
+        {IMU_TUNE_KEYS.map((key) => (
+          <div key={key} className="flex items-center justify-between gap-2">
+            <label htmlFor={`imu-${key}`} className="text-[0.65rem] text-slate-500 shrink-0">{IMU_TUNE_LABELS[key]}</label>
+            <input
+              id={`imu-${key}`}
+              type="number"
+              step={IMU_TUNE_STEPS[key]}
+              value={imuTune[key]}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setImuTune((p) => ({ ...p, [key]: Number.isFinite(v) ? v : p[key] }));
+              }}
+              className="w-[6rem] bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200 text-right tabular-nums"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-slate-800 -mx-3 mb-3" />
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span className="block text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-500">Tune · optical_flow_node</span>
+        <button
+          type="button"
+          onClick={applyFlowTune}
+          disabled={!connected || flowTuneBusy}
+          className="px-2.5 py-1 text-[0.65rem] font-semibold rounded-lg border border-sky-600/50 text-sky-400
+            bg-sky-950/30 hover:bg-sky-950/50 disabled:opacity-40 touch-manipulation"
+        >Apply flow</button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-2">
+        {FLOW_TUNE_KEYS.map((key) => (
+          <div key={key} className="flex items-center justify-between gap-2">
+            <label htmlFor={`flow-${key}`} className="text-[0.65rem] text-slate-500 shrink-0">{FLOW_TUNE_LABELS[key]}</label>
+            <input
+              id={`flow-${key}`}
+              type="number"
+              step={FLOW_TUNE_STEPS[key]}
+              value={flowTune[key]}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setFlowTune((p) => ({ ...p, [key]: Number.isFinite(v) ? v : p[key] }));
+              }}
+              className="w-[6rem] bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-200 text-right tabular-nums"
+            />
+          </div>
+        ))}
+      </div>
+
+      {tuneMsg && (
+        <div className={`text-xs mt-1 ${tuneMsg.includes("failed") || tuneMsg.includes("Error") || tuneMsg.includes("save:") ? "text-amber-400" : "text-slate-400"}`}>
+          {tuneMsg}
+        </div>
+      )}
     </WR.Card>
   );
 }

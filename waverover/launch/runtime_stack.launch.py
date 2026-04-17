@@ -26,7 +26,9 @@ def _opaque(context, *args, **kwargs):
     if mode not in ("manual", "wander"):
         raise RuntimeError("stack_mode musi byt manual alebo wander")
 
-    ctrl = "auto" if mode == "wander" else "manual"
+    use_simple_nav = LaunchConfiguration("use_simple_nav").perform(context) == "true"
+    # simple_nav publikuje na /cmd_vel -> motor musi byt v auto mode
+    ctrl = "auto" if (mode == "wander" or use_simple_nav) else "manual"
     wand_en = mode == "wander"
 
     correction_mode = LaunchConfiguration("correction_mode").perform(context)
@@ -138,6 +140,10 @@ def _opaque(context, *args, **kwargs):
                 "turn_speed": wander_turn,
                 "lidar_rotation_deg": float(LaunchConfiguration("lidar_rotation_deg").perform(context)),
                 "cmd_topic": wander_cmd_topic,
+                "turn_blocked_deg": 120.0,
+                "turn_tolerance_deg": 2.0,
+                "lidar_early_exit": False,
+                "lidar_early_exit_min_deg": 40.0,
             }],
         ),
         # Sluzby na prepnutie parametrov motor + wander za behu (web vola tie iste sluzby)
@@ -161,6 +167,8 @@ def _opaque(context, *args, **kwargs):
                     "baud_rate": int(LaunchConfiguration("imu_baud_rate").perform(context)),
                     "frame_id": LaunchConfiguration("imu_frame_id").perform(context),
                     "topic": "/imu",
+                    # Gyro Kalman zaostava -> lidar_wander podhodnoti uhol -> pretacanie; akcelerometer ostava filtrovany.
+                    "kalman_gyro_enabled": False,
                 }],
             ),
             Node(
@@ -179,6 +187,15 @@ def _opaque(context, *args, **kwargs):
     if have_cam and use_camera:
         actions.append(
             Node(
+                package="web_video_server",
+                executable="web_video_server",
+                name="web_video_server",
+                output="screen",
+                parameters=[{"port": 8081}],
+            )
+        )
+        actions.append(
+            Node(
                 package="camera_ros",
                 executable="camera_node",
                 name="camera_node",
@@ -189,6 +206,7 @@ def _opaque(context, *args, **kwargs):
                     "width": CAMERA_WIDTH,
                     "height": CAMERA_HEIGHT,
                     "format": CAMERA_FORMAT,
+                    "fps": 20.0,
                 }],
                 remappings=[
                     ("image_raw", "/camera/image_raw"),
@@ -362,15 +380,49 @@ def _opaque(context, *args, **kwargs):
         else:
             actions.append(LogInfo(msg="use_robot_model:=true vyzaduje balik waver_sim (robot.urdf.xacro)."))
 
-    if use_web:
-        pkg = get_package_share_directory("waverover")
+    if use_simple_nav:
         actions.append(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(pkg, "launch", "web_teleop_ui.launch.py"),
-                )
+            Node(
+                package="waverover",
+                executable="simple_nav_node.py",
+                name="simple_nav_node",
+                output="screen",
+                parameters=[{
+                    "map_frame":                "map",
+                    "base_frame":               "base_link",
+                    "imu_topic":                "/imu",
+                    "teleop_max_angular":       max_ang,
+                    "rotate_angular_scale":     float(LaunchConfiguration("rotate_angular_scale").perform(context)),
+                    "rotate_kp":                float(LaunchConfiguration("rotate_kp").perform(context)),
+                    "rotate_done_deg":          float(LaunchConfiguration("rotate_done_deg").perform(context)),
+                    "rotate_fast_deg":          float(LaunchConfiguration("rotate_fast_deg").perform(context)),
+                    "rotate_omega_min":         float(LaunchConfiguration("rotate_omega_min").perform(context)),
+                    "rotate_linear_nudge":      float(LaunchConfiguration("rotate_linear_nudge").perform(context)),
+                    "drive_speed":              float(LaunchConfiguration("drive_speed").perform(context)),
+                    "drive_forward_scale":      float(LaunchConfiguration("drive_forward_scale").perform(context)),
+                    "drive_steer_kp":           0.7,
+                    "drive_steer_max":          0.25,
+                    "drive_steer_deadband_deg": float(LaunchConfiguration("drive_steer_deadband_deg").perform(context)),
+                    "rerotate_threshold_rad":   0.52,
+                    "goal_tolerance_m":         float(LaunchConfiguration("goal_tolerance_m").perform(context)),
+                    "approach_slowdown_m":      float(LaunchConfiguration("approach_slowdown_m").perform(context)),
+                    "loop_hz":                  20.0,
+                    "tf_timeout_sec":           0.15,
+                }],
             )
         )
+
+    if use_web:
+        pkg = get_package_share_directory("waverover")
+        web_launch = os.path.join(pkg, "launch", "web_teleop_ui.launch.py")
+        if os.path.exists(web_launch):
+            actions.append(
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(web_launch)
+                )
+            )
+        else:
+            actions.append(LogInfo(msg="use_web:=true ale web_teleop_ui.launch.py chyba; web cast sa preskakuje."))
 
     return actions
 
@@ -449,6 +501,18 @@ def generate_launch_description():
         DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
         DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),
         DeclareLaunchArgument("use_cmd_vel_odom", default_value="true", description="odometria z cmd_vel -> odom->base_link TF"),
+        DeclareLaunchArgument("use_simple_nav", default_value="false", description="simple_nav_node (navigacia k /goal_pose cez SLAM TF); prepne motor do auto modu"),
+        DeclareLaunchArgument("drive_speed", default_value="0.75"),
+        DeclareLaunchArgument("drive_forward_scale", default_value="1.5"),
+        DeclareLaunchArgument("rotate_angular_scale", default_value="0.8", description="ROTATING: |angular.z| = teleop_max_angular * scale"),
+        DeclareLaunchArgument("rotate_kp", default_value="4.5"),
+        DeclareLaunchArgument("rotate_done_deg", default_value="10.0"),
+        DeclareLaunchArgument("rotate_fast_deg", default_value="12.0"),
+        DeclareLaunchArgument("rotate_omega_min", default_value="1.0"),
+        DeclareLaunchArgument("rotate_linear_nudge", default_value="0.0"),
+        DeclareLaunchArgument("drive_steer_deadband_deg", default_value="10.0"),
+        DeclareLaunchArgument("goal_tolerance_m", default_value="0.35"),
+        DeclareLaunchArgument("approach_slowdown_m", default_value="0.60"),
         LogInfo(msg="runtime_stack: /waverover/switch_to_{manual,wander}; web ak use_web:=true"),
         OpaqueFunction(function=_opaque),
     ])

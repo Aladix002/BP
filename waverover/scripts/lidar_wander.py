@@ -10,10 +10,6 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, LaserScan
 
-# Povolena odchylka od cieloveho uhla otocenia pred prechodom do jazdy vpred
-_TOLERANCE_RAD = math.radians(8.0)
-
-
 class LidarWanderNode(Node):
     _FWD  = 0
     _STOP = 1
@@ -26,9 +22,22 @@ class LidarWanderNode(Node):
         self.declare_parameter("forward_speed",       0.10)
         self.declare_parameter("turn_speed",          1.80)
         self.declare_parameter("turn_timeout_s",       6.0)
+        # Cielovy uhol otocenia (IMU integracia omega_z); zablokovany = obe strany pod threshold
+        self.declare_parameter("turn_target_deg",        90.0)
+        # Ukonci otacanie ked integral uhla >= turn_target_deg - turn_tolerance_deg (mensia = blizsie k plnemu uhlu)
+        self.declare_parameter("turn_tolerance_deg",      2.0)
+        self.declare_parameter("turn_blocked_deg",    120.0)
         self.declare_parameter("lidar_rotation_deg", -90.0)
         self.declare_parameter("cmd_topic",       "/cmd_vel")
         self.declare_parameter("imu_angular_z_sign", -1.0)
+        # Ak predok LiDARu ukaze volno pocas otacania, ukonci skor (menej zavisle od gyro integracie)
+        self.declare_parameter("lidar_early_exit",          False)
+        self.declare_parameter("lidar_early_exit_min_deg",   40.0)
+        # Nasobenie omega pred integraciou (1.0 = default); >1 zrychli narast integrala (skorsi koniec otacania)
+        self.declare_parameter("imu_integration_scale",       1.0)
+        # Poslednych turn_ramp_deg pred cielom: linearne znizuje |angular.z| az po turn_ramp_min_scale * turn_speed; 0 = vypnute
+        self.declare_parameter("turn_ramp_deg", 28.0)
+        self.declare_parameter("turn_ramp_min_scale",         0.22)
 
         cmd_topic = self.get_parameter("cmd_topic").get_parameter_value().string_value
         self._pub      = self.create_publisher(Twist, cmd_topic, 10)
@@ -94,7 +103,10 @@ class LidarWanderNode(Node):
         ):
             dt = (now - self._last_imu_t).nanoseconds * 1e-9
             if 0.0 < dt < 0.5:
-                omega = msg.angular_velocity.z * self._imu_sign
+                scale = self.get_parameter(
+                    "imu_integration_scale"
+                ).get_parameter_value().double_value
+                omega = msg.angular_velocity.z * self._imu_sign * scale
                 self._turn_accum += omega * dt
         self._last_imu_t = now
 
@@ -112,20 +124,22 @@ class LidarWanderNode(Node):
 
     def _choose_turn(self, reason: str) -> None:
         thr        = self.get_parameter("threshold_m").get_parameter_value().double_value
+        tgt        = self.get_parameter("turn_target_deg").get_parameter_value().double_value
+        blk        = self.get_parameter("turn_blocked_deg").get_parameter_value().double_value
         left_free  = self._d_left  > thr
         right_free = self._d_right > thr
 
         if left_free and not right_free:
-            self._start_turn(+1.0, 90.0, reason)
+            self._start_turn(+1.0, tgt, reason)
         elif right_free and not left_free:
-            self._start_turn(-1.0, 90.0, reason)
+            self._start_turn(-1.0, tgt, reason)
         elif left_free and right_free:
             if self._d_left >= self._d_right:
-                self._start_turn(+1.0, 90.0, reason)
+                self._start_turn(+1.0, tgt, reason)
             else:
-                self._start_turn(-1.0, 90.0, reason)
+                self._start_turn(-1.0, tgt, reason)
         else:
-            self._start_turn(+1.0, 180.0, f"{reason} - zablokovany")
+            self._start_turn(+1.0, blk, f"{reason} - zablokovany")
 
     def _ctrl_cb(self) -> None:
         if not self.get_parameter("enabled").get_parameter_value().bool_value:
@@ -156,12 +170,25 @@ class LidarWanderNode(Node):
             else:
                 elapsed = (self.get_clock().now() - self._turn_start).nanoseconds * 1e-9
                 progress = abs(self._turn_accum)
-                min_ok = self._turn_target - _TOLERANCE_RAD
+                tol = math.radians(
+                    self.get_parameter("turn_tolerance_deg").get_parameter_value().double_value
+                )
+                min_ok = self._turn_target - tol
                 done_angle = progress >= min_ok
                 done_timeout = elapsed > tmax
+                early_exit = self.get_parameter("lidar_early_exit").get_parameter_value().bool_value
+                early_min = math.radians(
+                    self.get_parameter("lidar_early_exit_min_deg").get_parameter_value().double_value
+                )
+                lidar_clear = early_exit and self._d_front > thr and progress >= early_min
 
-                if done_angle or done_timeout:
-                    reason = "uhol" if done_angle else "timeout"
+                if lidar_clear or done_angle or done_timeout:
+                    if lidar_clear:
+                        reason = "lidar_predok"
+                    elif done_angle:
+                        reason = "uhol"
+                    else:
+                        reason = "timeout"
                     self.get_logger().info(
                         f"Otocenie [{reason}] "
                         f"{math.degrees(abs(self._turn_accum)):.1f} deg / "
@@ -171,7 +198,19 @@ class LidarWanderNode(Node):
                     self._state      = self._FWD
                     self._turn_start = None
                 else:
-                    cmd.angular.z = -(self._turn_dir * spd)
+                    remaining = max(0.0, min_ok - progress)
+                    ramp_deg = self.get_parameter("turn_ramp_deg").get_parameter_value().double_value
+                    ramp_rad = math.radians(ramp_deg) if ramp_deg > 0.0 else 0.0
+                    if ramp_rad <= 0.0:
+                        turn_scale = 1.0
+                    elif remaining >= ramp_rad:
+                        turn_scale = 1.0
+                    else:
+                        lo = max(0.01, min(1.0, self.get_parameter(
+                            "turn_ramp_min_scale"
+                        ).get_parameter_value().double_value))
+                        turn_scale = max(lo, remaining / ramp_rad)
+                    cmd.angular.z = -(self._turn_dir * spd * turn_scale)
 
         self._pub.publish(cmd)
 

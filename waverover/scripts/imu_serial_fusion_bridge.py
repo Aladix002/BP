@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Arduino (MPU6050) posiela CSV po USB. Tento uzol parsuje riadky, plni sensor_msgs/Imu.
 # Vlakno cita seriu (neblokuje spin); spravy idu cez frontu do timeru co publikuje na /imu.
+# Vstavany 1D Kalman filter (6x skalarne) na ax,ay,az a gx,gy,gz — bez samostatneho uzla.
 
 import math
 import os
@@ -21,6 +22,28 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Float64MultiArray
 
 _IMU_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
+
+
+class ScalarKalman:
+    """Konstantny model: x_k = x_{k-1} + sum(Q). Meranie z = x + sum(R)."""
+    __slots__ = ("_x", "_p", "_q", "_r", "_init")
+
+    def __init__(self, q: float, r: float) -> None:
+        self._q, self._r = q, r
+        self._x = 0.0
+        self._p = 1.0
+        self._init = False
+
+    def update(self, z: float) -> float:
+        if not self._init:
+            self._x = z
+            self._init = True
+            return z
+        self._p += self._q
+        k = self._p / (self._p + self._r)
+        self._x += k * (z - self._x)
+        self._p *= 1.0 - k
+        return self._x
 
 GRAVITY = 9.80665
 DEG2RAD = math.pi / 180.0
@@ -185,6 +208,15 @@ class ImuSerialFusionBridge(Node):
         self.declare_parameter("gyro_zero_warmup_samples", 25)
         # True: vyskusa kandidatov (serial_port, by-id Arduino, ttyACM0..N, ttyUSB*) kym nepride IMU CSV
         self.declare_parameter("scan_serial_ports", True)
+        # Kalman filter (1D na kazdu os): kalman_enabled=false vypne filtrovanie
+        self.declare_parameter("kalman_enabled", True)
+        # Gyro: nizke Q sposobi ze omega zaostava pri otacani; lidar_wander integruje omega -> pretocenie.
+        # kalman_gyro_enabled=false = len bias-korekcia, akcelerometer ostava cez Kalman.
+        self.declare_parameter("kalman_gyro_enabled", True)
+        self.declare_parameter("kalman_process_noise_accel", 0.001)
+        self.declare_parameter("kalman_process_noise_gyro", 5.0e-5)
+        self.declare_parameter("kalman_measurement_noise_accel", 0.05)
+        self.declare_parameter("kalman_measurement_noise_gyro", 0.001)
 
         requested_port = self.get_parameter("serial_port").get_parameter_value().string_value
         scan = self.get_parameter("scan_serial_ports").get_parameter_value().bool_value
@@ -207,6 +239,19 @@ class ImuSerialFusionBridge(Node):
         self._gyro_sum = [0.0, 0.0, 0.0]
         self._gyro_n = 0
         self._gyro_bias: Optional[tuple] = None  # (bx,by,bz) rad/s po warmupe
+
+        self._kalman_enabled = self.get_parameter("kalman_enabled").get_parameter_value().bool_value
+        self._kalman_gyro_enabled = self.get_parameter("kalman_gyro_enabled").get_parameter_value().bool_value
+        qa = self.get_parameter("kalman_process_noise_accel").get_parameter_value().double_value
+        qg = self.get_parameter("kalman_process_noise_gyro").get_parameter_value().double_value
+        ra = self.get_parameter("kalman_measurement_noise_accel").get_parameter_value().double_value
+        rg = self.get_parameter("kalman_measurement_noise_gyro").get_parameter_value().double_value
+        self._kf_ax = ScalarKalman(qa, ra)
+        self._kf_ay = ScalarKalman(qa, ra)
+        self._kf_az = ScalarKalman(qa, ra)
+        self._kf_gx = ScalarKalman(qg, rg)
+        self._kf_gy = ScalarKalman(qg, rg)
+        self._kf_gz = ScalarKalman(qg, rg)
 
         port: str
         try:
@@ -257,6 +302,11 @@ class ImuSerialFusionBridge(Node):
         self.get_logger().info(
             f"IMU fusion serial -> {topic} ({port} @ {baud}, 15/20 CSV, frame_id={self._frame_id})"
         )
+        if self._kalman_enabled:
+            self.get_logger().info(
+                "Kalman: akcelerometer zapnuty; gyro %s"
+                % ("filtrovany" if self._kalman_gyro_enabled else "bez filtra (presnejsia integracia pre wander)")
+            )
         if self._zero_gyro:
             self.get_logger().info(
                 f"zero_gyro_on_start: prvych {self._gyro_warmup} vzoriek sa nepublikuje "
@@ -345,13 +395,21 @@ class ImuSerialFusionBridge(Node):
         out.header.stamp = self.get_clock().now().to_msg()
         out.header.frame_id = self._frame_id
 
-        out.linear_acceleration.x = ax_g * GRAVITY
-        out.linear_acceleration.y = ay_g * GRAVITY
-        out.linear_acceleration.z = az_g * GRAVITY
-
+        ax_ms2 = ax_g * GRAVITY
+        ay_ms2 = ay_g * GRAVITY
+        az_ms2 = az_g * GRAVITY
         gx_rad = gx_dps * DEG2RAD
         gy_rad = gy_dps * DEG2RAD
         gz_rad = gz_dps * DEG2RAD
+
+        if self._kalman_enabled:
+            ax_ms2 = self._kf_ax.update(ax_ms2)
+            ay_ms2 = self._kf_ay.update(ay_ms2)
+            az_ms2 = self._kf_az.update(az_ms2)
+            if self._kalman_gyro_enabled:
+                gx_rad = self._kf_gx.update(gx_rad)
+                gy_rad = self._kf_gy.update(gy_rad)
+                gz_rad = self._kf_gz.update(gz_rad)
 
         if self._zero_gyro:
             if self._gyro_bias is None:
@@ -377,6 +435,9 @@ class ImuSerialFusionBridge(Node):
                 gy_rad -= self._gyro_bias[1]
                 gz_rad -= self._gyro_bias[2]
 
+        out.linear_acceleration.x = ax_ms2
+        out.linear_acceleration.y = ay_ms2
+        out.linear_acceleration.z = az_ms2
         out.angular_velocity.x = gx_rad
         out.angular_velocity.y = gy_rad
         out.angular_velocity.z = gz_rad

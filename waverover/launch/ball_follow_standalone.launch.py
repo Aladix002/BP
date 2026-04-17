@@ -49,6 +49,7 @@ def _setup(context, *args, **kwargs):
                 "width": 320,
                 "height": 240,
                 "format": "XRGB8888",
+                "fps": 20.0,
             }],
         ),
         Node(

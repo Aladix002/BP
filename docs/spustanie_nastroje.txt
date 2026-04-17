@@ -3,6 +3,8 @@ Prostredie:
 source install/setup.bash
 source /opt/ros/jazzy/setup.bash
 
+Obraz z kamery (web_video_server): v prehliadaci http://127.0.0.1:8081/
+
 
 Spustenie a nastroje:
 
