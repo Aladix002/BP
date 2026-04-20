@@ -1,8 +1,8 @@
-# Ball follower parameters – loaded by ball_follow_standalone.launch.py
+# Parametre sledovacieho uzla – nacitava ball_follow_standalone.launch.py
 /**:
   ros__parameters:
 
-    # ── Orange HSV range (OpenCV H: 0–180) ───────────────────────────────────
+    # ── HSV rozsah orandzovej farby (OpenCV H: 0-180) ────────────────────────
     orange_h_min: 10
     orange_h_max: 24
     orange_s_min: 90
@@ -10,12 +10,12 @@
     orange_v_min: 90
     orange_v_max: 255
 
-    # ── Morphology ────────────────────────────────────────────────────────────
+    # ── Morfologia a predspracovanie ──────────────────────────────────────────
     blur_ksize:   11
     erode_iters:   2
     dilate_iters:  2
 
-    # ── Contour quality thresholds ────────────────────────────────────────────
+    # ── Prahy kvality detekcie ────────────────────────────────────────────────
     min_radius_px:    10.0
     max_radius_px:   145.0
     stop_radius_px:   40.0
@@ -26,31 +26,29 @@
     min_fill_ratio:    0.64
     min_confidence:    0.70
 
-    # ── Anti-jitter ───────────────────────────────────────────────────────────
-    max_jump_frac:  0.28
-    jump_reset_sec: 0.45
-    detection_lost_sec: 1.5
-    success_hold_ticks: 1
+    # ── Anti-jitter filter ────────────────────────────────────────────────────
+    max_jump_frac:       0.28
+    jump_reset_sec:      0.45
+    detection_lost_sec:  1.5
+    success_hold_ticks:  1
 
-    # ── Motion ────────────────────────────────────────────────────────────────
-    forward_speed: 0.72
+    # ── Pohyb ─────────────────────────────────────────────────────────────────
+    forward_speed: 0.60
 
-    # ── Differential drive → cmd_vel ────────────────────────────────────────
-    wheel_base_cmd:      2.0
-    max_linear:          1.0
-    side_gain:           1.02
-    mix_max:             0.68
-    min_wheel_fwd:       0.12
-    side_slowdown_gain:  0.50
-    side_slowdown_min:   0.40
-    err_exp:             0.85
+    # ── Diferencialne riadenie → cmd_vel ──────────────────────────────────────
+    wheel_base_cmd:  2.0
+    max_linear:      1.0
+    side_gain:       1.50   # agresivita zatacania
+    min_wheel_fwd:   0.12   # min. rychlost vnutorneho kolesa
+    err_exp:         0.85   # nelinearita bocnej chyby (<1 = citlivejsi)
 
-    # ── Approach brake ────────────────────────────────────────────────────────
+    # ── Brzdenie pri priblizovani ─────────────────────────────────────────────
     brake_band_px:  14.0
     turn_blend_min:  0.45
 
-    # ── Smoothing & burst search ──────────────────────────────────────────────
+    # ── Vyhladzovanie a hladanie ──────────────────────────────────────────────
     smooth_alpha:  0.36
+    coast_sec:     1.0    # po strate lopty este 1s vpred pred burstom
     burst_speed:  10.0
     burst_on_sec:  0.45
     burst_off_sec: 0.90

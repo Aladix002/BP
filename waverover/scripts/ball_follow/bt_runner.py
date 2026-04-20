@@ -99,25 +99,30 @@ class _ActionBehaviour(py_trees.behaviour.Behaviour):
 
 
 class _CelebrateBehaviour(py_trees.behaviour.Behaviour):
-    def __init__(self, node: Node, spin_sec: float = 1.2) -> None:
+    SPIN_SPEED   = 8.0   # rad/s
+    PHASE_SEC    = 0.35  # seconds per direction
+    TOTAL_SEC    = 4.2   # total celebrate duration
+
+    def __init__(self, node: Node) -> None:
         super().__init__("Celebrate")
-        self._node     = node
-        self._spin_sec = spin_sec
-        self._pub      = node.create_publisher(Twist, "/cmd_vel", 10)
-        self._start    = 0.0
+        self._node  = node
+        self._pub   = node.create_publisher(Twist, "/cmd_vel", 10)
+        self._start = 0.0
 
     def initialise(self) -> None:
         self._start = time.monotonic()
         self._node.get_logger().info("[Celebrate] found the ball!")
 
     def update(self) -> py_trees.common.Status:
-        if time.monotonic() - self._start < self._spin_sec:
-            cmd = Twist()
-            cmd.angular.z = 2.0
-            self._pub.publish(cmd)
-            return py_trees.common.Status.RUNNING
-        self._pub.publish(Twist())
-        return py_trees.common.Status.SUCCESS
+        elapsed = time.monotonic() - self._start
+        if elapsed >= self.TOTAL_SEC:
+            self._pub.publish(Twist())
+            return py_trees.common.Status.SUCCESS
+        phase = int(elapsed / self.PHASE_SEC)
+        cmd = Twist()
+        cmd.angular.z = self.SPIN_SPEED if phase % 2 == 0 else -self.SPIN_SPEED
+        self._pub.publish(cmd)
+        return py_trees.common.Status.RUNNING
 
     def terminate(self, new_status: py_trees.common.Status) -> None:
         self._pub.publish(Twist())

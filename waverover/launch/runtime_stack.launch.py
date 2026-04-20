@@ -167,7 +167,6 @@ def _opaque(context, *args, **kwargs):
                     "frame_id": LaunchConfiguration("imu_frame_id").perform(context),
                     "topic": "/imu",
                     # Gyro Kalman zaostava -> lidar_wander podhodnoti uhol -> pretacanie; akcelerometer ostava filtrovany.
-                    "kalman_gyro_enabled": False,
                 }],
             ),
             Node(

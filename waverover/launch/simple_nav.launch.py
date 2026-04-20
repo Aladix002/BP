@@ -242,7 +242,6 @@ def generate_launch_description():
                 "baud_rate": imu_baud,
                 "frame_id": "imu_link",
                 "topic": "/imu",
-                "kalman_gyro_enabled": False,
             }],
         ),
 
