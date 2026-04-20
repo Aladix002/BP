@@ -40,7 +40,7 @@
     <!-- Web UI (mobil): rosbridge + staticke subory v share/waverover/web_ui -->
     <exec_depend>rosbridge_server</exec_depend>
     <exec_depend>rosapi</exec_depend>
-    <exec_depend>web_video_server</exec_depend>
+    <!-- WebRTC kamera: pip install aiortc aiohttp av (volitelne; bez toho spusti webrtc_camera_node zlyha) -->
     <exec_depend>ament_index_python</exec_depend>
     <exec_depend>rclpy</exec_depend>
     <exec_depend>rclpy_action</exec_depend>

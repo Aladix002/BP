@@ -143,7 +143,7 @@ def main() -> None:
         0.02,
         (
             "Pri lopta vpravo (x_err>0) diferencial zvysuje v_rn oproti v_ln — robot sa zataca za loptou. "
-            "Stav state: 4 track_diff, 6 approach_diff, … Maska: /ball_follower/debug_mask/compressed."
+            "Stav state: 4 track_diff, 6 approach_diff, … (maska len ak publish_debug_mask.)"
         ),
         ha="center",
         va="bottom",

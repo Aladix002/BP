@@ -3,8 +3,21 @@ Prostredie:
 source install/setup.bash
 source /opt/ros/jazzy/setup.bash
 
-Obraz z kamery (web_video_server): v prehliadaci http://127.0.0.1:8081/
+Obraz z kamery vo web UI: WebRTC (signalizacia http://<robot>:8765/offer; media UDP/SRTP).
 
+Zavislosti webrtc_camera (z korena workspace, kde je adresar waverover/):
+  Ubuntu/Debian blokuje systemovy pip (PEP 668). Jedna z moznosti:
+
+  a) Do toho isteho Pythona ako pouziva ros2 run (najjednoduchsie na RPi):
+     python3 -m pip install --break-system-packages -r waverover/requirements-webrtc.txt
+
+  b) Virtualne prostredie (bez zasahu do systemu):
+     python3 -m venv .venv-webrtc
+     source .venv-webrtc/bin/activate
+     pip install -r waverover/requirements-webrtc.txt
+     deactivate
+     Potom treba spustat uzol s interpreterom z venv (napr. upravit launch na
+     python3 z .venv-webrtc/bin/python3) — inak ros2 run nenajde aiortc.
 
 Spustenie a nastroje:
 

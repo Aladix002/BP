@@ -10,6 +10,10 @@ Object.assign(window.WR, {
   // camera_ros + namespace: skutocny compressed topic (nie /camera/image_raw)
   CAMERA_TOPIC: "/camera/camera_node/image_raw/compressed",
   CAMERA_TYPE: "sensor_msgs/msg/CompressedImage",
+  /** WebRTC signalizácia (HTTP); samotné video ide SRTP/UDP medzi prehliadačom a robotom. */
+  WEBRTC_SIGNAL_PORT: 8765,
+  /** Ak true, najprv sa skúsi uzol webrtc_camera_node; pri zlyhaní fallback na rosbridge (TCP). */
+  USE_WEBRTC_CAMERA: true,
   IMU_TOPIC: "/imu",
   IMU_TYPE: "sensor_msgs/msg/Imu",
   IMU_DBG_TOPIC: "/motor_hat_node/drive_debug",
@@ -26,3 +30,17 @@ Object.assign(window.WR, {
   PTYPE_DOUBLE: 3,
   PTYPE_STRING: 4,
 });
+
+/** Základ URL pre POST /offer a GET /health (rovnaký host ako rosbridge WebSocket). */
+window.WR.webrtcSignalBaseUrl = function webrtcSignalBaseUrl() {
+  let host = "127.0.0.1";
+  try {
+    const u = typeof localStorage !== "undefined" ? localStorage.getItem("waverover_ws_url") : null;
+    if (u) host = new URL(u).hostname;
+    else if (typeof window !== "undefined" && window.location && window.location.hostname) {
+      host = window.location.hostname;
+    }
+  } catch (_) {}
+  const p = window.WR.WEBRTC_SIGNAL_PORT;
+  return `http://${host}:${p}`;
+};

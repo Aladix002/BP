@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Minimalny stack len na sledovanie lopty: motor v auto, kamera, FollowBall server, behavior tree runner.
-
+# Minimal stack: motor (auto) + camera + ball_follower_action + BT runner
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -11,12 +10,18 @@ from launch_ros.actions import Node
 
 
 def _setup(context, *args, **kwargs):
-    pkg = get_package_share_directory("waverover")
+    pkg         = get_package_share_directory("waverover")
     params_file = os.path.join(pkg, "config", "ball_follow.yaml")
     image_topic = LaunchConfiguration("image_topic").perform(context)
-    cmd_topic = LaunchConfiguration("cmd_topic").perform(context)
-    color = LaunchConfiguration("ball_color").perform(context)
-    find_timeout_sec = float(LaunchConfiguration("find_timeout_sec").perform(context))
+    cmd_topic   = LaunchConfiguration("cmd_topic").perform(context)
+    find_timeout = float(LaunchConfiguration("find_timeout_sec").perform(context))
+    try:
+        cam_id = int(LaunchConfiguration("camera_id").perform(context))
+    except ValueError:
+        cam_id = 0
+    sub_comp = LaunchConfiguration("subscribe_compressed").perform(context).lower() in (
+        "true", "1", "yes",
+    )
 
     return [
         Node(
@@ -25,7 +30,6 @@ def _setup(context, *args, **kwargs):
             name="motor_hat_node",
             output="screen",
             parameters=[{
-                # auto: motor pocuva /cmd_vel z ball_follower (nie teleop)
                 "control_mode":          "auto",
                 "cmd_vel_invert_linear": True,
                 "invert_linear":         True,
@@ -42,38 +46,38 @@ def _setup(context, *args, **kwargs):
             name="camera_node",
             output="screen",
             remappings=[
-                ("image_raw", "/camera/image_raw"),
-                ("camera_info", "/camera/camera_info"),
+                ("image_raw",    "/camera/image_raw"),
+                ("camera_info",  "/camera/camera_info"),
             ],
             parameters=[{
-                "width": 320,
+                "camera": cam_id,
+                "width":  320,
                 "height": 240,
                 "format": "XRGB8888",
-                "fps": 20.0,
+                "fps":    20.0,
             }],
         ),
         Node(
             package="waverover",
-            executable="ball_follower_action.py",
+            executable="action_node.py",
             name="ball_follower",
             output="screen",
             parameters=[
                 params_file,
                 {
                     "image_topic": image_topic,
-                    "cmd_topic": cmd_topic,
-                    "ball_color": color,
+                    "cmd_topic":   cmd_topic,
+                    "subscribe_compressed": sub_comp,
                 },
             ],
         ),
         Node(
             package="waverover",
-            executable="ball_follow_bt_runner.py",
+            executable="bt_runner.py",
             name="ball_follow_bt_runner",
             output="screen",
             parameters=[{
-                "ball_color": color,
-                "find_timeout_sec": find_timeout_sec,
+                "find_timeout_sec": find_timeout,
             }],
         ),
     ]
@@ -81,9 +85,14 @@ def _setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("image_topic", default_value="/camera/image_raw"),
+        DeclareLaunchArgument(
+            "image_topic",
+            default_value="/camera/camera_node/image_raw/compressed",
+            description="JPEG: camera_ros; raw Image: nastav subscribe_compressed:=false",
+        ),
+        DeclareLaunchArgument("subscribe_compressed", default_value="true"),
+        DeclareLaunchArgument("camera_id", default_value="0", description="libcamera index pre camera_ros"),
         DeclareLaunchArgument("cmd_topic", default_value="/cmd_vel"),
-        DeclareLaunchArgument("ball_color", default_value="orange"),
         DeclareLaunchArgument("find_timeout_sec", default_value="0.0"),
         OpaqueFunction(function=_setup),
     ])

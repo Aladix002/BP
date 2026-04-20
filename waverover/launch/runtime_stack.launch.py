@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Jeden stack: motor + LiDAR wander + IMU + volitelne kamera + web (rosbridge).
+# Jeden stack: motor + LiDAR wander + IMU + volitelne kamera + web (rosbridge + volitelne WebRTC video).
 # Prepinanie: ros2 service call /waverover/switch_to_wander|switch_to_manual std_srvs/srv/Trigger
 
 import os
@@ -46,6 +46,7 @@ def _opaque(context, *args, **kwargs):
     use_imu = LaunchConfiguration("use_imu").perform(context) == "true"
     use_camera = LaunchConfiguration("use_camera").perform(context) == "true"
     use_web = LaunchConfiguration("use_web").perform(context) == "true"
+    use_webrtc_camera = LaunchConfiguration("use_webrtc_camera").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
     use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
     use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
@@ -185,15 +186,19 @@ def _opaque(context, *args, **kwargs):
         )
 
     if have_cam and use_camera:
-        actions.append(
-            Node(
-                package="web_video_server",
-                executable="web_video_server",
-                name="web_video_server",
-                output="screen",
-                parameters=[{"port": 8081}],
+        if use_web and use_webrtc_camera:
+            actions.append(
+                Node(
+                    package="waverover",
+                    executable="webrtc_camera_node.py",
+                    name="webrtc_camera",
+                    output="screen",
+                    parameters=[{
+                        "image_topic": "/camera/camera_node/image_raw/compressed",
+                        "http_port": 8765,
+                    }],
+                )
             )
-        )
         actions.append(
             Node(
                 package="camera_ros",
@@ -438,6 +443,11 @@ def generate_launch_description():
         DeclareLaunchArgument("use_robot_model", default_value="true", description="robot_state_publisher z waver_sim URDF"),
         DeclareLaunchArgument("robot_model_file", default_value="", description="cesta k URDF/Xacro; prazdne = autodetect z waver_sim"),
         DeclareLaunchArgument("use_web", default_value="true", description="rosbridge + HTTP :8080"),
+        DeclareLaunchArgument(
+            "use_webrtc_camera",
+            default_value="true",
+            description="WebRTC video pre web UI (pip: aiortc aiohttp av); false = len rosbridge JPEG",
+        ),
         DeclareLaunchArgument(
             "correction_mode",
             default_value="imu",

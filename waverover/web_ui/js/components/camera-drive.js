@@ -1,13 +1,16 @@
 /* global window, ROSLIB, React */
 "use strict";
-// Kamera: ROSLIB Topic subscribe na JPEG compressed -> Blob alebo base64 -> Image -> canvas (letterbox).
-// genRef zabranuje race pri reconnect (stary frame neskresli po novom spojeni).
+// Kamera: predvolene WebRTC (SRTP/UDP) cez webrtc_camera_node; fallback rosbridge + canvas (TCP).
+// genRef zabranuje race pri reconnect.
 
 var WR = window.WR;
 
 function CameraPanel({ ros, connected }) {
   const canvasRef = React.useRef(null);
+  const videoRef = React.useRef(null);
+  const pcRef = React.useRef(null);
   const [live, setLive] = React.useState(false);
+  const [transport, setTransport] = React.useState("none"); // none | webrtc | ros
   const genRef = React.useRef(0);
   const subRef = React.useRef(null);
 
@@ -15,65 +18,127 @@ function CameraPanel({ ros, connected }) {
     if (!ros || !connected) {
       genRef.current++;
       setLive(false);
+      setTransport("none");
+      if (pcRef.current) {
+        try { pcRef.current.close(); } catch (_) {}
+        pcRef.current = null;
+      }
+      if (videoRef.current) videoRef.current.srcObject = null;
       if (subRef.current) {
         try { subRef.current.unsubscribe(); } catch (_) {}
         subRef.current = null;
       }
       return;
     }
-    const gen = ++genRef.current;
-    let primed = false;
-    let frameSeq = 0;
-    const sub = new ROSLIB.Topic({ ros, name: WR.CAMERA_TOPIC, messageType: WR.CAMERA_TYPE, throttle_rate: 33 });
-    subRef.current = sub;
 
-    sub.subscribe((m) => {
-      if (gen !== genRef.current) return;
-      const seq = ++frameSeq;
-      let url;
-      let revoke = null;
-      try {
-        if (typeof m.data === "string") {
-          url = "data:image/jpeg;base64," + m.data;
-        } else {
-          const b = new Blob([new Uint8Array(m.data)], { type: "image/jpeg" });
-          url = URL.createObjectURL(b);
-          revoke = url;
+    const gen = ++genRef.current;
+    let cancelled = false;
+
+    const startRosbridgeCanvas = () => {
+      let primed = false;
+      let frameSeq = 0;
+      const sub = new ROSLIB.Topic({ ros, name: WR.CAMERA_TOPIC, messageType: WR.CAMERA_TYPE, throttle_rate: 33 });
+      subRef.current = sub;
+      setTransport("ros");
+
+      sub.subscribe((m) => {
+        if (gen !== genRef.current || cancelled) return;
+        const seq = ++frameSeq;
+        let url;
+        let revoke = null;
+        try {
+          if (typeof m.data === "string") {
+            url = "data:image/jpeg;base64," + m.data;
+          } else {
+            const b = new Blob([new Uint8Array(m.data)], { type: "image/jpeg" });
+            url = URL.createObjectURL(b);
+            revoke = url;
+          }
+        } catch (_) {
+          return;
         }
-      } catch (_) {
-        return;
+        const img = new Image();
+        img.decoding = "async";
+        img.onload = () => {
+          if (gen !== genRef.current || cancelled || seq !== frameSeq) { if (revoke) URL.revokeObjectURL(revoke); return; }
+          const canvas = canvasRef.current;
+          if (!canvas) { if (revoke) URL.revokeObjectURL(revoke); return; }
+          const ctx = canvas.getContext("2d");
+          const par = canvas.parentElement;
+          const w = Math.max(1, par.clientWidth);
+          const h = Math.max(1, par.clientHeight);
+          if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+          const s = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+          const dw = img.naturalWidth * s;
+          const dh = img.naturalHeight * s;
+          ctx.fillStyle = "#030508";
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, (w - dw) * 0.5, (h - dh) * 0.5, dw, dh);
+          if (revoke) URL.revokeObjectURL(revoke);
+          if (!primed) { primed = true; setLive(true); }
+        };
+        img.onerror = () => { if (revoke) URL.revokeObjectURL(revoke); };
+        img.src = url;
+      });
+    };
+
+    (async () => {
+      if (WR.USE_WEBRTC_CAMERA && typeof RTCPeerConnection !== "undefined") {
+        const base = WR.webrtcSignalBaseUrl();
+        try {
+          const h = await fetch(`${base}/health`, { method: "GET", cache: "no-store", mode: "cors" });
+          if (!h.ok) throw new Error("health");
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          });
+          pc.ontrack = (ev) => {
+            if (cancelled || gen !== genRef.current) return;
+            if (videoRef.current) videoRef.current.srcObject = ev.streams[0];
+            setLive(true);
+          };
+          pc.addTransceiver("video", { direction: "recvonly" });
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          const res = await fetch(`${base}/offer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
+            mode: "cors",
+          });
+          if (!res.ok) throw new Error("offer");
+          const answer = await res.json();
+          await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
+          if (cancelled || gen !== genRef.current) {
+            pc.close();
+            return;
+          }
+          pcRef.current = pc;
+          setTransport("webrtc");
+          return;
+        } catch (e) {
+          console.warn("WebRTC camera unavailable, using rosbridge", e);
+        }
       }
-      const img = new Image();
-      img.decoding = "async";
-      img.onload = () => {
-        if (gen !== genRef.current || seq !== frameSeq) { if (revoke) URL.revokeObjectURL(revoke); return; }
-        const canvas = canvasRef.current;
-        if (!canvas) { if (revoke) URL.revokeObjectURL(revoke); return; }
-        const ctx = canvas.getContext("2d");
-        const par = canvas.parentElement;
-        const w = Math.max(1, par.clientWidth);
-        const h = Math.max(1, par.clientHeight);
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-        const s = Math.min(w / img.naturalWidth, h / img.naturalHeight);
-        const dw = img.naturalWidth * s;
-        const dh = img.naturalHeight * s;
-        ctx.fillStyle = "#030508";
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, (w - dw) * 0.5, (h - dh) * 0.5, dw, dh);
-        if (revoke) URL.revokeObjectURL(revoke);
-        if (!primed) { primed = true; setLive(true); }
-      };
-      img.onerror = () => { if (revoke) URL.revokeObjectURL(revoke); };
-      img.src = url;
-    });
+      if (cancelled || gen !== genRef.current) return;
+      startRosbridgeCanvas();
+    })();
 
     return () => {
+      cancelled = true;
       genRef.current++;
-      try { sub.unsubscribe(); } catch (_) {}
+      if (pcRef.current) {
+        try { pcRef.current.close(); } catch (_) {}
+        pcRef.current = null;
+      }
+      if (videoRef.current) videoRef.current.srcObject = null;
+      try { subRef.current?.unsubscribe(); } catch (_) {}
       subRef.current = null;
       setLive(false);
+      setTransport("none");
     };
   }, [ros, connected]);
+
+  const showFeed = live && (transport === "webrtc" || transport === "ros");
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-lg shadow-black/40 flex flex-col">
@@ -85,15 +150,23 @@ function CameraPanel({ ros, connected }) {
       </div>
       <div className="rounded-lg p-[3px] bg-gradient-to-br from-blue-500/20 via-slate-900 to-emerald-500/10">
         <div className="relative rounded-md overflow-hidden aspect-[4/3] bg-slate-950 flex items-center justify-center">
-          {!live && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-600 pointer-events-none">
+          {!showFeed && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-600 pointer-events-none z-0">
               <span className="text-3xl opacity-40">◉</span>
               <span className="text-xs text-center max-w-[8rem]">Connect to show the feed</span>
             </div>
           )}
+          <video
+            ref={videoRef}
+            className={`absolute inset-0 w-full h-full object-contain bg-[#030508] z-10 ${transport === "webrtc" && showFeed ? "" : "hidden"}`}
+            autoPlay
+            playsInline
+            muted
+            aria-label="Robot camera WebRTC"
+          />
           <canvas
             ref={canvasRef}
-            className={`absolute inset-0 w-full h-full block bg-[#030508] z-10 ${live ? "" : "hidden"}`}
+            className={`absolute inset-0 w-full h-full block bg-[#030508] z-10 ${transport === "ros" && showFeed ? "" : "hidden"}`}
             aria-label="Robot camera feed"
           />
         </div>
