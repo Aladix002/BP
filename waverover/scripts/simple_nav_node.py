@@ -15,22 +15,11 @@ from rclpy.time import Time
 from geometry_msgs.msg import PoseStamped, Twist
 from sensor_msgs.msg import Imu
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
 from tf2_ros import Buffer, TransformListener
 
-
-def yaw_from_quat(q) -> float:
-    siny = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return math.atan2(siny, cosy)
-
-
-def imu_msg_yaw_rad(msg: Imu) -> float:
-    # Yaw z ROS Imu orientation (rovnaky postup ako cmd_vel_odom)
-    q = msg.orientation
-    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return -math.atan2(siny_cosp, cosy_cosp)
+from waverover_utils import imu_quat_to_yaw, quat_to_yaw
 
 
 def angle_diff(a: float, b: float) -> float:
@@ -66,13 +55,15 @@ class SimpleNavNode(Node):
         self.declare_parameter("rotate_angular_sign", -1.0)   # 1.0 alebo -1.0 – smer otacania
         # Ak > 0, pevny strop [rad/s] namiesto vypoctu z teleop * scale
         self.declare_parameter("rotate_speed_max_override", -1.0)
-        self.declare_parameter("rotate_kp", 4.5)
-        # Hotovo otacanie (IMU): |chyba| < tol [deg] (~+-10 deg = netreba presne na stupen)
+        self.declare_parameter("rotate_kp", 3.0)
+        # D-clen: tlmi oscilaciu pomocou IMU angular_velocity.z; 0 = vypnute
+        self.declare_parameter("rotate_kd", 0.3)
+        # Hotovo otacanie (IMU): |chyba| < tol [deg]
         self.declare_parameter("rotate_done_deg", 10.0)
-        # Nad tymto uhlom plny |omega| (nie pomaly P) – uzsie = rychlejsie otacanie celkovo
-        self.declare_parameter("rotate_fast_deg", 12.0)
-        # Min |omega| pri P-faze; aspon cast max_om aby kolesa netocili prilis pomaly
-        self.declare_parameter("rotate_omega_min", 1.0)
+        # Nad tymto uhlom plny |omega| (nie pomaly P); sirsi = dlhsia zona brzdenia
+        self.declare_parameter("rotate_fast_deg", 45.0)
+        # Min |omega| pri P-faze (bez 0.45*max_om flooru ktory sposoboval oscilacnu)
+        self.declare_parameter("rotate_omega_min", 0.3)
         # linear.x pri ROTATING: default 0 (cista otacka na mieste; odom/RViz inak ukazuju jazdu vpred).
         # Ak koleso len bzuci, skus zvysit angular / deadzone motora, nie nudge.
         self.declare_parameter("rotate_linear_nudge", 0.0)
@@ -92,11 +83,17 @@ class SimpleNavNode(Node):
 
         self.declare_parameter("loop_hz", 20.0)
         self.declare_parameter("tf_timeout_sec", 0.15)
+        # Pri prijati ciela automaticky prepne motor do auto; po DONE spat do manual
+        self.declare_parameter("auto_mode_switch", True)
 
         self.tf_buf = Buffer()
         self._tf_listener = TransformListener(self.tf_buf, self)
 
+        self._cli_nav    = self.create_client(Trigger, "/waverover/switch_to_nav")
+        self._cli_manual = self.create_client(Trigger, "/waverover/switch_to_manual")
+
         self._imu_yaw: float | None = None
+        self._imu_omega_z: float = 0.0
         imu_topic = self.get_parameter("imu_topic").value
         self.create_subscription(Imu, imu_topic, self._imu_cb, qos_profile_sensor_data)
 
@@ -121,7 +118,8 @@ class SimpleNavNode(Node):
         )
 
     def _imu_cb(self, msg: Imu) -> None:
-        self._imu_yaw = imu_msg_yaw_rad(msg)
+        self._imu_yaw = imu_quat_to_yaw(msg.orientation)
+        self._imu_omega_z = msg.angular_velocity.z
 
     def _goal_cb(self, msg: PoseStamped):
         mf = self.get_parameter("map_frame").value
@@ -132,6 +130,7 @@ class SimpleNavNode(Node):
         self._rotate_ok_streak = 0
         self._rotate_t0 = self.get_clock().now()
         self._have_imu_sync = False
+        self._switch_mode(self._cli_nav, "/waverover/switch_to_nav")
         self.get_logger().info(
             f"Novy ciel map=({self.goal_x:.2f}, {self.goal_y:.2f}) m → ROTATING (IMU kurz)"
         )
@@ -163,7 +162,7 @@ class SimpleNavNode(Node):
             tf = self.tf_buf.lookup_transform(mf, bf, Time(), timeout=Duration(seconds=t))
             p = tf.transform.translation
             q = tf.transform.rotation
-            return p.x, p.y, yaw_from_quat(q)
+            return p.x, p.y, quat_to_yaw(q)
         except Exception:
             return None
 
@@ -174,6 +173,14 @@ class SimpleNavNode(Node):
             math.sin(self._imu_yaw + self._imu_to_map_yaw),
             math.cos(self._imu_yaw + self._imu_to_map_yaw),
         )
+
+    def _switch_mode(self, client: "rclpy.client.Client", name: str) -> None:
+        if not self.get_parameter("auto_mode_switch").value:
+            return
+        if client.service_is_ready():
+            client.call_async(Trigger.Request())
+        else:
+            self.get_logger().warn(f"{name} service not ready, skipping mode switch")
 
     def _stop(self):
         self.pub_cmd.publish(Twist())
@@ -201,6 +208,7 @@ class SimpleNavNode(Node):
         if dist < goal_tol:
             self._stop()
             self.state = self.DONE
+            self._switch_mode(self._cli_manual, "/waverover/switch_to_manual")
             self.get_logger().info(f"Ciel dosiahnuty dist={dist:.3f} m → DONE")
             self._publish_status(dist, 0.0)
             return
@@ -225,6 +233,7 @@ class SimpleNavNode(Node):
             h_err = angle_diff(bearing, yaw_imu_map)
 
             kp = float(self.get_parameter("rotate_kp").value)
+            kd = float(self.get_parameter("rotate_kd").value)
             max_a = max(0.1, float(self.get_parameter("teleop_max_angular").value))
             scale = max(0.05, min(1.0, float(self.get_parameter("rotate_angular_scale").value)))
             ov = float(self.get_parameter("rotate_speed_max_override").value)
@@ -232,16 +241,15 @@ class SimpleNavNode(Node):
                 max_om = ov
             else:
                 max_om = max_a * scale
-            omega_min = max(
-                float(self.get_parameter("rotate_omega_min").value),
-                0.45 * max_om,
-            )
+            omega_min = float(self.get_parameter("rotate_omega_min").value)
             done_rad = math.radians(float(self.get_parameter("rotate_done_deg").value))
             fast_rad = math.radians(float(self.get_parameter("rotate_fast_deg").value))
             need_streak = max(1, int(self.get_parameter("rotate_done_streak").value))
             stuck_sec = float(self.get_parameter("rotate_stuck_sec").value)
             stuck_deg = float(self.get_parameter("rotate_stuck_max_deg").value)
             stuck_rad = math.radians(stuck_deg)
+
+            rot_sign = float(self.get_parameter("rotate_angular_sign").value)
 
             if abs(h_err) > fast_rad:
                 omega = math.copysign(max_om, h_err)
@@ -250,7 +258,11 @@ class SimpleNavNode(Node):
                 if abs(h_err) >= done_rad and abs(omega) < omega_min:
                     omega = math.copysign(omega_min, h_err)
 
-            rot_sign = float(self.get_parameter("rotate_angular_sign").value)
+            # D-clen: tlmi oscilacnu pomocou aktualnej uhlovej rychlosti z IMU.
+            # imu_omega_z * rot_sign premietne IMU rychlost do rovnakeho ramca ako h_err.
+            if kd > 0.0:
+                omega = clamp(omega - kd * self._imu_omega_z * rot_sign, -max_om, max_om)
+
             nudge = max(0.0, float(self.get_parameter("rotate_linear_nudge").value))
             cmd = Twist()
             cmd.linear.x = nudge

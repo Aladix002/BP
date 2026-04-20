@@ -26,7 +26,7 @@ class LidarWanderNode(Node):
         self.declare_parameter("turn_target_deg",        90.0)
         # Ukonci otacanie ked integral uhla >= turn_target_deg - turn_tolerance_deg (mensia = blizsie k plnemu uhlu)
         self.declare_parameter("turn_tolerance_deg",      2.0)
-        self.declare_parameter("turn_blocked_deg",    120.0)
+        self.declare_parameter("turn_blocked_deg",    180.0)
         self.declare_parameter("lidar_rotation_deg", -90.0)
         self.declare_parameter("cmd_topic",       "/cmd_vel")
         self.declare_parameter("imu_angular_z_sign", -1.0)
@@ -161,8 +161,7 @@ class LidarWanderNode(Node):
                 self._turn_start = None
                 self.get_logger().info(f"Prekazka {self._d_front:.2f} m -> STOP")
             else:
-                # Zaporna linear.x: u tohto podvozku a drive_node znamena jazdu dopredu (zhoda s cmd_vel_invert)
-                cmd.linear.x = -fwd
+                cmd.linear.x = fwd
 
         if self._state == self._STOP:
             if self._turn_start is None:

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # Fiktivna odometria: integruje cmd_vel do x,y,yaw a publikuje /odom + TF odom->base_link.
-# Pocuva na oba zdroje naraz:
-#   cmd_topic      (/teleop_cmd_vel) - manual/web, linear.x kladne = dopredu
-#   cmd_topic_auto (/cmd_vel)        - wander/auto, linear.x zaporne = dopredu (motor invertuje)
-# Pouzije zdroj, ktory mal posledny nenulovy prikaz (v ramci timeout).
+# Pocuva na oba zdroje (manual + auto); pouzije ten, ktory mal posledny nenulovy prikaz.
+# Oba zdroje pouzivaju standardnu konvenciu: linear.x kladne = dopredu.
 # use_imu_yaw=true: yaw z IMU kvaterniona namiesto integracie angular.z.
 
 import math
@@ -14,6 +12,8 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
 from tf2_ros import TransformBroadcaster
+
+from waverover_utils import imu_quat_to_yaw
 
 
 class CmdVelOdom(Node):
@@ -30,7 +30,6 @@ class CmdVelOdom(Node):
         self.declare_parameter("use_imu_yaw",    False)
         self.declare_parameter("imu_topic",      "/imu")
         self.declare_parameter("linear_scale",   1.0)
-        self.declare_parameter("auto_linear_vel_negate", True)
 
         cmd_topic      = self.get_parameter("cmd_topic").value
         cmd_topic_auto = self.get_parameter("cmd_topic_auto").value
@@ -43,19 +42,16 @@ class CmdVelOdom(Node):
         self.use_imu_yaw      = bool(self.get_parameter("use_imu_yaw").value)
         imu_topic             = self.get_parameter("imu_topic").value
         self._linear_scale    = float(self.get_parameter("linear_scale").value)
-        self._auto_negate     = bool(self.get_parameter("auto_linear_vel_negate").value)
 
         self.x   = 0.0
         self.y   = 0.0
         self.yaw = 0.0
         self._imu_yaw: float | None = None
 
-        # Manual zdroj (teleop / web): linear.x kladne = dopredu
         self._cmd_manual      = Twist()
         self._time_manual     = self.get_clock().now()
-        self._manual_nonzero  = False  # ci posledny manual prikaz bol nenulovy
+        self._manual_nonzero  = False
 
-        # Auto zdroj (wander): linear.x zaporne = dopredu (invertujeme)
         self._cmd_auto        = Twist()
         self._time_auto       = self.get_clock().now()
         self._auto_nonzero    = False
@@ -87,10 +83,7 @@ class CmdVelOdom(Node):
         self._auto_nonzero = abs(msg.linear.x) > 1e-4 or abs(msg.angular.z) > 1e-4
 
     def _imu_cb(self, msg: Imu) -> None:
-        q = msg.orientation
-        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        self._imu_yaw = -math.atan2(siny_cosp, cosy_cosp)
+        self._imu_yaw = imu_quat_to_yaw(msg.orientation)
 
     def tick(self) -> None:
         now = self.get_clock().now()
@@ -104,14 +97,8 @@ class CmdVelOdom(Node):
         fresh_manual = age_manual <= self.timeout_sec
         fresh_auto   = age_auto   <= self.timeout_sec
 
-        # Prednost: auto zdroj ak ma cerstvy NENULOVY prikaz (wander bezi)
-        # inak pouzijeme manual (teleop / web)
         if fresh_auto and self._auto_nonzero:
-            lx = float(self._cmd_auto.linear.x)
-            if self._auto_negate:
-                vx = -self._linear_scale * lx
-            else:
-                vx = self._linear_scale * lx
+            vx = self._linear_scale * float(self._cmd_auto.linear.x)
             wz = float(self._cmd_auto.angular.z)
         elif fresh_manual:
             vx = self._linear_scale * float(self._cmd_manual.linear.x)

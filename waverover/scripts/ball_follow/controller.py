@@ -33,7 +33,6 @@ class ControllerConfig:
     # Differential drive: both wheels forward, L/R ratio steers → cmd_vel
     wheel_base: float = 2.0
     max_linear: float = 1.0
-    invert_linear: bool = True
     side_gain: float = 1.02
     mix_max: float = 0.68
     min_wheel_fwd: float = 0.12
@@ -177,7 +176,7 @@ class BallController:
         w_c = mv * (v_r - v_l) / wb
 
         cmd = Twist()
-        cmd.linear.x = -v_c if cfg.invert_linear else v_c
+        cmd.linear.x = v_c
         cmd.angular.z = w_c
         return cmd
 

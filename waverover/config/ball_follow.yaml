@@ -38,7 +38,6 @@
     # ── Differential drive → cmd_vel ────────────────────────────────────────
     wheel_base_cmd:      2.0
     max_linear:          1.0
-    invert_linear:       true
     side_gain:           1.02
     mix_max:             0.68
     min_wheel_fwd:       0.12

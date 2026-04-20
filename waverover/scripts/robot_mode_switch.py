@@ -37,12 +37,16 @@ class RobotModeSwitch(Node):
             Trigger, "/waverover/switch_to_wander", self._on_wander,
             callback_group=self._cb_group,
         )
+        self._srv_nav = self.create_service(
+            Trigger, "/waverover/switch_to_nav", self._on_nav,
+            callback_group=self._cb_group,
+        )
         self._srv_shutdown = self.create_service(
             Trigger, "/waverover/shutdown", self._on_shutdown,
             callback_group=self._cb_group,
         )
         self.get_logger().info(
-            "Sluzby: /waverover/switch_to_manual, /waverover/switch_to_wander, /waverover/shutdown"
+            "Sluzby: /waverover/switch_to_{manual,wander,nav}, /waverover/shutdown"
         )
 
     def _wait_clients(self) -> bool:
@@ -65,21 +69,21 @@ class RobotModeSwitch(Node):
             time.sleep(0.005)
         return future.done()
 
-    def _on_manual(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
+    def _switch(self, motor_mode: str, wander_enabled: bool) -> Trigger.Response:
+        resp = Trigger.Response()
         if not self._wait_clients():
             resp.success = False
             resp.message = "parameter services not ready"
             return resp
-        # Motor: manual -> /teleop_cmd_vel; wander: vypnut aby nesiel do /cmd_vel sutok s teleopom
         fut_m = self._motor.set_parameters([
-            Parameter("control_mode", Parameter.Type.STRING, "manual"),
+            Parameter("control_mode", Parameter.Type.STRING, motor_mode),
         ])
         if not self._wait_future(fut_m):
             resp.success = False
             resp.message = "timeout: motor set_parameters"
             return resp
         fut_w = self._wander.set_parameters([
-            Parameter("enabled", Parameter.Type.BOOL, False),
+            Parameter("enabled", Parameter.Type.BOOL, wander_enabled),
         ])
         if not self._wait_future(fut_w):
             resp.success = False
@@ -87,40 +91,20 @@ class RobotModeSwitch(Node):
             return resp
         rm = fut_m.result()
         rw = fut_w.result()
-        ok = bool(rm) and all(r.successful for r in rm.results) and bool(rw) and all(
-            r.successful for r in rw.results
-        )
+        ok = (bool(rm) and all(r.successful for r in rm.results)
+              and bool(rw) and all(r.successful for r in rw.results))
         resp.success = ok
-        resp.message = "manual" if ok else "set_parameters failed"
+        resp.message = motor_mode if ok else "set_parameters failed"
         return resp
 
-    def _on_wander(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
-        if not self._wait_clients():
-            resp.success = False
-            resp.message = "parameter services not ready"
-            return resp
-        fut_m = self._motor.set_parameters([
-            Parameter("control_mode", Parameter.Type.STRING, "auto"),
-        ])
-        if not self._wait_future(fut_m):
-            resp.success = False
-            resp.message = "timeout: motor set_parameters"
-            return resp
-        fut_w = self._wander.set_parameters([
-            Parameter("enabled", Parameter.Type.BOOL, True),
-        ])
-        if not self._wait_future(fut_w):
-            resp.success = False
-            resp.message = "timeout: lidar_wander set_parameters"
-            return resp
-        rm = fut_m.result()
-        rw = fut_w.result()
-        ok = bool(rm) and all(r.successful for r in rm.results) and bool(rw) and all(
-            r.successful for r in rw.results
-        )
-        resp.success = ok
-        resp.message = "wander" if ok else "set_parameters failed"
-        return resp
+    def _on_manual(self, _req: Trigger.Request, _resp: Trigger.Response) -> Trigger.Response:
+        return self._switch("manual", False)
+
+    def _on_wander(self, _req: Trigger.Request, _resp: Trigger.Response) -> Trigger.Response:
+        return self._switch("auto", True)
+
+    def _on_nav(self, _req: Trigger.Request, _resp: Trigger.Response) -> Trigger.Response:
+        return self._switch("auto", False)
 
     def _on_shutdown(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
         self.get_logger().info("Shutdown requested via /waverover/shutdown")

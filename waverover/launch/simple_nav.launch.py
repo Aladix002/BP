@@ -3,8 +3,8 @@
 simple_nav.launch.py – SLAM + IMU, volitelne navigacia k cielu (simple_nav_node).
 Nahradzuje slam.launch.py: use_nav:=false = len SLAM mapovanie, use_nav:=true (default) = navigacia.
 
-SLAM lifecycle: default oneskorenie 8 s / 11 s (IMU + LiDAR + uzol musia byt nahore);
-  rychly stroj: slam_configure_delay_sec:=2 slam_activate_delay_sec:=4
+SLAM lifecycle: retry loop (configure + activate) s 30 s oneskorenim od startu;
+  rychlejsi start: slam_configure_delay_sec:=1
 
   ros2 launch waverover simple_nav.launch.py                   # SLAM + navigacia
   ros2 launch waverover simple_nav.launch.py use_nav:=false    # len SLAM mapovanie
@@ -54,29 +54,35 @@ def _simple_nav_cmd_vel_odom(context, *args, **kwargs):
                 "use_imu_yaw": True,
                 "imu_topic": "/imu",
                 "linear_scale": scale,
-                "auto_linear_vel_negate": False,
             }],
         ),
     ]
 
 
 def _slam_lifecycle_timers(context, *args, **kwargs):
-    cfg = float(LaunchConfiguration("slam_configure_delay_sec").perform(context))
-    act = float(LaunchConfiguration("slam_activate_delay_sec").perform(context))
-    cfg = max(cfg, 1.0)
-    act = max(act, cfg + 2.0)
+    delay = float(LaunchConfiguration("slam_configure_delay_sec").perform(context))
+    delay = max(delay, 1.0)
     return [
         TimerAction(
-            period=cfg,
+            period=delay,
             actions=[ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "configure"],
-                output="screen",
-            )],
-        ),
-        TimerAction(
-            period=act,
-            actions=[ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/slam_toolbox", "activate"],
+                cmd=[
+                    "bash", "-c",
+                    "cfg=0; "
+                    "for i in $(seq 1 120); do "
+                    "if ros2 lifecycle set --no-daemon --spin-time 5 /slam_toolbox configure; then "
+                    "echo '[simple_nav] slam_toolbox: configure OK'; cfg=1; break; fi; "
+                    "sleep 0.25; "
+                    "done; "
+                    "if [ \"$cfg\" != 1 ]; then "
+                    "echo '[simple_nav] slam_toolbox: configure FAILED'; exit 1; fi; "
+                    "for i in $(seq 1 120); do "
+                    "if ros2 lifecycle set --no-daemon --spin-time 5 /slam_toolbox activate; then "
+                    "echo '[simple_nav] slam_toolbox: activate OK'; exit 0; fi; "
+                    "sleep 0.25; "
+                    "done; "
+                    "echo '[simple_nav] slam_toolbox: activate FAILED'; exit 1",
+                ],
                 output="screen",
             )],
         ),
@@ -132,13 +138,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "slam_configure_delay_sec",
-            default_value="8.0",
-            description="Cas od startu po 'lifecycle configure' (async_slam_toolbox musi byt v graf-e)",
-        ),
-        DeclareLaunchArgument(
-            "slam_activate_delay_sec",
-            default_value="11.0",
-            description="Cas od startu po 'lifecycle activate' (min. o ~2 s viac ako configure)",
+            default_value="3.0",
+            description="Cas od startu po prvy pokus lifecycle configure (retry loop caka az slam bezi)",
         ),
 
         DeclareLaunchArgument("drive_speed", default_value="0.75"),

@@ -112,7 +112,6 @@ class BallFollowerNode(Node):
         dp("detection_lost_sec", 1.5)
         # Differential drive → cmd_vel
         dp("wheel_base_cmd",     2.0);  dp("max_linear",         1.0)
-        dp("invert_linear",      True)
         dp("side_gain",          1.02); dp("mix_max",            0.68)
         dp("min_wheel_fwd",      0.12)
         dp("side_slowdown_gain", 0.50); dp("side_slowdown_min",  0.40)
@@ -154,7 +153,6 @@ class BallFollowerNode(Node):
             stop_radius_px=g("stop_radius_px"),
             detection_lost_sec=g("detection_lost_sec"),
             wheel_base=g("wheel_base_cmd"),   max_linear=g("max_linear"),
-            invert_linear=g("invert_linear"),
             side_gain=g("side_gain"),         mix_max=g("mix_max"),
             min_wheel_fwd=g("min_wheel_fwd"),
             side_slowdown_gain=g("side_slowdown_gain"),

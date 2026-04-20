@@ -31,7 +31,7 @@ def _setup(context, *args, **kwargs):
             output="screen",
             parameters=[{
                 "control_mode":          "auto",
-                "cmd_vel_invert_linear": True,
+                "cmd_vel_invert_linear": False,
                 "invert_linear":         True,
                 "wheel_base":            2.0,
                 "pwm_min":               400,
