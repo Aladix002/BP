@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""
-Jednosmerné video z ROS2 CompressedImage do prehliadača cez WebRTC (médiá SRTP, typicky UDP).
-
-Signalizácia: HTTP POST /offer (TCP). Obraz neprechádza rosbridge.
-
-  pip install aiortc aiohttp av
-"""
+# Jednosmerny stream videa z ROS2 CompressedImage do prehliadaca cez WebRTC (SRTP, typicky UDP).
+# Signalizacia: HTTP POST /offer (SDP vymena po TCP). Obraz neide cez rosbridge - len signal.
+# Klient (webovy prehliadac) posle SDP offer, uzol odpovie SDP answer + ICE kandidaty.
+# Datovy kanal je potom priamo peer-to-peer (nizka latencia).
+#
+# pip install aiortc aiohttp av
 from __future__ import annotations
 
 import asyncio
@@ -36,13 +35,15 @@ except ImportError as e:
 
 
 class CameraVideoTrack(VideoStreamTrack):
+    # Virtualna video stopa pre aiortc: pri kazdej synchronizacii snimok berie aktualny BGR obraz z ROS.
     kind = "video"
 
     def __init__(self, get_bgr: Callable[[], np.ndarray]) -> None:
         super().__init__()
-        self._get_bgr = get_bgr
+        self._get_bgr = get_bgr  # callback do WebrtcCameraNode._get_latest_bgr
 
     async def recv(self) -> VideoFrame:
+        # Generuje casovu znacku (pts/time_base) pre kodek, potom berie posledny snimok z ROS.
         pts, time_base = await self.next_timestamp()
         img = self._get_bgr()
         frame = VideoFrame.from_ndarray(img, format="bgr24")
@@ -74,12 +75,14 @@ class WebrtcCameraNode(Node):
         )
 
     def _get_latest_bgr(self) -> np.ndarray:
+        # Vrati kopiu posledneho dekoddovaneho BGR snimku; ak kamera este nezacala, cierny obraz.
         with self._lock:
             if self._bgr is not None:
                 return self._bgr.copy()
         return np.zeros((240, 320, 3), dtype=np.uint8)
 
     def _image_cb(self, msg: CompressedImage) -> None:
+        # Dekoduje prichadzajuci JPEG z /camera a ulozi do pamate (sdielane s CameraVideoTrack).
         if not msg.data:
             return
         arr = np.frombuffer(msg.data, dtype=np.uint8)
@@ -90,6 +93,8 @@ class WebrtcCameraNode(Node):
             self._bgr = frame
 
     async def _on_offer(self, request: web.Request) -> web.Response:
+        # WebRTC signalizacia (SDP handshake): prehliadac posle offer, my odpovieme answer.
+        # Najprv zatvorime stare pripojenia (len jeden klient naraz), potom spustíme nove.
         params = await request.json()
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
@@ -102,6 +107,7 @@ class WebrtcCameraNode(Node):
 
         @pc.on("connectionstatechange")
         async def _state() -> None:
+            # Automaticky cistenie pri odpojeni alebo chybe
             if pc.connectionState in ("failed", "closed", "disconnected"):
                 await pc.close()
                 self._pcs.discard(pc)
@@ -112,6 +118,7 @@ class WebrtcCameraNode(Node):
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
+        # Cakame na dokoncenie ICE gathering (max 4s) pred odoslanim answer klientovi
         for _ in range(200):
             if pc.iceGatheringState == "complete":
                 break
@@ -122,9 +129,11 @@ class WebrtcCameraNode(Node):
         )
 
     async def _health(self, _request: web.Request) -> web.Response:
+        # Jednoduchy ping endpoint pre kontrolu ci server bezi (GET /health -> "ok")
         return web.Response(text="ok")
 
     def make_app(self) -> web.Application:
+        # Vytvori aiohttp aplikaciu s CORS middleware (povoli pristup z prehliadaca na inom porte).
         @web.middleware
         async def cors_middleware(request: web.Request, handler):
             if request.method == "OPTIONS":

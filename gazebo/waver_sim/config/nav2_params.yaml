@@ -1,5 +1,13 @@
-# Nav2 pre waver_sim (Jazzy): AMCL, navigator BT, controller, costmapy, planner.
-# Oscilacie: controller + inflation; uzke miestnosti: robot_radius; ciel: goal_checker.
+# Nav2 pre waver_sim (Jazzy): AMCL lokalizacia, BT navigator, DWB controller, costmapy, planner.
+# Ako to funguje dohromady:
+#   1. AMCL: odhaduje poziciu robota v mape pomocou particle filtru (lúce z lidaru vs mapa).
+#   2. bt_navigator: koordinuje prechod z aktualnej polohy na ciel pomocou BT (behavior tree).
+#   3. controller_server (DWB): generuje konkretne cmd_vel prikazy sledujuc cestu z plannera.
+#   4. planner_server (NavFn): plánuje globalnu cestu vo global_costmape (A* alebo Dijkstra).
+#   5. costmapy: kombinuju staticku mapu + lidar prekazy + inflacnu vrstvu (bezpecnostna vzdialenost).
+#   6. behavior_server: emergency spravanie (spin, backup) ked sa DWB zasekne.
+#   7. collision_monitor: dohliada na blizke objekty az po velicite cmd_vel (posledna ochrana).
+# Ladiace parametre pre maly robot (polomer ~0.12m) v indoor miestnosti:
 
 amcl:
   ros__parameters:

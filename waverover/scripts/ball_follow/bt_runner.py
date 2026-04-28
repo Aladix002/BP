@@ -136,11 +136,13 @@ def main() -> None:
     node.declare_parameter("tick_rate_hz",     10.0)
     node.declare_parameter("find_timeout_sec",  0.0)
     node.declare_parameter("fail_on_lost_sec",  0.0)
+    node.declare_parameter("retry_on_lost",    True)
 
     color        = node.get_parameter("ball_color").value
     tick_hz      = max(float(node.get_parameter("tick_rate_hz").value), 1.0)
     find_timeout = float(node.get_parameter("find_timeout_sec").value)
     fail_on_lost = max(0.0, float(node.get_parameter("fail_on_lost_sec").value))
+    retry_on_lost = bool(node.get_parameter("retry_on_lost").value)
 
     executor = SingleThreadedExecutor()
     executor.add_node(node)
@@ -149,9 +151,11 @@ def main() -> None:
 
     # memory=True: after FindBall succeeds, skip it on restart
     sequence = py_trees.composites.Sequence(name="BallFollowSeq", memory=True)
+    find_ball = _ActionBehaviour("FindBall",   node, color, find_timeout, stop_when_found=True,  fail_on_lost_sec=0.0)
+    follow_ball = _ActionBehaviour("FollowBall", node, color, 0.0,        stop_when_found=False, fail_on_lost_sec=fail_on_lost)
     sequence.add_children([
-        _ActionBehaviour("FindBall",   node, color, find_timeout, stop_when_found=True,  fail_on_lost_sec=0.0),
-        _ActionBehaviour("FollowBall", node, color, 0.0,          stop_when_found=False, fail_on_lost_sec=fail_on_lost),
+        find_ball,
+        follow_ball,
         _CelebrateBehaviour(node),
     ])
 
@@ -168,6 +172,7 @@ def main() -> None:
 
     node.get_logger().info(
         f"BT ready  tick={tick_hz:.0f} Hz  color={color}  fail_on_lost={fail_on_lost:.1f} s"
+        f"  retry_on_lost={retry_on_lost}"
     )
     node.get_logger().info("tree:\n" + py_trees.display.ascii_tree(tree.root))
 
@@ -184,6 +189,11 @@ def main() -> None:
                 node.get_logger().info("=== SUCCESS – ball reached ===")
                 break
             if st == py_trees.common.Status.FAILURE:
+                # Ak sa lopta stratila v FollowBall, resetni strom a znova hladaj cez FindBall.
+                if retry_on_lost and follow_ball.status == py_trees.common.Status.FAILURE:
+                    node.get_logger().warn("=== FOLLOW FAILED: reset BT -> FindBall ===")
+                    tree.root.stop(py_trees.common.Status.INVALID)
+                    continue
                 node.get_logger().warn("=== FAILURE ===")
                 break
             executor.spin_once(timeout_sec=max(0.01, 1.0 / tick_hz))

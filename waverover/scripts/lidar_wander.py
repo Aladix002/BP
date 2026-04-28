@@ -13,6 +13,11 @@ from sensor_msgs.msg import Imu, LaserScan
 class LidarWanderNode(Node):
     _FWD  = 0
     _STOP = 1
+    _TURN = 2
+
+    _TURN_LEFT  = "LEFT"
+    _TURN_RIGHT = "RIGHT"
+    _TURN_FULL  = "FULL"
 
     def __init__(self) -> None:
         super().__init__("lidar_wander_node")
@@ -52,6 +57,7 @@ class LidarWanderNode(Node):
         self._turn_dir:    float = 1.0
         self._turn_target: float = math.radians(90.0)
         self._turn_accum:  float = 0.0
+        self._turn_mode:   str   = self._TURN_LEFT
         self._turn_start         = None
         self._last_imu_t         = None
         self._imu_sign = self.get_parameter(
@@ -98,7 +104,7 @@ class LidarWanderNode(Node):
         now = self.get_clock().now()
         if (
             self._last_imu_t is not None
-            and self._state == self._STOP
+            and self._state == self._TURN
             and self._turn_start is not None
         ):
             dt = (now - self._last_imu_t).nanoseconds * 1e-9
@@ -110,15 +116,18 @@ class LidarWanderNode(Node):
                 self._turn_accum += omega * dt
         self._last_imu_t = now
 
-    def _start_turn(self, direction: float, target_deg: float, reason: str) -> None:
+    def _start_turn(self, direction: float, target_deg: float, reason: str, mode: str) -> None:
         self._turn_dir    = direction
         self._turn_target = math.radians(target_deg)
         self._turn_accum  = 0.0
+        self._turn_mode   = mode
         self._turn_start  = self.get_clock().now()
         self._last_imu_t = None
+        self._state = self._TURN
         side = "vlavo" if direction > 0 else "vpravo"
         self.get_logger().info(
             f"{reason} -> otacam {side} o {target_deg:.0f} deg "
+            f"[{self._turn_mode}] "
             f"(F={self._d_front:.2f} L={self._d_left:.2f} R={self._d_right:.2f})"
         )
 
@@ -130,16 +139,16 @@ class LidarWanderNode(Node):
         right_free = self._d_right > thr
 
         if left_free and not right_free:
-            self._start_turn(+1.0, tgt, reason)
+            self._start_turn(+1.0, tgt, reason, self._TURN_LEFT)
         elif right_free and not left_free:
-            self._start_turn(-1.0, tgt, reason)
+            self._start_turn(-1.0, tgt, reason, self._TURN_RIGHT)
         elif left_free and right_free:
             if self._d_left >= self._d_right:
-                self._start_turn(+1.0, tgt, reason)
+                self._start_turn(+1.0, tgt, reason, self._TURN_LEFT)
             else:
-                self._start_turn(-1.0, tgt, reason)
+                self._start_turn(-1.0, tgt, reason, self._TURN_RIGHT)
         else:
-            self._start_turn(+1.0, blk, f"{reason} - zablokovany")
+            self._start_turn(+1.0, blk, f"{reason} - zablokovany", self._TURN_FULL)
 
     def _ctrl_cb(self) -> None:
         if not self.get_parameter("enabled").get_parameter_value().bool_value:
@@ -163,53 +172,55 @@ class LidarWanderNode(Node):
             else:
                 cmd.linear.x = fwd
 
-        if self._state == self._STOP:
+        elif self._state == self._STOP:
             if self._turn_start is None:
                 self._choose_turn(f"Prekazka {self._d_front:.2f} m")
-            else:
-                elapsed = (self.get_clock().now() - self._turn_start).nanoseconds * 1e-9
-                progress = abs(self._turn_accum)
-                tol = math.radians(
-                    self.get_parameter("turn_tolerance_deg").get_parameter_value().double_value
-                )
-                min_ok = self._turn_target - tol
-                done_angle = progress >= min_ok
-                done_timeout = elapsed > tmax
-                early_exit = self.get_parameter("lidar_early_exit").get_parameter_value().bool_value
-                early_min = math.radians(
-                    self.get_parameter("lidar_early_exit_min_deg").get_parameter_value().double_value
-                )
-                lidar_clear = early_exit and self._d_front > thr and progress >= early_min
+            # STOP je explicitny medzikrok; turn sa vykona az v stave _TURN
 
-                if lidar_clear or done_angle or done_timeout:
-                    if lidar_clear:
-                        reason = "lidar_predok"
-                    elif done_angle:
-                        reason = "uhol"
-                    else:
-                        reason = "timeout"
-                    self.get_logger().info(
-                        f"Otocenie [{reason}] "
-                        f"{math.degrees(abs(self._turn_accum)):.1f} deg / "
-                        f"{math.degrees(self._turn_target):.0f} deg "
-                        f"{elapsed:.1f}s -> FWD"
-                    )
-                    self._state      = self._FWD
-                    self._turn_start = None
+        elif self._state == self._TURN and self._turn_start is not None:
+            elapsed = (self.get_clock().now() - self._turn_start).nanoseconds * 1e-9
+            progress = abs(self._turn_accum)
+            tol = math.radians(
+                self.get_parameter("turn_tolerance_deg").get_parameter_value().double_value
+            )
+            min_ok = self._turn_target - tol
+            done_angle = progress >= min_ok
+            done_timeout = elapsed > tmax
+            early_exit = self.get_parameter("lidar_early_exit").get_parameter_value().bool_value
+            early_min = math.radians(
+                self.get_parameter("lidar_early_exit_min_deg").get_parameter_value().double_value
+            )
+            lidar_clear = early_exit and self._d_front > thr and progress >= early_min
+
+            if lidar_clear or done_angle or done_timeout:
+                if lidar_clear:
+                    reason = "lidar_predok"
+                elif done_angle:
+                    reason = "uhol"
                 else:
-                    remaining = max(0.0, min_ok - progress)
-                    ramp_deg = self.get_parameter("turn_ramp_deg").get_parameter_value().double_value
-                    ramp_rad = math.radians(ramp_deg) if ramp_deg > 0.0 else 0.0
-                    if ramp_rad <= 0.0:
-                        turn_scale = 1.0
-                    elif remaining >= ramp_rad:
-                        turn_scale = 1.0
-                    else:
-                        lo = max(0.01, min(1.0, self.get_parameter(
-                            "turn_ramp_min_scale"
-                        ).get_parameter_value().double_value))
-                        turn_scale = max(lo, remaining / ramp_rad)
-                    cmd.angular.z = -(self._turn_dir * spd * turn_scale)
+                    reason = "timeout"
+                self.get_logger().info(
+                    f"Otocenie [{self._turn_mode}/{reason}] "
+                    f"{math.degrees(abs(self._turn_accum)):.1f} deg / "
+                    f"{math.degrees(self._turn_target):.0f} deg "
+                    f"{elapsed:.1f}s -> FWD"
+                )
+                self._state      = self._FWD
+                self._turn_start = None
+            else:
+                remaining = max(0.0, min_ok - progress)
+                ramp_deg = self.get_parameter("turn_ramp_deg").get_parameter_value().double_value
+                ramp_rad = math.radians(ramp_deg) if ramp_deg > 0.0 else 0.0
+                if ramp_rad <= 0.0:
+                    turn_scale = 1.0
+                elif remaining >= ramp_rad:
+                    turn_scale = 1.0
+                else:
+                    lo = max(0.01, min(1.0, self.get_parameter(
+                        "turn_ramp_min_scale"
+                    ).get_parameter_value().double_value))
+                    turn_scale = max(lo, remaining / ramp_rad)
+                cmd.angular.z = -(self._turn_dir * spd * turn_scale)
 
         self._pub.publish(cmd)
 
