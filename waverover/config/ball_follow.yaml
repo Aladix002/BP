@@ -38,13 +38,13 @@
     # ── Diferencialne riadenie → cmd_vel ──────────────────────────────────────
     wheel_base_cmd:  2.0
     max_linear:      1.0
-    side_gain:       1.50   # agresivita zatacania
+    side_gain:       1.70   # agresivita zatacania (mierne zvysena)
     min_wheel_fwd:   0.12   # min. rychlost vnutorneho kolesa
-    err_exp:         0.85   # nelinearita bocnej chyby (<1 = citlivejsi)
+    err_exp:         0.80   # nelinearita bocnej chyby (<1 = citlivejsi)
 
     # ── Brzdenie pri priblizovani ─────────────────────────────────────────────
     brake_band_px:  14.0
-    turn_blend_min:  0.45
+    turn_blend_min:  0.52
 
     # ── Vyhladzovanie a hladanie ──────────────────────────────────────────────
     smooth_alpha:  0.36
