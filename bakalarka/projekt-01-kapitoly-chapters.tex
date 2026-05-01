@@ -774,6 +774,10 @@ V implementácii sa pri autonómnom vstupe sa používa práve táto kinematika:
 
 Takto získané požadované rýchlosti sa následne filtrujú exponenciálnym vyhladením (vzorec~\eqref{eq:ema}), prevádzajú na PWM hodnoty a odosielajú na výstup HATu. Výsledkom je plynulejšie rozbiehanie aj zastavovanie robota bez prudkých zmien smeru alebo rýchlosti.
 
+V \path{drive_node.cpp} prebieha hlavná slučka v časovači približne každých 10\,ms ($\sim$100\,Hz): najprv sa z mutexu prečítajú cieľové \texttt{target\_l\_}, \texttt{target\_r\_} z posledného príkazu; ak uplynul časový limit bez nového \texttt{Twist}, ciele sa vynulujú (bezpečné zastavenie pri výpadku spojenia). Na ne sa aplikuje EMA (\texttt{smooth\_alpha}), čím vzniknú \texttt{smooth\_l\_}, \texttt{smooth\_r\_}. Blok IMU PID sa zapína len ak je parameter \texttt{imu\_correction} zapnutý a zároveň platí podmienka \texttt{going\_straight}: priemerná normalizovaná ``rýchlosť'' kolesa je nad prahom a rozdiel ľavého a pravého cieľa je malý (v kóde stredná rýchlosť $>0{,}1$ a $|c_l-c_r|<0{,}15$), teda robot nie je v ostrých manévroch ani otáčaní na mieste. Inak sa stav PID (integrál aj predchádzajúca chyba) vynuluje, aby po ďalšom nábehu na rovno neskákal.
+
+Úloha PID je držať po filtrácii EMA a mŕtvej zóne (\texttt{imu\_deadband}) uhlovú rýchlosť $\omega_z$ z témy \rostopic{/imu} pri rovnej jazde okolo nuly (diskrétny tvar je v rovnici~\eqref{eq:pid-discrete}). Výstup \texttt{corr} sa odčíta od ľavého a pripočíta k pravému kanálu (so znamienkom \texttt{imu\_sign} podľa zapojenia). Následne \texttt{to\_duty} mapuje $|c|\in[\texttt{deadzone},1]$ lineárne na 12-bitový rozsah PCA9685 medzi \texttt{pwm\_min} a \texttt{pwm\_max}; pod deadzónou je výstup nulový, aby motory nestáli na šume.
+
 Webové rozhranie predstavuje paralelnú možnosť manuálneho ovládania. Pomocou \texttt{rosbridge} a knižnice \texttt{roslibjs} môže používateľ zadávať rovnaké príkazy z webového prehliadača, pričom motorový uzol ich spracúva rovnakým spôsobom ako pri klávesnicovom teleope.
 
 \subsection{Obraz z kamery pre teleop a vizuálnu korekciu}
@@ -981,7 +985,7 @@ Ak sa pred robotom objaví prekážka bližšie než zvolený limit, systém por
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.9\textwidth]{obrazky/wander_automata.png}
+  \includegraphics[width=0.7\textwidth]{obrazky/wander_automata.png}
   \caption[Stavový automat uzla wander]{Stavový automat uzla \texttt{lidar\_wander\_node} podľa implementácie v \path{lidar_wander.py}}
   \label{fig:wander-state-machine}
 \end{figure}
@@ -1030,7 +1034,19 @@ Popri základných režimoch riadenia bola do systému doplnená aj funkcia sled
 
 Ako orientačný východiskový bod poslúžil verejne dostupný ROS~2 balík Josha Newansa~\cite{ball_tracker_github}, ktorý využíva segmentáciu v priestore HSV a detekciu blobu. Vlastná implementácia nadväzuje na rovnakú myšlienku, no rozširuje ju o samostatnú vrstvu riadenia a vyššiu logiku správania.
 
-Scenár pozostáva z kamery, motorového uzla, akčného servera \texttt{FollowBall}  a behaviorálneho stromu. Celé sa spúšťa launch súborom \path{ball_follow_standalone.launch.py}. Rozsah farby v HSV a ďalšie prahy detekcie sú nastavené parametrami uzla sledovania. Ukážka výstupu sledovania v obraze je na obr.~\ref{fig:ball-follow-debug}; časový priebeh rýchlostí je na obr.~\ref{fig:ball-follow-graph}.
+\subsubsection*{Uzol \texttt{ball\_follower} a rozdelenie na detektor a regulátor}
+
+Implementácia je rozdelená do súborov \path{detector.py} (trieda \texttt{OrangeDetector}), \path{controller.py} (\texttt{BallController}) a \path{action_node.py} (\texttt{BallFollowerNode}). Kamera posiela buď \texttt{sensor\_msgs/msg/Image}, alebo komprimovaný obraz; v predvolenej konfigurácii sa používa JPEG cez \texttt{CompressedImage} a \texttt{cv2.imdecode}. Každý prichádzajúci snímok v callbacku sa spracuje v \texttt{\_process\_frame}: detektor vráti štruktúru \texttt{Detection} alebo \texttt{None}, uzol uloži posledný výsledok a s frekvenciou obmedzenou parametrom \texttt{debug\_image\_max\_hz} (kvôli záťaži na RPi) môže publikovať debug obrázok na tému \texttt{/ball\_follower/debug\_image/compressed}.
+
+Samotné riadenie sa nevykonáva v obrazovom callbacku, ale v periodickom taktovači \texttt{\_tick} s frekvenciou \texttt{control\_rate\_hz}: tam sa z poslednej detekcie (ak nie je staršia než \texttt{detection\_lost\_sec}) zostaví príkaz \texttt{Twist} a publikuje sa na tému z parametra \texttt{cmd\_topic} (predvolene \rostopic{/cmd_vel}, teda na rovnaký vstup ako ostatné režimy, ak je \texttt{DriveNode} nastavený na autonómny vstup). ROS~2 akčný server na akcii \texttt{follow\_ball} spúšťa alebo zastavuje túto slučku a v slučke \texttt{\_execute\_cb} kontroluje úspech: buď okamžité nájdenie (\texttt{stop\_when\_found}), alebo držanie veľkého polomeru po počet tikov \texttt{success\_hold\_ticks}, prípadne zlyhanie pri dlhej strate lopty (\texttt{fail\_on\_lost\_sec})~\cite{ros2_doc}.
+
+\subsubsection*{Čo robí detektor (\texttt{OrangeDetector})}
+
+Obraz sa najprv zmenší na polovičné rozlíšenie (menej pixelov na morfológiu a kontúry), voliteľne sa vyhladí Gaussovým jadrom (\texttt{blur\_ksize}), prevedie sa do HSV a prahovaním \texttt{cv2.inRange} vznikne binárna maska v zadaných intervaloch $H$, $S$, $V$~\cite{opencv_inrange_tutorial}. Na maske nasleduje otvorenie a uzavretie morfologickými operáciami a erózia/dilatácia podľa parametrov, aby sa potlačil šum a drobné diery.
+
+Z masky sa vyextrahujú vonkajšie kontúry. Pre každú kontúru dostatočnej plochy sa vypočítajú geometrické miery podobné tomu, čo sa zvykne používať pri filtrovaní blobov: podiel plochy voči obdĺžniku (\emph{aspect ratio}), solidita (plocha kontúry ku konvexnému obalu), kruhovitosť $4\pi A/p^2$, pomer výplne voči opísanej kružnici a horný limit podielu plochy voči celému obrazu (odfiltruje veľké jednofarebné plochy). Kandidáti, ktorí prejdú prahmi, dostanú skóre spoľahlivosti ako vážený súčet týchto veličín; vyberie sa najlepší. Stred a polomer sa berú z \texttt{minEnclosingCircle} v polovičnom rozlíšení a vynásobia sa dvoma, aby sedeli s plným rozlíšením. Okrem toho \emph{anti-jitter} zahodí snímok, ak sa horizontálna pozícia stredu príliš skočí oproti predchádzajúcej (\texttt{max\_jump\_frac}); po dlhšej dobe bez detekcie sa táto pamäť vymaže (\texttt{jump\_reset\_sec}). Výstupom je \texttt{x\_err} v rozsahu približne $[-1,1]$ a \texttt{radius\_px}~\cite{opencv_simple_blob_detector}.
+
+Scenár v systéme pozostáva z kamery, \texttt{DriveNode}, akčného servera \texttt{FollowBall} a voliteľného behaviorálneho stromu. Launch súbor \path{ball_follow_standalone.launch.py} zjednocuje spúšťanie. Ukážka výstupu je na obr.~\ref{fig:ball-follow-debug}; priebeh rýchlostí na obr.~\ref{fig:ball-follow-graph}.
 
 \begin{figure}[htbp]
     \centering
@@ -1039,21 +1055,9 @@ Scenár pozostáva z kamery, motorového uzla, akčného servera \texttt{FollowB
     \label{fig:ball-follow-debug}
 \end{figure}
 
-\subsubsection*{Detekcia objektu v obraze}
+\subsubsection*{Normalizovaná chyba a vzdialenosť v obraze}
 
-Každá snímka z kamery sa najprv spracuje v uzle detekcie. Obraz sa prevedie z RGB/BGR reprezentácie do farebného priestoru HSV(odtieň, sýtosť a jas). Tento priestor je pre podobné úlohy výhodný preto, že oddeľuje farebný tón od jasu, takže výber farby je stabilnejší aj pri miernych zmenách osvetlenia~\cite{opencv_inrange_tutorial}.
-
-Následne sa v priestore HSV aplikuje prahovanie, kde $(H,S,V)$ sú kanály po konverzii z BGR a nech sú zadané intervaly $H \in [H_{\min},H_{\max}]$, $S \in [S_{\min},S_{\max}]$, $V \in [V_{\min},V_{\max}]$ (v implementácii parametre \texttt{orange\_h\_min} atď. v \path{config/ball_follow.yaml}). Binárna maska v bode $(x,y)$ má tvar
-\begin{equation}
-  M(x,y) =
-  \begin{cases}
-    1, & H,S,V \text{ v zadaných intervaloch},\\
-    0, & \text{inak}.
-  \end{cases}
-\end{equation}
-Výsledkom je obraz, kde sledovaný objekt tvorí svetlú oblasť a ostatné časti scény sú potlačené.
-
-Na takto pripravenej maske sa vyhľadajú kontúry. Kandidát sa vyberá podľa kruhovosti tvaru, plochy a ďalších prahov spoľahlivosti. Z vybranej oblasti sa určí stred a polomer. Pre uzavretú slučku riadenia sa z horizontálnej súradnice stredu počíta normalizovaná chyba $e$ a z kontúry polomer $r_{px}$ v pixeloch. Vertikálna poloha stredu do výpočtu príkazu \texttt{cmd\_vel} priamo nevstupuje~\cite{opencv_simple_blob_detector}.
+Pre riadenie sa z detektora berie už pripravená normalizovaná odchýlka stredu od osi obrazu (v kóde \texttt{x\_err}) a polomer $r_{px}$. Vertikálna súradnica stredu do \texttt{cmd\_vel} priamo nevstupuje --- ide o zjednodušený dvojrozmerný obrazový servoing, kde reguluješ predovšetkým azimut cieľa v zornom poli~\cite{chaumette2006visual}.
 
 \subsubsection*{Poloha objektu}
 
@@ -1066,6 +1070,18 @@ e = \frac{c_x - w/2}{w/2},
 kde $w$ je šírka obrazu v pixeloch. Takto definovaná chyba je normalizovaná do približne bezrozmerného rozsahu a je nezávislá od rozlíšenia kamery.
 
 Druhou dôležitou veličinou je polomer objektu $r_{px}$. Ten slúži ako jednoduchý odhad vzdialenosti. Ak sa lopta javí malá, nachádza sa pravdepodobne ďalej. Ak v obraze rastie, robot sa k nej približuje.
+
+\subsubsection*{Vnútorný automat stavov v \texttt{BallController}}
+
+Trieda \texttt{BallController} v \path{controller.py} udržiava diskétny automat, ktorý z jednej strany závisí od toho, či detektor práve vrátil loptu, a z druhej od časovačov straty signálu. Základné stavy zodpovedajú enumerácii v kóde:
+\begin{itemize}
+  \item \texttt{SEARCH} --- nie je čerstvá detekcia: robot krátkymi impulzmi otáča na mieste (\texttt{burst\_on\_sec} / \texttt{burst\_off\_sec}), smer striedania berie z poslednej známej strany chyby alebo predvolene doprava, kým sa objekt neukáže vo zornom poli.
+  \item \texttt{TRACK} --- lopta je viditeľná a $r_{px}$ je pod \texttt{stop\_radius\_px} mimo pásma brzdenia; počíta sa jazda vpred s diferenciálnou korekciou podľa $e$.
+  \item \texttt{APPROACH} --- to isté ako sledovanie, ale $r_{px}$ už vstupuje do pásma \texttt{brake\_band\_px} pred \texttt{stop\_radius\_px}: lineárna rýchlosť sa škáluje dole hladkou funkciou \emph{smoothstep}, aby robot plynulo spomaľoval.
+  \item \texttt{STOP} --- $r_{px} \ge \texttt{stop\_radius\_px}$; príkaz je nulový, robot stojí pred objektom.
+  \item \texttt{COAST} --- krátkodobá strata detekcie hneď po sledovaní: ešte približne \texttt{coast\_sec} ide vpred poslednou zapamätanou lineárnou rýchlosťou, aby sa nerozbehlo hľadanie pri jedinom výpadku snímku.
+\end{itemize}
+Po dlhšej strate bez detekcie sa prejde do \texttt{SEARCH}. Na konci každého kroku sa na \texttt{Twist} ešte aplikuje exponenciálny kĺzavý priemer (\texttt{smooth\_alpha}) priamo na \texttt{linear.x} a \texttt{angular.z}, čím sa stlmia skoky od segmentácie.
 
 \subsubsection*{Úloha polomeru $r_{px}$ v riadení}
 
@@ -1089,18 +1105,28 @@ Polomer detekovaného objektu rozhoduje o tom, či má robot pokračovať v jazd
 
 Takýto prístup je jednoduchý, ale pre túto úlohu sa ukázal ako postačujúci. Robot nepotrebuje poznať skutočnú vzdialenosť v metroch, stačí mu vedieť, či je objekt ďaleko, blízko alebo už dostatočne pri ňom.
 
-\subsubsection*{Riadenie pohybu robota}
+\subsubsection*{Riadenie pohybu robota: od bočnej chyby k \texttt{Twist}}
 
-Riadenie je navrhnuté pre diferenciálny podvozok. Východiskom je horizontálna chyba $e$ z rovnice vyššie. Ak je lopta v strede obrazu, $e=0$ a robot ide priamo za objektom.
+Riadenie je navrhnuté pre diferenciálny podvozok. Východiskom je $e$ z rovnice vyššie (v kóde \texttt{det.x\_err}). Ak je lopta v strede obrazu, $e=0$ a robot ide priamo za objektom.
 
-Chyba sa najprv tvaruje mocninou:
+Nelinearita sa dosiahne transformáciou
 \begin{equation}
 e_s = \mathrm{sign}(e)\,|e|^{\gamma},
 \end{equation}
-kde $\gamma$ je parameter \texttt{err\_exp} (v konfigurácii $0{,}85$). Z hodnoty $e_s$ sa vypočíta bočná korekcia, ktorá sa pripočíta k jednému kolesu a odčíta od druhého. Tým vzniknú normalizované rýchlosti ľavého a pravého kolesa.
- Vplyv zdanlivej vzdialenosti cez polomer $r_{px}$ je zahrnutý najmä v prahoch z tabuľky~\ref{tab:ball-follow-radius} a v pásme plynulého brzdenia pred zastavením (\texttt{brake\_band\_px}).
+kde $\gamma = \texttt{err\_exp}$ (napr.\ $0{,}85$): pri $|\gamma|<1$ je regulácia citlivejšia pri malých odchýlkach než pri čistej proporcionalite. Zo znamienka $e_s$ sa určí, ktoré koleso má byť rýchlejšie (lopta vpravo $\Rightarrow$ vyššia rýchlosť pravého kolesa). Veľkosť korekcie je
+\[
+  \texttt{add} = \min\!\bigl(1,\; |e_s|\,\texttt{side\_gain}\, r_{\mathrm{scale}}\bigr),
+\]
+kde $r_{\mathrm{scale}}\in[1,2]$ rastie s $r_{px}$ medzi \texttt{min\_radius\_px} a \texttt{stop\_radius\_px}, takže bližšie pri lopte sa zatáča rozhodnejšie. Základná dopredná úroveň kolies je \texttt{forward\_speed}; od nej sa odpočíta alebo pripočíta \texttt{add} tak, aby obe kolesá zostali aspoň \texttt{min\_wheel\_fwd} (vnútorné koleso pri ostrých zatáčkach nestojí).
 
-Pred publikovaním sa príkazy vyhladzujú exponenciálnym kĺzavým priemerom (\texttt{smooth\_alpha}), čo znižuje vplyv šumu zo segmentácie. Celková schéma zodpovedá obrazovému riadeniu podľa polohy cieľa v obraze~\cite{chaumette2006visual}, implementovanému diferenciálnym zmiešaním kolies namiesto klasického PID.
+Namiesto priameho posielania týchto dvoch ``tankových'' rýchlostí do \texttt{DriveNode} ako dvoch kanálov (čo by si vyžiadalo iné API) sa z normalizovaných $v_L$, $v_R$ ešte zostaví jeden \texttt{Twist} v tvare unicycle modelu:
+\[
+  \texttt{linear.x} = m\,\frac{v_L+v_R}{2}, \qquad
+  \texttt{angular.z} = m\,\frac{v_R-v_L}{w_b},
+\]
+kde $m = \texttt{max\_linear}$ a $w_b = \texttt{wheel\_base}$ z parametra \texttt{wheel\_base\_cmd} --- ide o algebraickú inverse k rozkladu~\eqref{eq:diff-drive-unicycle}, len s normalizovanými rýchlosťami kolies. \texttt{DriveNode} v autonómnom režime z \texttt{linear.x} a \texttt{angular.z} znova dopočíta ľavé a pravé koleso podľa fyzikálneho rozchodu \texttt{wheel\_base}, takže táto medzivrstva musí byť parametricky konzistentná s kinematikou platformy.
+
+Vplyv vzdialenosti cez $r_{px}$ je okrem toho v prahoch tabuľky~\ref{tab:ball-follow-radius} a v pásme \texttt{brake\_band\_px}. Celkovo ide o \emph{image-based} prístup: chyba je funkcia polohy znaku v obraze, nie priama 3D poloha~\cite{chaumette2006visual}; oproti klasickej PID slučke v obraze sa tu namiesto trojčlenu používa výslovné diferenciálne zmiešanie a práhové logiky podľa veľkosti kontúry.
 
 \begin{figure}[htbp]
     \centering
@@ -1111,7 +1137,16 @@ Pred publikovaním sa príkazy vyhladzujú exponenciálnym kĺzavým priemerom (
 
 \subsubsection*{Riadenie správania pomocou Behavior Tree}
 
-Samotná regulácia by nestačila na riešenie celej úlohy, pretože robot musí objekt najprv nájsť, následne sledovať a po úspešnom priblížení vhodne ukončiť činnosť. Z tohto dôvodu je nad akčným serverom \texttt{FollowBall} vytvorená vrstva správania pomocou jednoduchého  Behaviorálneho stromu.
+Samotná regulácia by nestačila na riešenie celej úlohy, pretože robot musí objekt najprv nájsť, následne sledovať a po úspešnom priblížení vhodne ukončiť činnosť. Nad akčným serverom \texttt{FollowBall} je preto spustený behaviorálny strom v \path{ball_follow/bt_runner.py} pomocou knižnice \texttt{py\_trees}; jednotlivé kroky stromu volajú akčné ciele cez štandardného ROS~2 klienta, čo zodpovedá konceptu akcií s feedbackom a výsledkom~\cite{ros2_doc}.
+
+Koreňom je sekvencia (\texttt{py\_trees.composites.Sequence}) s \texttt{memory=True}: ak prvé dieťa po úspechu už nebeží znova od začiatku pri ďalších tickoch, čo zodpovedá tomu, že po nájdení lopty sa nevraciaš do fázy ``Find'' v rámci tej istej exekúcie stromu. Tri deti sú:
+\begin{enumerate}
+  \item \textbf{FindBall} --- správanie obalené okolo akčného klienta s cieľom \texttt{stop\_when\_found=True}. Server \texttt{ball\_follower} končí úspechom hneď pri prvej čerstvej detekcii; robot teda krátko hľadá otáčaním, kým sa lopta aspoň raz ukáže v kamere.
+  \item \textbf{FollowBall} --- druhý cieľ na tú istú akciu s \texttt{stop\_when\_found=False}. Server sleduje loptu až kým niekoľko po sebe idúcich meraní nenaznačí dosť veľký polomer (\texttt{stop\_radius\_px}) po dobu \texttt{success\_hold\_ticks}, prípadne nezlyhá pri dlhej strate (\texttt{fail\_on\_lost\_sec}).
+  \item \textbf{Celebrate} --- jednoduché lokálne správanie, ktoré na krátky čas strieda vysokú kladnú a zápornú \texttt{angular.z} a publikuje priamo na \rostopic{/cmd_vel} (malá oslava po úspechu).
+\end{enumerate}
+
+Hlavná slučka stromu strieda \texttt{executor.spin\_once} (spracovanie ROS callbackov pre akčného klienta) a \texttt{tree.tick()}. Ak \texttt{FollowBall} skončí chybou a parameter \texttt{retry\_on\_lost} je zapnutý, koreň stromu sa invaliduje a sekvencia začína znova od \texttt{FindBall}.
 
 \begin{figure}[H]
   \centering
@@ -1120,9 +1155,7 @@ Samotná regulácia by nestačila na riešenie celej úlohy, pretože robot mus�
   \label{fig:ball-follow-bt-diagram}
 \end{figure}
 
-Správanie je rozdelené do troch základných stavov. V stave \texttt{FindBall} robot aktívne prehľadáva priestor pred sebou a hľadá objekt v zornom poli kamery. Ak je objekt detegovaný, prejde do stavu \texttt{FollowBall}, v ktorom priebežne koriguje smer aj rýchlosť podľa polohy lopty v obraze. Po úspešnom priblížení nasleduje stav \texttt{Celebrate}, ktorý je signalizovaný rýchlym krátkym točením zo strany na stranu.
-
-Ak objekt v zornom poli chýba, regulátor v uzle sledovania prejde do stavu vyhľadávania. V predvolenej konfigurácii akcia pokračuje, kým sa objekt neobjaví a kým nie je splnený stav Celebrate.
+Vnútri uzla \texttt{ball\_follower} pritom pri strate lopty \texttt{BallController} sám prechádza do \texttt{SEARCH} (burst otáčanie), takže fáza ``hľadania'' prebieha na dvoch úrovniach: hrubá (BT medzi akciami) a jemná (stavový automat v regulátore počas jednej akcie).
 
 
 \subsection{Runtime stack, prepínanie režimov, webové rozhranie a diaľkové vypnutie}
@@ -1211,11 +1244,78 @@ Ako doplnkové hardvérové opatrenie je vhodné použiť odolnejšie pamäťov�
 \section{Overenie implementácie a prehľad uzlov}
 \label{sec:navrh-uzlov}
 
-Výsledný systém je navrhnutý ako modulárna zostava ROS~2 uzlov, ktoré medzi sebou komunikujú cez témy, služby, akcie a transformácie.
+Výsledný systém je navrhnutý ako modulárna zostava ROS~2 uzlov, ktoré medzi sebou komunikujú pomocou tém, služieb, akcií a transformácií.
 
-Pre lepší prehľad slúži tabuľka~\ref{tab:uzly-prehlad}. Ide o zhrnutie uzlov, ktoré priamo zodpovedajú funkcionalite opísanej v tejto kapitole.
+\subsection{Metodika testovania}
+
+Overenie systému prebiehalo formou praktických jazdných testov doma. Testovalo sa na viacerých typoch povrchov a pri rôznych svetelných podmienkach – od denného svetla, cez umelé osvetlenie až po miestami zatienené oblasti. Cieľom nebolo presné laboratórne meranie, ale skôr zistiť, či jednotlivé režimy fungujú stabilne.
+
+Počas testovania sa správanie systému sledovalo pomocou nástrojov \texttt{rqt\_graph}, \texttt{rqt\_image\_view}, \texttt{rqt\_plot} a ROS~2 CLI nástrojov.
+
+Pomocou \texttt{rqt\_graph} sa kontrolovalo prepojenie uzlov a tém. \texttt{rqt\_image\_view} slúžil na kontrolu obrazových výstupov z kamery a debug streamov pri sledovaní objektu. \texttt{rqt\_plot} pomáhal sledovať priebeh vybraných veličín pri korekcii smeru.
+
+\subsubsection{Ladenie IMU korekcie a PID v motorovom uzle}
+
+Postup ladenia bol praktický a iteratívny.. Najprv som overil, že sa korekcia vôbec zapína. Potom som ladil v tomto poradí:
+\begin{enumerate}
+  \item \textbf{Filtrácia a mŕtva zóna.} Ak robot pri rovnej jazde klepal okolo nuly, zvyšoval som mierne \texttt{imu\_deadband} alebo znižoval \texttt{imu\_yaw\_lowpass\_alpha} (pomalšia, hladšia odozva). Príliš veľká mŕtva zóna naopak necháva trvalú malú odchýlku, ktorú potom musí brať integrátor.
+  \item \textbf{Proporcionálna zložka $K_p$ (\texttt{imu\_kp}).} Určuje hlavnú tuhosť odozvy na neželané zatáčanie. Príliš vysoké $K_p$ vedie k osciláciám a trhanému PWM; príliš nízke necháva dlhší drift zo smeru.
+  \item \textbf{Integrátor $K_i$ (\texttt{imu\_ki}) a obmedzenie \texttt{imu\_windup}.} Integrátor má zmysel pri miernej systematickej odchýlke (napr. asymetria pohonu). $K_i$ som držal menšie než $K_p$; pri saturácii kolies bez limitu integrátora by regulátor „prebil“ – preto sa integrál v kóde reže na rozsah $\pm\texttt{imu\_windup}$.
+  \item \textbf{Derivácia $K_d$ (\texttt{imu\_kd}).} Jemne tlmi náhle zmeny chyby; pri šume v $\omega_z$ môže zhoršiť správanie, preto som ju nechal relatívne malú.
+\end{enumerate}
+
+Počas jazdy som sledoval priebeh \texttt{/imu} a tému \rostopic{/drive_debug}, kde uzol publikuje okrem iného aj filtrovaný yaw rate, výstup korekcie PID a normalizované príkazy na kolesá po úprave. Ukážkový priebeh je na obr.~\ref{fig:imu-motor-correction}. Testovalo sa na rovných úsekoch s približne konštantným \texttt{linear.x} z webového teleopu alebo klávesnice, na koberci aj na hladšej podlahe.
+
+\subsubsection{Testovanie a ladenie optického toku}
+
+Ladenie som robil predovšetkým podľa vizuálnej spätnej väzby a správania v zákrutách:
+\begin{itemize}
+  \item \textbf{Prostredie.} Optical flow potrebuje v obraze dostatočnú textúru a kontrast. Na jednofarebnom koberci alebo pri slabom osvetlení klesá počet sledovaných bodov a priemer horizontálneho posunu je hlučný. Naopak pri dennom svetle a detailnom pozadí boli výsledky stabilnejšie.
+  \item \textbf{Parametre zisku.} \texttt{correction\_gain} a \texttt{max\_correction} určujú, ako silno sa dorovnáva bočný drift scény v obraze. Príliš vysoký zisk pridáva trhanie riadenia a nízky zase nevykompenzuje odchýlku.
+  \item \textbf{Podmienky aktivácie.} \texttt{forward\_threshold} a \texttt{steer\_deadzone} v uzle obmedzujú korekciu tak, aby sa neaplikovala pri pomalom pohybe alebo pri už výraznom zámernom zatáčaní operátora (korelát s veličinami z teleopu).
+  \item \textbf{Počet bodov.} Parameter \texttt{min\_features} určuje, koľko platných bodov musí zostať – pri jeho nedostatku sa korekcia vypína, aby jednotlivé chybné merania neťahali celý odhad.
+\end{itemize}
+
+
+\subsubsection{Testovanie sledovania objektu: HSV, morfológia a geometrické prahy}
+
+Režim sledovania používa segmentáciu v HSV a výber kontúry podľa tvarových metrík. Testovanie som delil na \emph{offline} úpravu prahov podľa debug obrazu a \emph{online} jazdu s celým reťazcom.
+
+\textbf{HSV a osvetlenie.} Intervaly pre farbu lopty som nastavoval tak, aby na téme \rostopic{/ball_follower/debug_image/compressed} maska pokrývala loptu, ale nie veľké plochy podlahy alebo stien. Pri zmene svetla v miestnosti bolo často potrebné upraviť najmä $V_{\min}$ a $S_{\min}$. Pri tieni klesá jas objektu a maska sa rozpadá. Úzkym miestom bolo nájsť kompromis medzi príliš úzkym a príliš širokým rozsahom pre detekciu správnej farby lopty bez chybných detekcíí iných objektov.
+
+\textbf{Morfologické operácie.} Gaussov rozostrenie (\texttt{blur\_ksize}) a počty iterácií erózie/dilatácie (\texttt{erode\_iters}, \texttt{dilate\_iters}) som upravoval podľa šumu masky. Malé diery v maske sa dajú zaceliť miernou dilatáciou.
+
+\textbf{Kruhovitosť, solidita a spoľahlivosť.} Parametre som ladil postupne na rôznych záberoch, kde bola lopta dobre viditeľná aj čiastočne zakrytá. Najskôr som nastavil prísnejšie hodnoty (\texttt{min\_circularity}, \texttt{min\_solidity}, \texttt{min\_fill\_ratio}), aby som eliminoval falošné detekcie, a následne som ich mierne uvoľnil, aby systém dokázal zachytiť aj neúplné tvary lopty.
+
+Popri tom som sledoval, kedy detekcia ešte funguje spoľahlivo a kedy už začína púšťať nesprávne objekty. Na záver som doladil parameter \texttt{min\_confidence}, ktorý pomohol vybrať najlepšiu kontúru v prípadoch, keď ich bolo viac.
+
+\subsubsection{Odvodenie limitov platformy z pozorovaní pri testoch}
+
+Ďalšie závery o obmedzeniach hardvéru a algoritmov nevychádzali z laboratórnych meraní, ale z opakovaných testovacích jázd a sledovania správania v RViz.
+
+\textbf{Chýbajúce enkódéry a odometria.} Poloha sa odhadovala len z príkazov \texttt{cmd\_vel}. Pri opakovaných rovnakých jazdách sa ukázalo, že trajektória v \rostopic{/odom} sa postupne rozchádza s realitou, najmä na dlhších úsekoch a pri rôznych povrchoch (koberec vs.\ hladká podlaha).
+
+\textbf{Gyroskop, rovná jazda a otočky vo wanderi.} Pri rovnej jazde sa občas objavovalo mierne stáčanie, aj bez aktívneho riadenia smeru, kvôli drobnému driftu gyroskopu.  
+
+Vo wander režime sa pri otočkách ukázalo, že odhad uhla z integrácie $\omega_z$ nie je vždy presný. Kvôli šumu a biasu sa robot niekedy otočil o trochu viac alebo menej, než bolo očakávané.
+
+\subsection{Výsledky testov}
+
+Testovanie ukázalo, že systém v bežných podmienkach funguje vo všetkých hlavných režimoch. Prepínanie medzi manuálnym a autonómnym riadením prebiehalo bez reštartu uzlov. Režim wander spoľahlivo reagoval na prekážky a pokračoval v jazde.
+
+IMU korekcia bola stabilnejšia než optical flow, ktorý fungoval dobre len pri dostatočnom osvetlení a textúre. Sledovanie lopty fungovalo po doladení HSV a geometrických prahov, zlyhania nastávali hlavne pri zmenách svetla. Mapovanie cez LiDAR a \texttt{slam\_toolbox} bolo použiteľné, ale kvalitu obmedzovala nepresná odometria.
+
+\subsection{Diskusia výsledkov a ďalší vývoj}
+
+Výsledky potvrdili, že ROS~2 architektúra je vhodná pre modulárne experimenty aj demonštrácie.
+
+Hlavné obmedzenia sú hardvérové: chýbajúce enkodéry spôsobujú nepresnú odometriu, IMU má drift a kamera je citlivá na osvetlenie. Tieto faktory priamo ovplyvňujú presnosť navigácie aj detekcie.
+
+Ďalší vývoj by sa mal zamerať na doplnenie enkodérov, zlepšenie fúzie senzorov a robustnejšiu detekciu objektov s využitím moderneich techník.
 
 \subsection{Uzly a ich funkcie v systéme}
+
+Pre lepší prehľad slúži tabuľka~\ref{tab:uzly-prehlad}. Ide o zhrnutie uzlov, ktoré priamo zodpovedajú funkcionalite opísanej v tejto kapitole.
 
 % longtable: rozdelenie na viac strán (tabularx v table[H] spôsobovalo prázdnu stranu a orezanie cez pätičku)
 \begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.36\textwidth}>{\raggedright\arraybackslash}p{0.56\textwidth}@{}}

@@ -2,6 +2,10 @@
 # Simulacia: Gazebo (Ignition) + ros_gz bridge + Nav2 bringup so SLAM + RViz.
 # use_sim_time: vsetky nody synchronizuju cas s /clock zo simulatora (nutne pre replay a stabilne TF).
 
+import os
+import shlex
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -13,6 +17,7 @@ from launch.substitutions import (
     Command,
     LaunchConfiguration,
     PathJoinSubstitution,
+    TextSubstitution,
 )
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -23,10 +28,12 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     pkg = FindPackageShare('waver_sim')
 
-    # xacro expanduje include -> jeden velky URDF retazec pre robot_state_publisher aj spawn
+    # xacro: Command() v ROS 2 launch pouziva shlex.split na vysledny retazec — cesta s medzerou
+    # by sa inak rozdelila na viac argumentov. Preto absolutna cesta cez shlex.quote().
+    _waver_share = get_package_share_directory('waver_sim')
+    _xacro_path = os.path.join(_waver_share, 'description', 'robot.urdf.xacro')
     robot_description = ParameterValue(
-        Command(['xacro ',
-                 PathJoinSubstitution([pkg, 'description', 'robot.urdf.xacro'])]),
+        Command([TextSubstitution(text='xacro ' + shlex.quote(_xacro_path))]),
         value_type=str,
     )
 
@@ -41,7 +48,12 @@ def generate_launch_description():
         }],
     )
 
-    # gz_sim: nacita world room.sdf z balika waver_gazebo (-r = run, -v = log uroven)
+    # gz_sim: ros_gz_sim spusta `gz sim` cez shell=True s jednym retazcom exec_args — cesta s medzerou
+    # musi byt v uvodzovkach, inak Gazebo dostane dva argumenty a skonci (Fuel / unable to find file).
+    _wg_share = get_package_share_directory('waver_gazebo')
+    _world_sdf = os.path.join(_wg_share, 'worlds', 'room.sdf')
+    _gz_args = f'-r -v 3 {shlex.quote(_world_sdf)}'
+
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -49,10 +61,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            'gz_args': ['-r -v 3 ',
-                        PathJoinSubstitution(
-                            [FindPackageShare('waver_gazebo'), 'worlds', 'room.sdf']
-                        )],
+            'gz_args': _gz_args,
         }.items(),
     )
 
@@ -83,7 +92,9 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Bridge: oneskorenie 2 s, kym bezi Gazebo a existuju entity (inak padne na prazdnych topicoch)
+    # Bridge: jeden argument -p config_file:=... (absolutna cesta; ziadny vnoreny list)
+    _bridge_yaml = os.path.join(_waver_share, 'config', 'ros_gz_bridge.yaml')
+
     gz_bridge = TimerAction(
         period=2.0,
         actions=[Node(
@@ -93,9 +104,7 @@ def generate_launch_description():
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
             arguments=[
-                '--ros-args', '-p',
-                ['config_file:=',
-                 PathJoinSubstitution([pkg, 'config', 'ros_gz_bridge.yaml'])],
+                '--ros-args', '-p', f'config_file:={_bridge_yaml}',
             ],
         )],
     )

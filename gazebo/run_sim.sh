@@ -31,9 +31,17 @@ echo "==> Source workspace..."
 unset AMENT_PREFIX_PATH COLCON_PREFIX_PATH CMAKE_PREFIX_PATH ROS_PACKAGE_PATH
 source /opt/ros/jazzy/setup.bash
 
-# Ak workspace nie je buildnuty, buildne sa automaticky.
+# Ak workspace nie je buildnuty, alebo install je z ineho PC (rozbité symlinky do BPC-PRP/...),
+# colcon install ukazuje na neexistujuce cesty -> "not found: .../local_setup.bash".
+need_build=0
 if [ ! -f "$SCRIPT_DIR/install/setup.bash" ]; then
-  echo "[WARN] install/setup.bash not found in gazebo workspace, building..."
+  need_build=1
+elif [ ! -f "$SCRIPT_DIR/install/waver_sim/share/waver_sim/local_setup.bash" ]; then
+  need_build=1
+fi
+if [ "$need_build" -eq 1 ]; then
+  echo "[WARN] gazebo/install je nekompletny alebo z iného počítača — čistý rebuild..."
+  rm -rf "$SCRIPT_DIR/build" "$SCRIPT_DIR/install" "$SCRIPT_DIR/log"
   (cd "$SCRIPT_DIR" && colcon build --symlink-install)
 fi
 
