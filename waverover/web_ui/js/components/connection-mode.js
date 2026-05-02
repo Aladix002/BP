@@ -4,7 +4,7 @@
 
 var WR = window.WR;
 
-function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }) {
+function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect, mediaHost, onMediaHostChange }) {
   const [shutdownBusy, setShutdownBusy] = React.useState(false);
   const [shutdownMsg, setShutdownMsg] = React.useState("");
 
@@ -64,6 +64,29 @@ function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }
           {shutdownMsg}
         </p>
       )}
+      <div className="mt-3 pt-3 border-t border-slate-800">
+        <WR.SectionLabel>Robot media (WebRTC)</WR.SectionLabel>
+        <p className="text-[0.65rem] text-slate-500 mb-1.5">
+          Ak je stránka aj rosbridge na PC, zadaj IP Raspberry (signál :{WR.WEBRTC_SIGNAL_PORT}). Prázdne = host z WebSocket URL.
+        </p>
+        <input
+          type="text"
+          value={mediaHost}
+          placeholder="napr. 192.168.0.42"
+          autoComplete="off"
+          onChange={(e) => {
+            const v = e.target.value;
+            onMediaHostChange(v);
+            try {
+              if (v.trim()) localStorage.setItem(WR.ROBOT_MEDIA_HOST_STORAGE_KEY, v.trim());
+              else localStorage.removeItem(WR.ROBOT_MEDIA_HOST_STORAGE_KEY);
+            } catch (_) {}
+          }}
+          className="w-full px-3 py-2 rounded-lg bg-slate-950/70 border border-slate-700
+                     text-sm text-slate-200 placeholder-slate-600
+                     focus:outline-none focus:border-blue-500/50 transition-colors"
+        />
+      </div>
     </WR.Card>
   );
 }

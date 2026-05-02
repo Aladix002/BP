@@ -12,6 +12,8 @@ Object.assign(window.WR, {
   CAMERA_TYPE: "sensor_msgs/msg/CompressedImage",
   /** WebRTC signalizácia (HTTP); samotné video ide SRTP/UDP medzi prehliadačom a robotom. */
   WEBRTC_SIGNAL_PORT: 8765,
+  /** Ak je rosbridge inde ako WebRTC (napr. starsi setup PC+RPi): uloz sem IP robota pre signalizaciu :8765. */
+  ROBOT_MEDIA_HOST_STORAGE_KEY: "waverover_robot_media_host",
   /** Ak true, najprv sa skúsi uzol webrtc_camera_node; pri zlyhaní fallback na rosbridge (TCP). */
   USE_WEBRTC_CAMERA: true,
   IMU_TOPIC: "/imu",
@@ -31,16 +33,37 @@ Object.assign(window.WR, {
   PTYPE_STRING: 4,
 });
 
-/** Základ URL pre POST /offer a GET /health (rovnaký host ako rosbridge WebSocket). */
-window.WR.webrtcSignalBaseUrl = function webrtcSignalBaseUrl() {
-  let host = "127.0.0.1";
+function _sanitizeMediaHost(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  s = s.replace(/^https?:\/\//i, "");
+  s = s.split("/")[0];
+  s = s.split(":")[0];
+  return s;
+}
+
+/** Host pre webrtc_camera_node (:8765): volitelny override, inak host z rosbridge URL / stranky. */
+window.WR.robotMediaHost = function robotMediaHost() {
+  try {
+    const o = typeof localStorage !== "undefined"
+      ? localStorage.getItem(window.WR.ROBOT_MEDIA_HOST_STORAGE_KEY)
+      : null;
+    const t = _sanitizeMediaHost(o);
+    if (t) return t;
+  } catch (_) {}
   try {
     const u = typeof localStorage !== "undefined" ? localStorage.getItem("waverover_ws_url") : null;
-    if (u) host = new URL(u).hostname;
-    else if (typeof window !== "undefined" && window.location && window.location.hostname) {
-      host = window.location.hostname;
-    }
+    if (u) return _sanitizeMediaHost(new URL(u).hostname) || "127.0.0.1";
   } catch (_) {}
+  if (typeof window !== "undefined" && window.location && window.location.hostname) {
+    return window.location.hostname;
+  }
+  return "127.0.0.1";
+};
+
+/** Základ URL pre POST /offer a GET /health. */
+window.WR.webrtcSignalBaseUrl = function webrtcSignalBaseUrl() {
+  const h = window.WR.robotMediaHost();
   const p = window.WR.WEBRTC_SIGNAL_PORT;
-  return `http://${host}:${p}`;
+  return `http://${h}:${p}`;
 };

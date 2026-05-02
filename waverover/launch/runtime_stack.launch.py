@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Jeden stack: motor + LiDAR wander + IMU + volitelne kamera + web (rosbridge + volitelne WebRTC video).
+# Distribuovane: use_offboard_slam:=true na RPi (web + senzory); na PC iba SLAM: pc_slam_web.launch.py (ziaden web teleop na PC).
 # Prepinanie: ros2 service call /waverover/switch_to_wander|switch_to_manual std_srvs/srv/Trigger
 
 import os
@@ -47,6 +48,8 @@ def _opaque(context, *args, **kwargs):
     use_webrtc_camera = LaunchConfiguration("use_webrtc_camera").perform(context) == "true"
     use_teleop = LaunchConfiguration("use_teleop").perform(context) == "true"
     use_slam = LaunchConfiguration("use_slam").perform(context) == "true"
+    use_offboard_slam = LaunchConfiguration("use_offboard_slam").perform(context) == "true"
+    run_onboard_slam = use_slam and not use_offboard_slam
     use_ekf = LaunchConfiguration("use_ekf").perform(context) == "true"
     use_rviz = LaunchConfiguration("use_rviz").perform(context) == "true"
     use_cmd_vel_odom = LaunchConfiguration("use_cmd_vel_odom").perform(context) == "true"
@@ -290,7 +293,18 @@ def _opaque(context, *args, **kwargs):
             )
         )
 
-    if use_slam:
+    if use_offboard_slam and use_slam:
+        actions.append(
+            LogInfo(
+                msg=(
+                    "use_offboard_slam:=true — SLAM na RPi vypnuty. Na PC (len SLAM): "
+                    "source install/setup.bash && export ROS_DOMAIN_ID=0 && "
+                    "ros2 launch waverover pc_slam_web.launch.py"
+                )
+            )
+        )
+
+    if run_onboard_slam:
         if not use_lidar:
             actions.append(LogInfo(msg="use_slam:=true ale use_lidar:=false - SLAM sa nespusta (chyba /scan)."))
         else:
@@ -384,15 +398,38 @@ def _opaque(context, *args, **kwargs):
 
     if use_web:
         pkg = get_package_share_directory("waverover")
-        web_launch = os.path.join(pkg, "launch", "web_teleop_ui.launch.py")
-        if os.path.exists(web_launch):
+        web_ui = os.path.join(pkg, "web_ui")
+        rb_port = int(LaunchConfiguration("rosbridge_port").perform(context))
+        http_port = int(LaunchConfiguration("web_http_port").perform(context))
+        http_bind = LaunchConfiguration("web_http_bind").perform(context).strip() or "0.0.0.0"
+        if not os.path.isdir(web_ui):
             actions.append(
-                IncludeLaunchDescription(
-                    PythonLaunchDescriptionSource(web_launch)
-                )
+                LogInfo(msg="use_web:=true ale zlozka web_ui chyba v share/waverover — colcon build waverover")
             )
         else:
-            actions.append(LogInfo(msg="use_web:=true ale web_teleop_ui.launch.py chyba; web cast sa preskakuje."))
+            http_cmd = f'cd "{web_ui}" && exec python3 -m http.server {http_port} --bind {http_bind}'
+            actions.extend([
+                Node(
+                    package="rosbridge_server",
+                    executable="rosbridge_websocket",
+                    name="rosbridge_websocket",
+                    output="screen",
+                    parameters=[{"port": rb_port}],
+                ),
+                Node(
+                    package="rosapi",
+                    executable="rosapi_node",
+                    name="rosapi",
+                    output="screen",
+                ),
+                ExecuteProcess(cmd=["bash", "-lc", http_cmd], output="screen"),
+                LogInfo(
+                    msg=(
+                        f"web: rosbridge ws://0.0.0.0:{rb_port} | "
+                        f"HTTP http://{http_bind}:{http_port}/ (napr. http://<rpi>:{http_port})"
+                    )
+                ),
+            ])
 
     return actions
 
@@ -407,7 +444,14 @@ def generate_launch_description():
         DeclareLaunchArgument("camera_id", default_value="0"),
         DeclareLaunchArgument("use_robot_model", default_value="true", description="robot_state_publisher z waver_sim URDF"),
         DeclareLaunchArgument("robot_model_file", default_value="", description="cesta k URDF/Xacro; prazdne = autodetect z waver_sim"),
-        DeclareLaunchArgument("use_web", default_value="true", description="rosbridge + HTTP :8080"),
+        DeclareLaunchArgument("use_web", default_value="true", description="rosbridge + HTTP pre web_ui"),
+        DeclareLaunchArgument("rosbridge_port", default_value="9090"),
+        DeclareLaunchArgument("web_http_port", default_value="8080"),
+        DeclareLaunchArgument(
+            "web_http_bind",
+            default_value="0.0.0.0",
+            description="HTTP server pre web_ui; 0.0.0.0 = LAN",
+        ),
         DeclareLaunchArgument(
             "use_webrtc_camera",
             default_value="true",
@@ -473,6 +517,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("lidar_rotation_deg", default_value="-90.0"),
         DeclareLaunchArgument("use_slam", default_value="true", description="slam_toolbox async (vyzaduje use_lidar:=true)"),
+        DeclareLaunchArgument(
+            "use_offboard_slam",
+            default_value="false",
+            description="true = SLAM na PC (pc_slam_web); web teleop len na RPi (runtime_stack use_web); RPi: senzory + motor + /scan + odom TF",
+        ),
         DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
         DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),
         DeclareLaunchArgument("use_cmd_vel_odom", default_value="true", description="odometria z cmd_vel -> odom->base_link TF"),
