@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# Behavior tree: FindBall → FollowBall → Celebrate
-# FindBall:   stop_when_found=True  → SUCCESS on first detection
-# FollowBall: stop_when_found=False → follows until stop_radius reached
-# Celebrate:  short spin on success
+# BT: FindBall, FollowBall, Celebrate.
 
 import sys
 import time

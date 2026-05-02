@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# CSV z /ball_follower/debug_signals (+ volitelne /drive_debug = PWM motory, + BT).
-#   ros2 run waverover log_ball_follow_csv.py --ros-args -p output_file:=/tmp/ball_follow.csv
-# Spusti pocas ball_follow_standalone; pre pwm_* musi bezat waverover_motor (drive_debug).
+# ball_follow debug (+ volitelne drive_debug) -> CSV.
 
 import csv
 import math

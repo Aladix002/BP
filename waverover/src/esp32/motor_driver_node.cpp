@@ -1,5 +1,4 @@
-// ROS 2 uzol: prijima /motor_cmd [left, right] a posiela HTTP GET na ESP32 (/js?json=...).
-// Pouziva sa ako alternativa k PCA9685 I2C, ked motor driver bezi na ESP32.
+// /motor_cmd -> HTTP GET na ESP32 (alternativa k I2C HAT).
 #include "nodes/motor_driver_node.hpp"
 #include <curl/curl.h>
 #include <sstream>
@@ -22,7 +21,6 @@ MotorDriverNode::~MotorDriverNode() {
     send_http(0.0, 0.0);
 }
 
-// Prijme [left, right] v -1..1 a posle na ESP32
 void MotorDriverNode::motor_cb(const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
     if (msg->data.size() < 2) return;
     double left = std::max(-1.0, std::min(1.0, msg->data[0]));
@@ -30,7 +28,6 @@ void MotorDriverNode::motor_cb(const std_msgs::msg::Float64MultiArray::SharedPtr
     send_http(left, right);
 }
 
-// Zostaví JSON {T:1, L:left, R:right} a posle cez libcurl GET na esp32_url
 void MotorDriverNode::send_http(double left, double right) {
     std::ostringstream json;
     json << std::fixed << std::setprecision(2);

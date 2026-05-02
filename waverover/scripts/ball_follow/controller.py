@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Stavovy riadic sledovania gule z detekcie (bbox): hladanie otacanim, sledovanie, priblizenie,
+# zastavenie pri velkej gule, kratky "coast" po strate detekcie. Vystup je Twist pre cmd_vel.
+
 from __future__ import annotations
 
 import time
@@ -13,47 +16,37 @@ from detector import Detection
 
 
 def _smoothstep(t: float) -> float:
+    # Hermitova interpolacia 0..1 pre makke prechody (brake pasma okolo stop_radius).
     t = float(np.clip(t, 0.0, 1.0))
     return t * t * (3.0 - 2.0 * t)
 
 
-# Stavy regulatora
 class State(IntEnum):
-    SEARCH   = 0  # hlada loptu – otacanie na mieste
-    TRACK    = 1  # sleduje loptu – jazda vpred s korekciou
-    APPROACH = 2  # priblihovanie – postupne brzdenie
-    STOP     = 3  # lopta dost blizko – zastavenie
-    COAST    = 4  # lopta stratena – este sekunda vpred pred hladanim
+    SEARCH   = 0   # ziadna gula: burst otacanie
+    TRACK    = 1   # gula videnie, riadenie strany a dopredu
+    APPROACH = 2   # v brake pasme pred STOP (spomalenie + zmensenie zatacania)
+    STOP     = 3   # gula dost velka v obraze -> stat
+    COAST    = 4   # kratko drz poslednu linear.x po strate detekcie
 
 
 @dataclass
 class ControllerConfig:
-    # Zakladna rychlost vpred
-    forward_speed: float = 0.72
-    # Polomer lopty v pixeloch: minimalny a stop
-    min_radius_px: float = 10.0
-    stop_radius_px: float = 40.0
-    # Po kolkych sekundach bez detekcie sa lopta povazuje za stratenu
-    detection_lost_sec: float = 1.5
-    # Kinematika diferentialneho podvozku
-    wheel_base: float = 2.0
-    max_linear: float = 1.0
-    # Bocne riadenie: side_gain urcuje agresivitu zatacania
-    side_gain: float = 1.02
-    min_wheel_fwd: float = 0.12   # minimalny dopredu pre vnutorne koleso
-    # Nelinearita bocnej chyby: sign(e)*|e|^err_exp  (<1 = citlivejsie pri malych chybach)
-    err_exp: float = 0.85
-    # Pasmo plynuleho brzdenia pred stop_radius_px
-    brake_band_px: float = 14.0
-    turn_blend_min: float = 0.45  # min. podiel uhlovej zlozky pocas brzdenia
-    # Exponencialny klzavy priemer na vyhladzenie cmd_vel
-    smooth_alpha: float = 0.36
-    # Coast: po strate lopty este coast_sec sekund ide vpred (potom burst)
-    coast_sec: float = 1.0
-    # Burst hladanie: kratke impulzy otacania na mieste
-    burst_speed: float = 10.0
-    burst_on_sec: float = 0.45
-    burst_off_sec: float = 0.90
+    forward_speed: float = 0.72      # zakladna "rychlost kolies" 0..1 pred mapovanim na twist
+    min_radius_px: float = 10.0      # spodna hranica velkosti gule v px (mala = daleko)
+    stop_radius_px: float = 40.0     # ak radius >= toto, STOP (blizko ciela)
+    detection_lost_sec: float = 1.5  # rezervovane / konzistencia s logovanim
+    wheel_base: float = 2.0          # normalizovana "sira" pre v_l, v_r -> angular (nie metre!)
+    max_linear: float = 1.0          # skalovanie linear.x z priemeru kolies
+    side_gain: float = 1.02        # sila diferencialu podla horizontalnej chyby
+    min_wheel_fwd: float = 0.12      # spodny clip kazdeho kolesa (necouvat na mieste prilis)
+    err_exp: float = 0.85            # nelinearita |x_err|^exp pre citlivejsi stred
+    brake_band_px: float = 14.0      # sirka pasma pred stop_radius kde sa zmensuje rychlost
+    turn_blend_min: float = 0.45     # pri plnom brzdeni angular zmenseny na tento podiel
+    smooth_alpha: float = 0.36     # EMA na linear.x a angular.z pred publikovanim
+    coast_sec: float = 1.0           # ako dlho po strate detekcie drzat _last_coast_lin
+    burst_speed: float = 10.0      # velka angular pri burst hladani
+    burst_on_sec: float = 0.45       # dlzka pulzu otacania
+    burst_off_sec: float = 0.90      # pauza medzi pulzmi
 
 
 class BallController:
@@ -62,22 +55,22 @@ class BallController:
         self._cfg = cfg
         self.state = State.SEARCH
 
-        self._search_dir: float = 1.0    # smer posledneho otacania pri hladani
-        self._ever_seen: bool = False    # ci bola lopta aspon raz videna
+        self._search_dir: float = 1.0   # smer hladania po strate / podla poslednej chyby
+        self._ever_seen: bool = False
         self._burst_on: bool = True
         self._burst_start: float = time.monotonic()
 
         self._ema_lin: float = 0.0
         self._ema_ang: float = 0.0
         self._prev_had_det: bool = False
-        self._last_det_t: float = 0.0        # cas poslednej uspesnej detekcie
-        self._last_coast_lin: float = 0.0    # rychlost pri poslednom sledovani (pre coast)
+        self._last_det_t: float = 0.0
+        self._last_coast_lin: float = 0.0
 
     def update_config(self, cfg: ControllerConfig) -> None:
         self._cfg = cfg
 
     def update(self, det: Optional[Detection], has_frame: bool) -> tuple[Twist, State]:
-        # Bez obrazu nerobi nic
+        # Bez snimky vynuluj a SEARCH (bezpecnost / ziadny vystup).
         if not has_frame:
             self._ema_lin = 0.0
             self._ema_ang = 0.0
@@ -89,13 +82,11 @@ class BallController:
         if det is None:
             coast_elapsed = now - self._last_det_t
             if self._prev_had_det:
-                # Prave sme stratili loptu – resetuj burst timer aby zacal az po coaste
                 self._burst_on = True
                 self._burst_start = now
             self._prev_had_det = False
 
             if self._last_det_t > 0 and coast_elapsed < cfg.coast_sec:
-                # Coast faza: ide stale vpred poslednou rychlostou
                 raw = Twist()
                 raw.linear.x = self._last_coast_lin
                 state = State.COAST
@@ -106,7 +97,6 @@ class BallController:
             self._prev_had_det = True
             self._ever_seen = True
             self._last_det_t = now
-            # Zapamata smer pre burst hladanie
             if abs(det.x_err) > 0.05:
                 self._search_dir = 1.0 if det.x_err > 0 else -1.0
 
@@ -123,10 +113,8 @@ class BallController:
         self._apply_ema(raw, cfg.smooth_alpha)
         return raw, state
 
-    # ── sukromne metody ───────────────────────────────────────────────────────
-
     def _search_cmd(self, cfg: ControllerConfig, now: float) -> Twist:
-        # Striedanie: burst_on_sec otacanie / burst_off_sec pauza
+        # Stridave burst otacanie (on/off) aby sa robot neotacal nekonecne jednym smerom.
         elapsed = now - self._burst_start
         if self._burst_on:
             if elapsed >= cfg.burst_on_sec:
@@ -146,7 +134,6 @@ class BallController:
     def _track_cmd(self, det: Detection, cfg: ControllerConfig) -> tuple[Twist, bool]:
         cmd = self._diff_cmd(det, cfg.forward_speed, cfg)
 
-        # Plynule brzdenie v pasme tesne pred stop_radius_px
         in_brake = False
         if cfg.brake_band_px > 0 and cfg.stop_radius_px > 0:
             low = max(0.0, cfg.stop_radius_px - cfg.brake_band_px)
@@ -160,20 +147,18 @@ class BallController:
         return cmd, in_brake
 
     def _diff_cmd(self, det: Detection, base: float, cfg: ControllerConfig) -> Twist:
-        # Nelinearna bocna chyba – tlmi agresivitu pri malych odchylkach
+        # x_err -1..1: diferencial v_l/v_r; vacsi radius -> vacsi "side" lebo gula je blizsie.
         exp = float(np.clip(cfg.err_exp, 0.45, 1.2))
         err_s = float(np.sign(det.x_err) * (abs(det.x_err) ** exp))
 
-        # Cim vacsie r (blizsia lopta), tym agresivnejsie zatacanie (r_scale 1..2)
         r_range = max(1.0, cfg.stop_radius_px - cfg.min_radius_px)
         r_scale = 1.0 + float(np.clip((det.radius_px - cfg.min_radius_px) / r_range, 0.0, 1.0))
         add = float(np.clip(abs(err_s) * cfg.side_gain * r_scale, 0.0, 1.0))
 
-        # Vonkajsie koleso +add, vnutorne -add (symetricke diferencialne riadenie)
-        if err_s >= 0:   # lopta vpravo → prave koleso rychlejsie
+        if err_s >= 0:
             v_l = base - add
             v_r = base + add
-        else:            # lopta vlavo → lave koleso rychlejsie
+        else:
             v_l = base + add
             v_r = base - add
 
@@ -188,7 +173,7 @@ class BallController:
         return cmd
 
     def _apply_ema(self, cmd: Twist, alpha: float) -> None:
-        # Exponencialny klzavy priemer – tlmi skokove zmeny z detekcie
+        # Upravi cmd in-place: vystup je vyhladeny (menej trhania motorov).
         self._ema_lin += alpha * (cmd.linear.x  - self._ema_lin)
         self._ema_ang += alpha * (cmd.angular.z - self._ema_ang)
         cmd.linear.x  = self._ema_lin

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Minimal stack: motor (auto) + camera + ball_follower_action + BT runner
+# Motor (auto), kamera, ball_follow, behavior tree.
 import os
 
 from ament_index_python.packages import get_package_share_directory

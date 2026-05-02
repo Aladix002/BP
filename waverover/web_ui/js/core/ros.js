@@ -1,6 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
-// Pomocne funkcie: rosbridge spojenie, volanie rcl_interfaces get/set parametrov, Trigger sluzby.
+// roslib, parametre, Trigger.
 
 var WR = window.WR;
 

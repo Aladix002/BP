@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# Vizualizacia/meranie : tools/visualisation/README.md
-# Nahrava /teleop_cmd_vel + /teleop_cmd_vel_corrected (+ volitelne /drive_debug) do CSV.
-#   ros2 run waverover log_optical_flow_csv.py --ros-args -p output_file:=/tmp/flow.csv
-# Spusti pri correction_mode:=optical_flow a zapnutom optical_flow_node (enabled).
+# Teleop + optical flow -> CSV.
 
 import csv
 import math

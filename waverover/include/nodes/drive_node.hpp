@@ -14,7 +14,9 @@ namespace nodes {
 
 class Pca9685;
 
-// Uzol: I2C motorovy HAT, vstupy Twist (teleop / cmd_vel), volitelna IMU korekcia priamky
+// Ovladanie Motor HAT (PCA9685 + TB6612): teleop / cmd_vel -> PWM.
+// V manual rezime berie teleop (alebo korigovany topic pri optical_flow).
+// V auto len cmd_vel. Volitelne PID na omega_z z IMU pri "rovnakej" jazde.
 class DriveNode : public rclcpp::Node {
 public:
   explicit DriveNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
@@ -40,17 +42,17 @@ private:
 
   std::mutex mu_;
 
-  // Cielove normalizovane prikazy -1..1 pre lave/prave koleso (po mixeri)
+  // Cielove normalizovane rychlosti kolies -1..1 (pred EMA a IMU korekciou)
   double target_l_{0.0};
   double target_r_{0.0};
   std::chrono::steady_clock::time_point last_cmd_{};
   bool have_cmd_{false};
 
-  // Vyhladene hodnoty po EMA (smooth_alpha)
+  // Vyhladene ciele po EMA (smooth_alpha)
   double smooth_l_{0.0};
   double smooth_r_{0.0};
 
-  // Stav PID pre gyro osu Z
+  // Filtrovana omega_z z IMU + stav diskretneho PID
   double imu_yaw_rate_{0.0};
   double imu_integral_{0.0};
   double imu_prev_error_{0.0};

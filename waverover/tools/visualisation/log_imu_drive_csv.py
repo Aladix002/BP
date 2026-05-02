@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# Vizualizacia/meranie : pozri tools/visualisation/README.md
-# Nahrava /imu + /drive_debug do CSV pre matplotlib (plot_imu_drive_csv.py).
-#   ros2 run waverover log_imu_drive_csv.py --ros-args -p output_file:=/tmp/imu_drive.csv
-# Stlpce drive_debug: pwm_l%%, pwm_r%%, cl, cr, imu_corr, yaw_filt (drive_node.cpp)
+# /imu + /drive_debug -> CSV.
 
 import csv
 import math

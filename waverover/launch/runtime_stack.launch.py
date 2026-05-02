@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# Jeden stack: motor + LiDAR wander + IMU + volitelne kamera + web (rosbridge + volitelne WebRTC video).
-# Distribuovane: use_offboard_slam:=true na RPi (web + senzory); na PC iba SLAM: pc_slam_web.launch.py (ziaden web teleop na PC).
-# Prepinanie: ros2 service call /waverover/switch_to_wander|switch_to_manual std_srvs/srv/Trigger
+# Palubny stack: motor, lidar wander, IMU, kamera, web; use_offboard_slam = SLAM na PC (slam_remote_pc / pc_slam_web).
 
 import os
 
@@ -13,7 +11,7 @@ from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-# Pomer vpred / otacanie pre auto vypocet wander rychlosti; musi sediet s web_ui (WANDER_TURN_RATIO)
+# Musi sediet s web_ui (WANDER_TURN_RATIO).
 WANDER_TURN_RATIO = 18.0
 
 CAMERA_WIDTH = 320
@@ -22,7 +20,6 @@ CAMERA_FORMAT = "XRGB8888"
 
 
 def _opaque(context, *args, **kwargs):
-    # stack_mode: manual = teleop/web na /teleop_cmd_vel; wander = lidar_wander posiela /cmd_vel
     mode = LaunchConfiguration("stack_mode").perform(context)
     if mode not in ("manual", "wander"):
         raise RuntimeError("stack_mode musi byt manual alebo wander")
@@ -35,7 +32,6 @@ def _opaque(context, *args, **kwargs):
         raise RuntimeError("correction_mode musi byt imu, optical_flow alebo none")
 
     use_imu_corr = correction_mode == "imu"
-    # optical_flow uzol koriguje teleop len ked je zapnuty enabled a kamera bezi
     use_flow = correction_mode == "optical_flow"
 
     ldlidar_share = get_package_share_directory("ldlidar_ros2")
@@ -78,7 +74,6 @@ def _opaque(context, *args, **kwargs):
     max_ang = float(LaunchConfiguration("teleop_max_angular").perform(context))
     w_scale = float(LaunchConfiguration("wander_speed_scale").perform(context))
 
-    # Zakladna rychlost wanderu z rovnakej skaly ako UI (slider * max linear)
     auto_wander_fwd = w_scale * max_lin
     auto_wander_turn = auto_wander_fwd * WANDER_TURN_RATIO
 
@@ -135,7 +130,6 @@ def _opaque(context, *args, **kwargs):
             name="lidar_wander_node",
             output="screen",
             parameters=[{
-                # enabled: v wander rezime True = uzol generuje cmd_vel; v manual False aby nesiel do auta
                 "enabled": wand_en,
                 "threshold_m": float(LaunchConfiguration("threshold_m").perform(context)),
                 "forward_speed": wander_fwd,
@@ -148,7 +142,6 @@ def _opaque(context, *args, **kwargs):
                 "lidar_early_exit_min_deg": 40.0,
             }],
         ),
-        # Sluzby na prepnutie parametrov motor + wander za behu (web vola tie iste sluzby)
         Node(
             package="waverover",
             executable="robot_mode_switch.py",
@@ -169,7 +162,6 @@ def _opaque(context, *args, **kwargs):
                     "baud_rate": int(LaunchConfiguration("imu_baud_rate").perform(context)),
                     "frame_id": LaunchConfiguration("imu_frame_id").perform(context),
                     "topic": "/imu",
-                    # Gyro pre integraciu uhla vo wanderi: bez dodatocneho Kalmana v moste (spracovanie akcelerometra vo firmware ostava).
                 }],
             ),
             Node(
@@ -230,7 +222,6 @@ def _opaque(context, *args, **kwargs):
     )
 
     if have_cam and use_camera:
-        # LK optical flow: topic musi byt compressed (JPEG z camera_ros), vystup ide do motor uzla ked correction_mode=optical_flow
         actions.append(
             Node(
                 package="waverover",
@@ -287,7 +278,6 @@ def _opaque(context, *args, **kwargs):
                     "update_rate_hz": 30.0,
                     "use_imu_yaw":    True,
                     "imu_topic":      "/imu",
-                    # Skutocna rychlost robota = cmd_linear / teleop_max_linear * max_wheel_speed
                     "linear_scale":   0.4 / max_lin,
                 }],
             )
@@ -297,9 +287,10 @@ def _opaque(context, *args, **kwargs):
         actions.append(
             LogInfo(
                 msg=(
-                    "use_offboard_slam:=true — SLAM na RPi vypnuty. Na PC (len SLAM): "
-                    "source install/setup.bash && export ROS_DOMAIN_ID=0 && "
-                    "ros2 launch waverover pc_slam_web.launch.py"
+                    "use_offboard_slam:=true — SLAM na RPi vypnuty. Na PC: "
+                    "source install/setup.bash && export ROS_DOMAIN_ID=<rovnake_ako_RPi> && "
+                    "ros2 launch waverover slam_remote_pc.launch.py "
+                    "(alebo pc_slam_web.launch.py ak DOMAIN_ID=0 vsade)"
                 )
             )
         )
@@ -339,9 +330,6 @@ def _opaque(context, *args, **kwargs):
                     output="screen",
                     parameters=[slam_params],
                 ),
-                # Dva samostatne ros2 lifecycle casto zlyhaju: (1) daemon vs. novy uzol → "Node not found",
-                # (2) activate skor ako configure → "Unknown transition ... available: configure, shutdown".
-                # Jeden bash: opakovane configure, potom az activate (--no-daemon = priama discovery).
                 TimerAction(
                     period=2.0,
                     actions=[ExecuteProcess(
@@ -525,7 +513,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "use_offboard_slam",
             default_value="false",
-            description="true = SLAM na PC (pc_slam_web); web teleop len na RPi (runtime_stack use_web); RPi: senzory + motor + /scan + odom TF",
+            description="true = SLAM na PC (slam_remote_pc alebo pc_slam_web); web na RPi (use_web); RPi: senzory + motor + /scan + odom TF",
         ),
         DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
         DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),

@@ -590,6 +590,7 @@ Statické transformácie opisujú pevné geometrické vzťahy, napríklad montá
 \subsection*{RViz2, rqt a rosbag}
 
 RViz2 je hlavný vizualizačný nástroj v prostredí ROS~2, ktorý umožňuje zobrazenie stavu robota a dát zo senzorov v reálnom čase. Podporuje vizualizáciu 3D modelu robota, laserových skenov, obrazových dát, markerov, máp, plánovaných trajektórií a transformácií medzi súradnicovými rámami. Používateľ si môže dynamicky pridávať jednotlivé zobrazovacie prvky a konfigurovať ich parametre podľa potreby.
+V rámci tejto práce sa počíta aj s behom RViz na výkonnejšom externom počítači v tej istej lokálnej sieti a v tej istej DDS doméne ako robot; dôvody tohto rozdelenia oproti palubnému behu na Raspberry Pi sú rozvedené v sekcii~\ref{sec:distrib-slam-rviz}.
 
 Balík rqt združuje sadu grafických nástrojov, ktoré slúžia na analýzu a ladenie systému. Medzi najčastejšie používané patria:
 \begin{itemize}
@@ -675,7 +676,7 @@ Na ten istý základný rám boli pomocou pevných kĺbov pripojené aj kamera a
 <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0.04 0 0.092" rpy="0 0 0"/>
+    <origin xyz="-0.04 0 0.092" rpy="0 0 0"/>
 </joint>
 \end{verbatim}
 
@@ -770,7 +771,7 @@ Pre \emph{klasický} model diferenciálneho podvozku so stredovou rýchlosťou k
   v_L = v - \omega\,\frac{b}{2}, \qquad v_R = v + \omega\,\frac{b}{2}.
   \label{eq:diff-drive-unicycle}
 \end{equation}
-V implementácii sa pri autonómnom vstupe sa používa práve táto kinematika: z \texttt{Twist.linear.x} a \texttt{Twist.angular.z} sa po normalizácii vypočítajú cieľové zlomkové rýchlosti ľavej a pravej strany. Pri manuálnom teleope sa namiesto toho najprv vypočítajú bezrozmerné zložky \texttt{fb} a \texttt{tr} z príkazu a potom sa aplikuje diferenciálny „tank“ mix z listing~\ref{lst:drive-tank}, čo je ekvivalentné rovnakej idei rozdielu rýchlosti ľavého a pravého kolesa pri zatáčaní.
+Pri autonómnom vstupe sa používa práve táto kinematika: z \texttt{Twist.linear.x} a \texttt{Twist.angular.z} sa po normalizácii vypočítajú cieľové zlomkové rýchlosti ľavej a pravej strany. Pri manuálnom teleope sa namiesto toho najprv vypočítajú bezrozmerné zložky \texttt{fb} a \texttt{tr} z príkazu a potom sa aplikuje diferenciálny „tank“ mix z listing~\ref{lst:drive-tank}, čo je ekvivalentné rovnakej idei rozdielu rýchlosti ľavého a pravého kolesa pri zatáčaní.
 
 Takto získané požadované rýchlosti sa následne filtrujú exponenciálnym vyhladením (vzorec~\eqref{eq:ema}), prevádzajú na PWM hodnoty a odosielajú na výstup HATu. Výsledkom je plynulejšie rozbiehanie aj zastavovanie robota bez prudkých zmien smeru alebo rýchlosti.
 
@@ -1021,12 +1022,29 @@ Súčasťou SLAM je aj \emph{uzatváranie slučiek} (\emph{loop closure}). Ak sa
     \label{fig:manual-slam-rqt-graph}
 \end{figure}
 
-\subsubsection*{Nav2, jednoduchá navigácia a vzťah k bludeniu}
+\subsubsection*{Distribuované nasadenie: SLAM a RViz na PC, runtime stack na Raspberry Pi}
+\label{sec:distrib-slam-rviz}
+
+Výpočtovo náročnejšie časti systému, najmä 2D SLAM (balík \texttt{slam\_toolbox}) a plynulá vizualizácia v RViz, môžu Raspberry Pi~5 výrazne zaťažovať. To sa môže negatívne prejaviť na stabilite ostatných procesov, napríklad spracovania dát z LiDARu, kamery alebo riadenia motorov. Preto je v praktickej prevádzke vhodné tieto komponenty spúšťať na výkonnejšom externom počítači (PC s Ubuntu~24.04 a ROS~2 Jazzy), zatiaľ čo na palube zostáva časovo kritická časť systému.
+
+Na Raspberry Pi zostáva \emph{runtime stack} zabalený v \path{runtime_stack.launch.py}: motorový uzol, driver LiDARu, voliteľné mosty pre IMU a kameru, generovanie odometrie a transformácie medzi rámami \texttt{odom} a \texttt{base\_link}. Pri zapnutí mapovania s parametrom \texttt{use\_offboard\_slam:=true} sa na RPi nespúšťa palubný \texttt{async\_slam\_toolbox\_node}; predpokladá sa, že SLAM beží na PC v tom istom ROS~2 grafe (zhodný \texttt{ROS\_DOMAIN\_ID}, sieťová dostupnosť a podľa konfigurácie RMW aj multicast v LAN).
+
+Na PC som v rámci práce používal predovšetkým launch súbor \path{slam_remote_pc.launch.py}: spúšťa uzol \texttt{slam\_toolbox}, skript na lifecycle prechody (\texttt{configure} / \texttt{activate}) a voliteľne RViz s konfiguráciou \path{params/slam.rviz}. Argument \texttt{ros\_domain\_id} musí sedieť s hodnotou na RPi (v kóde je predvolená 0; pri inej doméne treba na oboch stranách exportovať rovnaké \texttt{ROS\_DOMAIN\_ID}). Alternatívou je \path{pc_slam_web.launch.py}, ktorý robí to isté jadro (SLAM + RViz), ale v launch súbore pevne nastavuje \texttt{ROS\_DOMAIN\_ID} na~0 --- vhodné, ak na oboch strojoch ostáva doména 0.
+
+Webové rozhranie (\texttt{rosbridge}, HTTP server pre \texttt{web\_ui}) pri tomto rozdelení ostáva typicky na Raspberry Pi (\texttt{use\_web:=true} v \path{runtime_stack.launch.py}); prehliadač teda otvára stránku robota (napr.\ port 8080) a WebSocket \texttt{rosbridge} (napr.\ 9090), zatiaľ čo mapa v RViz môže bežať na pracovnej stanici. Obraz z kamere môže ísť primárne cez WebRTC na RPi, čím sa odľahčí JPEG cez \texttt{rosbridge}.
+
+Výhodou je odľahčenie Raspberry Pi pri zachovaní krátkej cesty senzor\,--\,driver na palube a nízkeho oneskorenia riadenia pohonu.
+
+\subsubsection*{Jednoduchá navigácia}
 \label{sec:nav2-glob}
 
-V rámci projektu sa objavila aj potreba odlíšiť jednoduché reaktívne bludenie od globálnej navigácie. Autonómny režim \emph{wander} je minimalistický a  rozhoduje len z aktuálneho LiDARového skenu a nepotrebuje mapu ani globálny plánovač.
+V systéme sú implementované dva základné prístupy k autonómnemu pohybu robota.
 
-Popri tom bola v projekte implementovaná aj možnosť jednoduchšej bodovej navigácie označená ako \emph{simple nav}. Tá umožňuje zadať cieľový bod na mape v RViz a robot sa k nemu presúva v dvoch krokoch: najprv sa natočí do správneho smeru a potom sa pohybuje vpred s priebežnou korekciou kurzu.
+Prvým je jednoduché reaktívne správanie označené ako \emph{wander}. Robot sa v tomto režime pohybuje bez mapy a rozhoduje sa len na základe aktuálnych dát z LiDARu, napríklad vyhýbaním sa prekážkam.
+
+Druhým režimom je \emph{simple nav}, ktorý umožňuje zadať cieľový bod v prostredí (napr. cez RViz). Robot sa následne najprv natočí smerom k cieľu a potom sa k nemu pohybuje, pričom priebežne koriguje smer.
+
+Tento prístup je jednoduchší ako plnohodnotná navigácia v balíku Nav2, ale postačuje na základné overenie schopnosti robota presunúť sa do zvoleného bodu.
 
 \subsection{Sledovanie lopty}
 
@@ -1051,7 +1069,7 @@ Scenár v systéme pozostáva z kamery, \texttt{DriveNode}, akčného servera \t
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.88\linewidth]{obrazky/pomaranc.png}
-    \caption[Sledovanie objektu: debug obraz]{Debug výstup v \texttt{rqt\_image\_view} na téme \texttt{/ball\_follower/debug\_image}: prekrytie segmentačnej masky, odhad polomeru a horizontálna odchýlka}
+    \caption[Sledovanie objektu: debug obraz]{Debug výstup v \texttt{rqt\_image\_view} na téme \texttt{/ball\_follower/debug\_image/compressed}: prekrytie segmentačnej masky, odhad polomeru a horizontálna odchýlka}
     \label{fig:ball-follow-debug}
 \end{figure}
 
@@ -1113,7 +1131,7 @@ Nelinearita sa dosiahne transformáciou
 \begin{equation}
 e_s = \mathrm{sign}(e)\,|e|^{\gamma},
 \end{equation}
-kde $\gamma = \texttt{err\_exp}$ (napr.\ $0{,}85$): pri $|\gamma|<1$ je regulácia citlivejšia pri malých odchýlkach než pri čistej proporcionalite. Zo znamienka $e_s$ sa určí, ktoré koleso má byť rýchlejšie (lopta vpravo $\Rightarrow$ vyššia rýchlosť pravého kolesa). Veľkosť korekcie je
+kde $\gamma = \texttt{err\_exp}$ (v \path{ball_follow.yaml} napr.\ $0{,}80$): pri $|\gamma|<1$ je regulácia citlivejšia pri malých odchýlkach než pri čistej proporcionalite. Zo znamienka $e_s$ sa určí, ktoré koleso má byť rýchlejšie (lopta vpravo $\Rightarrow$ vyššia rýchlosť pravého kolesa). Veľkosť korekcie je
 \[
   \texttt{add} = \min\!\bigl(1,\; |e_s|\,\texttt{side\_gain}\, r_{\mathrm{scale}}\bigr),
 \]
@@ -1198,6 +1216,8 @@ Pri praktickej prevádzke robota bolo dôležité umožniť plynulé prepínanie
 
 Samotná zmena režimu je realizovaná pomocou vzdialenej dynamickej rekonfigurácie parametrov. Uzol \texttt{robot\_mode\_switch} využíva klienta \texttt{AsyncParameterClient}, prostredníctvom ktorého môže meniť parametre iných bežiacich uzlov bez potreby ich reštartu alebo priamej integrácie do spoločného zdrojového kódu.
 
+Uzol zároveň vystavuje služby \texttt{std\_srvs/srv/Trigger}: \texttt{/waverover/switch\_to\_manual} (manuálny teleop, wander vypnutý), \texttt{/waverover/switch\_to\_wander} (motor počúva \texttt{/cmd\_vel}, wander zapnutý) a \texttt{/waverover/switch\_to\_nav} (motor v režime \texttt{auto} pre \texttt{/cmd\_vel}, wander vypnutý; vhodné pred \texttt{simple\_nav} alebo iným uzlom, ktorý sám generuje \texttt{Twist}).
+
 \begin{lstlisting}[language=Python,caption={Prepínanie režimov cez vzdialené nastavenie parametrov},label=lst:mode-switch-services,basicstyle=\small\ttfamily]
 self._motor = _RemoteParamClient(self, "/motor_hat_node")
 self._wander = _RemoteParamClient(self, "/lidar_wander_node")
@@ -1228,7 +1248,7 @@ Na obr.~\ref{fig:runtime-rqt-graph} je graf uzlov pri spustení \texttt{runtime\
 
 Pri používaní robota sa ukázalo ako užitočné mať možnosť systém korektne vypínať na diaľku bez potreby pripájať klávesnicu alebo monitor.
 
-To je implementované v uzle \texttt{robot\_mode\_switch}, ktorý poskytuje službu \rostopic{/waverover/shutdown}. Po prijatí požiadavky uzol najprv odošle klientovi potvrdenie a až následne s krátkym oneskorením vykoná príkaz \texttt{sudo systemctl poweroff}. Tým sa zníži riziko, že spojenie bude ukončené skôr, než klient dostane odpoveď.
+To je implementované v uzle \texttt{robot\_mode\_switch}, ktorý poskytuje službu \rostopic{/waverover/shutdown}. Po prijatí požiadavky uzol najprv odošle klientovi potvrdenie a až následne s oneskorením približne 1\,s (časovač v kóde) vykoná príkaz \texttt{sudo systemctl poweroff}. Tým sa zníži riziko, že spojenie bude ukončené skôr, než klient dostane odpoveď.
 
 \subsection{Integrita súborového systému pri výpadku napájania}
 \label{sec:fs-ro-fit}
@@ -1256,7 +1276,7 @@ Pomocou \texttt{rqt\_graph} sa kontrolovalo prepojenie uzlov a tém. \texttt{rqt
 
 \subsubsection{Ladenie IMU korekcie a PID v motorovom uzle}
 
-Postup ladenia bol praktický a iteratívny.. Najprv som overil, že sa korekcia vôbec zapína. Potom som ladil v tomto poradí:
+Postup ladenia bol praktický a iteratívny. Najprv som overil, že sa korekcia vôbec zapína. Potom som ladil v tomto poradí:
 \begin{enumerate}
   \item \textbf{Filtrácia a mŕtva zóna.} Ak robot pri rovnej jazde klepal okolo nuly, zvyšoval som mierne \texttt{imu\_deadband} alebo znižoval \texttt{imu\_yaw\_lowpass\_alpha} (pomalšia, hladšia odozva). Príliš veľká mŕtva zóna naopak necháva trvalú malú odchýlku, ktorú potom musí brať integrátor.
   \item \textbf{Proporcionálna zložka $K_p$ (\texttt{imu\_kp}).} Určuje hlavnú tuhosť odozvy na neželané zatáčanie. Príliš vysoké $K_p$ vedie k osciláciám a trhanému PWM; príliš nízke necháva dlhší drift zo smeru.
@@ -1311,7 +1331,7 @@ Výsledky potvrdili, že ROS~2 architektúra je vhodná pre modulárne experimen
 
 Hlavné obmedzenia sú hardvérové: chýbajúce enkodéry spôsobujú nepresnú odometriu, IMU má drift a kamera je citlivá na osvetlenie. Tieto faktory priamo ovplyvňujú presnosť navigácie aj detekcie.
 
-Ďalší vývoj by sa mal zamerať na doplnenie enkodérov, zlepšenie fúzie senzorov a robustnejšiu detekciu objektov s využitím moderneich techník.
+Ďalší vývoj by sa mal zamerať na doplnenie enkodérov, zlepšenie fúzie senzorov a robustnejšiu detekciu objektov s využitím modernejších techník.
 
 \subsection{Uzly a ich funkcie v systéme}
 
@@ -1378,7 +1398,7 @@ Pre lepší prehľad slúži tabuľka~\ref{tab:uzly-prehlad}. Ide o zhrnutie uzl
     Riadenie sledovania objektu pomocou Behavior Tree. \\
   \midrule
   \texttt{slam\_toolbox} &
-    Tvorba 2D mapy (balík \texttt{slam\_toolbox}; spustený binár \texttt{async\_slam\_toolbox\_node}). \\
+    Tvorba 2D mapy (balík \texttt{slam\_toolbox}; binár \texttt{async\_slam\_toolbox\_node}). Na RPi pri palubnom SLAM z \path{runtime_stack.launch.py}; pri \texttt{use\_offboard\_slam:=true} namiesto toho typicky na PC cez \path{slam_remote_pc.launch.py} (alebo \path{pc_slam_web.launch.py}). \\
   \midrule
   \texttt{ekf\_filter\_node} &
     Fúzia senzorov v balíku \texttt{robot\_localization}. \\

@@ -1,7 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
-// Kamera: iba WebRTC (SRTP/UDP) cez webrtc_camera_node; bez rosbridge fallbacku.
-// genRef zabranuje race pri reconnect.
+// WebRTC video (webrtc_camera_node).
 
 var WR = window.WR;
 
@@ -224,8 +223,6 @@ function DrivePanel({ ros, connected }) {
         syncRef.current = null;
       }
     };
-  // teleopMax.ang sa v tele efektu nepouziva (len .lin cez ref) - odstraneho aby sa wander sync
-  // netrieroval zbytocne pri zmene angular maxima (napr. po Fetch z robota).
   }, [linScale, wanderThresholdM, ros, connected, teleopMax.lin]);
 
   const stop = () => {
@@ -241,7 +238,6 @@ function DrivePanel({ ros, connected }) {
       linear: { x: lx * lin, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: az * ang },
     };
-    // Publish immediately on press to avoid startup hiccup
     cmdRef.current?.publish(new ROSLIB.Message(twistRef.current));
   };
 

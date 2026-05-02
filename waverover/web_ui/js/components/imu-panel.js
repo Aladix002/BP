@@ -1,6 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
-// Panel: omega_z z /imu, drive_debug z motora, get/set PID a correction_mode na motor_hat_node cez roslib services.
+// IMU + motor PID parametre cez roslib.
 
 var WR = window.WR;
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-# simple_nav_node: otoc sa podla IMU smerom k cielu (v map_frame), potom jazdi vpred.
-# Pozicia a vzdialenost k cielu: TF map->base_link (SLAM).
-# ROTATING: dorovnaj heading podla IMU; hotovo pri ~+-10 deg (netreba presne na stupen).
-# DRIVING: pri malom kurze ide rovno (deadband), inak jemna korekcia z map TF.
-# Topics: sub /goal_pose, /imu; pub /cmd_vel, /nav_status
+# Bodova navigacia: natocenie podla IMU, jazda vpred; pozicia z TF map->base_link.
 
 import math
 

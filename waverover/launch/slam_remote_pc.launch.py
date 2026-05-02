@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-# SLAM na PC v distribuovanom ROS 2: robot (RPi) bezi runtime_stack s use_slam:=false;
-# tu len slam_toolbox + volitelne RViz. Rovnaky ROS_DOMAIN_ID a routovatelna siet medzi PC a RPi.
-#
-# RPi:  ros2 launch waverover runtime_stack.launch.py use_slam:=false ros_domain_id:=42
-# PC:   ros2 launch waverover slam_remote_pc.launch.py ros_domain_id:=42 use_rviz:=true
-#
-# Predpoklad: na RPi uz publikuju /scan, TF (odom->base_link z cmd_vel_odom), static laser/imu.
-# Ak discovery nefunguje cez WiFi, nastav CycloneDDS / Fast DDS peers (viz dokumentacia ROS 2).
+# PC: len slam_toolbox + RViz. RPi: runtime_stack bez palubneho SLAM; rovnaky ROS_DOMAIN_ID, /scan + TF z RPi.
 
 import os
 
@@ -27,7 +20,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "ros_domain_id",
             default_value="0",
-            description="Musí byť rovnaký na RPi aj PC (napr. 42).",
+            description="Rovnaky na RPi a PC (napr. 42).",
         ),
         DeclareLaunchArgument(
             "use_rviz",

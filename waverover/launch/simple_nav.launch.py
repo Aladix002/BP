@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-simple_nav.launch.py – SLAM + IMU, volitelne navigacia k cielu (simple_nav_node).
-Nahradzuje slam.launch.py: use_nav:=false = len SLAM mapovanie, use_nav:=true (default) = navigacia.
-
-SLAM lifecycle: retry loop (configure + activate) s 30 s oneskorenim od startu;
-  rychlejsi start: slam_configure_delay_sec:=1
-
-  ros2 launch waverover simple_nav.launch.py                   # SLAM + navigacia
-  ros2 launch waverover simple_nav.launch.py use_nav:=false    # len SLAM mapovanie
-  ros2 launch waverover simple_nav.launch.py use_rviz:=true
-
-Ciel: RViz 2D Goal Pose -> /goal_pose (NIE Nav2 panel).
-"""
+# SLAM + simple_nav_node; ciel z RViz na /goal_pose (nie Nav2).
 
 import os
 
@@ -176,7 +164,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "use_nav",
             default_value="true",
-            description="true = SLAM + simple_nav_node (navigacia k cieľu); false = len SLAM mapovanie",
+            description="true = SLAM + simple_nav_node; false = len SLAM",
         ),
         DeclareLaunchArgument("use_rviz", default_value="false"),
 

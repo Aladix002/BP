@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Graf mean_dx z CSV: python3 plot_optical_flow_debug_csv.py meranie.csv -o graf.png
+# Graf mean_dx z flow_debug CSV.
 
 import argparse
 import csv

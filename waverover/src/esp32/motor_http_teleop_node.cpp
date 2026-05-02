@@ -8,7 +8,7 @@
 #include <sstream>
 #include <iomanip>
 
-// Priame ovladanie motorov cez HTTP na ESP32. T:1, L/R float -1..1.
+// Teleop cez HTTP na ESP32.
 
 namespace {
 

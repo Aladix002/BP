@@ -1,6 +1,6 @@
 /* global window, ROSLIB, React */
 "use strict";
-// WebSocket URL + connect/disconnect; shutdown vola /waverover/shutdown (systemctl poweroff na RPi).
+// WebSocket; shutdown cez /waverover/shutdown.
 
 var WR = window.WR;
 
@@ -68,7 +68,6 @@ function ConnectionCard({ ros, wsUrl, setWsUrl, connected, connect, disconnect }
   );
 }
 
-// Prepinac manual/wander cez std_srvs Trigger (rovnake sluzby ako ros2 service call)
 function ModeCard({ ros, connected }) {
   const [mode, setMode] = React.useState("manual");
   const [status, setStatus] = React.useState("—");

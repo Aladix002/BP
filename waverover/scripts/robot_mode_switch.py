@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Sluzby Trigger na prepnutie rezimu: manual = motor pocuva teleop, wander = motor auto + lidar_wander zapnuty.
-# Pouziva AsyncParameterClient na vzdialene set_parameters (nie ros2 param z CLI).
+# Trigger sluzby: prepnutie motor/wander parametrov cez AsyncParameterClient.
 
 import subprocess
 import threading
@@ -23,7 +22,6 @@ class RobotModeSwitch(Node):
     def __init__(self) -> None:
         super().__init__("robot_mode_switch")
 
-        # Reentrant: v service callbacku cakame na future z param clienta - default skupina by deadlockla
         self._cb_group = ReentrantCallbackGroup()
 
         self._motor = _RemoteParamClient(self, "/motor_hat_node", callback_group=self._cb_group)
@@ -63,7 +61,6 @@ class RobotModeSwitch(Node):
         return ok_m and ok_w
 
     def _wait_future(self, future, timeout_sec: float = 10.0) -> bool:
-        # Jednoduche busy wait - executor moze obsluzit ine callbacky v tom istom vlakne
         t0 = time.monotonic()
         while not future.done() and (time.monotonic() - t0) < timeout_sec:
             time.sleep(0.005)
@@ -110,7 +107,6 @@ class RobotModeSwitch(Node):
         self.get_logger().info("Shutdown requested via /waverover/shutdown")
         resp.success = True
         resp.message = "Shutting down"
-        # Timer: odpoved sa posle klientovi skor nez systemctl vypne stroj
         threading.Timer(1.0, lambda: subprocess.run(["sudo", "systemctl", "poweroff"], check=False)).start()
         return resp
 
@@ -118,7 +114,6 @@ class RobotModeSwitch(Node):
 def main() -> None:
     rclpy.init()
     node = RobotModeSwitch()
-    # Viac vlakien: service + async param futures naraz
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(node)
     try:

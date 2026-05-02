@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# Fiktivna odometria: integruje cmd_vel do x,y,yaw a publikuje /odom + TF odom->base_link.
-# Pocuva na oba zdroje (manual + auto); pouzije ten, ktory mal posledny nenulovy prikaz.
-# Oba zdroje pouzivaju standardnu konvenciu: linear.x kladne = dopredu.
-# use_imu_yaw=true: yaw z IMU kvaterniona namiesto integracie angular.z.
+# Integracia cmd_vel -> /odom + tf odom->base_link; volitelne yaw z IMU.
 
 import math
 

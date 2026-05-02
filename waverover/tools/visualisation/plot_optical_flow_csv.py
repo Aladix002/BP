@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Graf z CSV (bez ROS): python3 plot_optical_flow_csv.py meranie.csv -o graf.png
+# Graf z optical flow CSV.
 
 import argparse
 import csv

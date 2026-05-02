@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Vizualizacia/meranie : pozri tools/visualisation/README.md
-# Grafy z CSV (bez ROS): python3 plot_imu_drive_csv.py meranie.csv -o graf.png
+# Graf z CSV: plot_imu_drive_csv.py meranie.csv -o out.png
 
 import argparse
 import csv
@@ -69,29 +68,28 @@ def main() -> None:
     fig.subplots_adjust(hspace=0.22, bottom=0.18, top=0.88)
 
     ax0, ax1 = axes
-    ax0.plot(t, imu_wz, label=r"$\omega_z$ /imu (surové) [rad/s]", color="#c0392b", linewidth=1.0)
-    ax0.plot(t, yaw_f, label="yaw_filt (motor, low-pass) [rad/s]", color="#2980b9", linewidth=1.0, alpha=0.85)
-    ax0.plot(t, corr, label="imu_corr (PID → rozdelenie L/R)", color="#27ae60", linewidth=1.0, alpha=0.9)
-    ax0.set_ylabel("uhlová rýchlosť / korekcia")
+    ax0.plot(t, imu_wz, label=r"$\omega_z$ /imu (surove) [rad/s]", color="#c0392b", linewidth=1.0)
+    ax0.plot(t, yaw_f, label="yaw_filt (motor) [rad/s]", color="#2980b9", linewidth=1.0, alpha=0.85)
+    ax0.plot(t, corr, label="imu_corr (PID L/R)", color="#27ae60", linewidth=1.0, alpha=0.9)
+    ax0.set_ylabel("uhlova rychlost / korekcia")
     ax0.legend(loc="upper right", fontsize=8)
     ax0.set_title("IMU a korekcia motorom")
     ax0.axhline(0.0, color="#7f8c8d", linewidth=0.6, linestyle="--", alpha=0.7)
 
-    ax1.plot(t, pwm_l, label="PWM ľavé [% max]", color="#8e44ad", linewidth=1.0)
-    ax1.plot(t, pwm_r, label="PWM pravé [% max]", color="#d35400", linewidth=1.0)
+    ax1.plot(t, pwm_l, label="PWM lave [% max]", color="#8e44ad", linewidth=1.0)
+    ax1.plot(t, pwm_r, label="PWM prave [% max]", color="#d35400", linewidth=1.0)
     ax1.set_ylabel("PWM [%]")
-    ax1.set_xlabel("čas [s]")
+    ax1.set_xlabel("cas [s]")
     ax1.legend(loc="upper right", fontsize=8)
-    ax1.set_title("PWM po to_duty (cl/cr už v PWM — stredný panel netreba)")
+    ax1.set_title("PWM po to_duty")
 
-    fig.suptitle(f"Dáta: {args.csv_file.name}", fontsize=10, y=0.98)
+    fig.suptitle(f"Data: {args.csv_file.name}", fontsize=10, y=0.98)
     fig.text(
         0.5,
         0.01,
         (
-            r"$\omega_z$ (/imu): podľa ROS je +Z hore; $\omega_z>0$ = proti SMH pri pohľade zhora (typ. doľava), "
-            r"$\omega_z<0$ = so SMH (typ. doprava). Montáž IMU a imu_sign na motore môžu znamienko prevrátiť — "
-            "over krútením na mieste. PID: ľavé koleso −corr, pravé +corr."
+            r"$\omega_z$: ROS +Z hore; znamienko zavisi od montaze IMU a imu_sign. "
+            "PID: lave koleso -corr, prave +corr."
         ),
         ha="center",
         va="bottom",
@@ -100,7 +98,7 @@ def main() -> None:
 
     if args.output:
         fig.savefig(args.output, dpi=args.dpi, bbox_inches="tight")
-        print(f"Uložené: {args.output.resolve()}")
+        print(f"Ulozene: {args.output.resolve()}")
     else:
         plt.show()
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Grafy z CSV (bez ROS): python3 plot_ball_follow_csv.py meranie.csv -o graf.png
-# Zdoraznuje: odchylka lopty vlravo/vpravo (x_err) a rychlost lava/prava motor (PWM alebo v_ln/v_rn).
+# Graf z ball_follow CSV.
 
 import argparse
 import csv

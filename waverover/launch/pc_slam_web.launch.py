@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-# Na PC v tej istej LAN ako RPi: iba SLAM (+ volitelne RViz). Web teleop vzdy na RPi (runtime_stack use_web).
-# Podmienky:
-#   - RPi a PC: rovnaky ROS_DOMAIN_ID (default 0).
-#   - RPi: runtime_stack ... use_offboard_slam:=true (web zostava default use_web:=true).
-#   - Prehliadac: http://<rpi_ip>:8080
+# PC: SLAM (+ volitelne RViz). RPi: runtime_stack s use_offboard_slam:=true; rovnaky ROS_DOMAIN_ID; web na RPi.
 
 import os
 

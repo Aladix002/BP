@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# Nahrava /optical_flow_debug (Float64MultiArray) do CSV pre graf mean_dx.
-#   ros2 run waverover log_optical_flow_debug_csv.py --ros-args -p output_file:=/tmp/flow_debug.csv
-# Stlpce: mean_dx_px, mean_dx_norm, flow_corr, n_good, n_corners (optical_flow.cpp)
+# /optical_flow_debug -> CSV.
 
 import csv
 import math

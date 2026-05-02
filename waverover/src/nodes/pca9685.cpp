@@ -12,12 +12,13 @@
 namespace nodes {
 
 namespace {
+// PCA9685 kanaly na Waveshare Motor HAT (TB6612): PWM + dva smerove piny na motor A/B.
+// duty 0 = oba IN nizko (brzda/vypnutie podla drivera); nenulove duty = smer cez IN1/IN2.
 
 constexpr uint8_t kPcaMode1 = 0x00;
 constexpr uint8_t kPcaPrescale = 0xFE;
 constexpr uint8_t kPcaLed0OnL = 0x06;
 
-// Mapovanie PCA9685 kanalov na TB6612: PWMA/AIN1/AIN2 = lava strana, PWMB/BIN1/BIN2 = prava
 constexpr int kPwma = 0;
 constexpr int kAin1 = 1;
 constexpr int kAin2 = 2;
@@ -50,7 +51,6 @@ Pca9685::~Pca9685() {
   }
 }
 
-// Zapis 1 bajtu do registra reg cez I2C
 void Pca9685::write_reg(uint8_t reg, uint8_t val) {
   uint8_t buf[2] = {reg, val};
   if (write(fd_, buf, sizeof(buf)) != static_cast<ssize_t>(sizeof(buf))) {
@@ -58,7 +58,6 @@ void Pca9685::write_reg(uint8_t reg, uint8_t val) {
   }
 }
 
-// Citanie 1 bajtu z registra reg cez I2C
 uint8_t Pca9685::read_reg(uint8_t reg) {
   if (write(fd_, &reg, 1) != 1) {
     throw std::runtime_error("I2C read addr zlyhal");
@@ -71,7 +70,6 @@ uint8_t Pca9685::read_reg(uint8_t reg) {
 }
 
 void Pca9685::set_pwm_freq_hz(double freq) {
-  // Interny krystal PCA9685 25 MHz, 4096 krokov -> vypocet prescale podla datasheet
   double prescaleval = 25000000.0 / 4096.0 / freq - 1.0;
   auto prescale = static_cast<uint8_t>(std::floor(prescaleval + 0.5));
   if (prescale < 3) {
@@ -86,7 +84,6 @@ void Pca9685::set_pwm_freq_hz(double freq) {
   write_reg(kPcaMode1, static_cast<uint8_t>(oldmode | 0x80));
 }
 
-// Nastavi PWM pre 1 kanal: on = tick kedy zacne HIGH, off = tick kedy padne LOW (0-4095)
 void Pca9685::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, static_cast<uint8_t>(on & 0xFF));
@@ -95,7 +92,6 @@ void Pca9685::set_pwm_channel(int channel, uint16_t on, uint16_t off) {
   write_reg(base + 3, static_cast<uint8_t>((off >> 8) & 0xFF));
 }
 
-// Trvaly HIGH na kanali (duty 100%, bit LED_FULL_ON)
 void Pca9685::set_channel_full_on(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
@@ -104,7 +100,6 @@ void Pca9685::set_channel_full_on(int channel) {
   write_reg(base + 3, 0);
 }
 
-// Trvaly LOW na kanali (duty 0%, bit LED_FULL_OFF)
 void Pca9685::set_channel_full_off(int channel) {
   uint8_t base = static_cast<uint8_t>(kPcaLed0OnL + 4 * channel);
   write_reg(base + 0, 0);
@@ -113,7 +108,6 @@ void Pca9685::set_channel_full_off(int channel) {
   write_reg(base + 3, kPcaFullOffHigh);
 }
 
-// Duty v percentach 0-100; obalka nad set_duty_12bit
 void Pca9685::set_duty_percent(int channel, int percent) {
   percent = std::clamp(percent, 0, 100);
   if (percent <= 0) {
@@ -129,7 +123,6 @@ void Pca9685::set_duty_percent(int channel, int percent) {
   set_pwm_channel(channel, 0, off);
 }
 
-// Duty v 12-bit rozsahu 0-4095; 0 = vypnute, 4095 = plny vykon
 void Pca9685::set_duty_12bit(int channel, uint16_t duty) {
   duty = std::min<uint16_t>(duty, 4095);
   if (duty == 0) {
@@ -143,7 +136,6 @@ void Pca9685::set_duty_12bit(int channel, uint16_t duty) {
   set_pwm_channel(channel, 0, duty);
 }
 
-// Digitalny vystup: full_on alebo full_off (pre IN1/IN2 smerove piny TB6612)
 void Pca9685::set_level(int channel, bool high) {
   if (high) {
     set_channel_full_on(channel);
@@ -160,10 +152,10 @@ void Pca9685::motor_stop(int motor) {
 }
 
 void Pca9685::apply_drive(uint16_t duty_left, bool fwd_left, uint16_t duty_right, bool fwd_right) {
+  // fwd_* true = dopredu (IN2=1, IN1=0 podla zapojenia HAT); duty 12-bit na PWM kanal.
   duty_left = std::min<uint16_t>(duty_left, 4095);
   duty_right = std::min<uint16_t>(duty_right, 4095);
 
-  // TB6612: IN1/IN2 urcuju smer, PWM je enable/rychlost
   if (duty_left == 0) {
     set_level(kAin1, false);
     set_level(kAin2, false);

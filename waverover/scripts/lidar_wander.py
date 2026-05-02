@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Jednoduche bludenie: z /scan vezme vzdialenosti v sektoroch, pri prekazke zastavi a otoci sa.
-# Uhol otocenia pocita z IMU (integracia omega_z), nie z encodera.
-# Vypnut: ros2 param set /lidar_wander_node enabled false
+# Jednoduchy wander: z /scan meria vzdialenosti v sektoroch (predok, lavo, pravo),
+# pri prekazke zastavi, vyberie stranu otocenia a otoci sa podla integralu omega_z z /imu.
+# Publikuje Twist na cmd_topic (typicky /cmd_vel) pre motor_hat_node v rezime auto.
 
 import math
 
@@ -10,37 +10,40 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, LaserScan
 
+
 class LidarWanderNode(Node):
+    # Stavovy automat: FWD jazda vpred, STOP rozhoduje o smere, TURN integruje uhol z IMU.
     _FWD  = 0
     _STOP = 1
     _TURN = 2
 
     _TURN_LEFT  = "LEFT"
     _TURN_RIGHT = "RIGHT"
-    _TURN_FULL  = "FULL"
+    _TURN_FULL  = "FULL"  # obe strany zablokovane -> velky uhol (napr. 180 deg)
 
     def __init__(self) -> None:
         super().__init__("lidar_wander_node")
 
+        # enabled: v launch false v manual rezime (motor berie len teleop)
         self.declare_parameter("enabled",             True)
+        # threshold_m: ak predok blizsie -> prechod do STOP a vyber otocenia
         self.declare_parameter("threshold_m",         0.30)
         self.declare_parameter("forward_speed",       0.10)
         self.declare_parameter("turn_speed",          1.80)
         self.declare_parameter("turn_timeout_s",       6.0)
-        # Cielovy uhol otocenia (IMU integracia omega_z); zablokovany = obe strany pod threshold
         self.declare_parameter("turn_target_deg",        90.0)
-        # Ukonci otacanie ked integral uhla >= turn_target_deg - turn_tolerance_deg (mensia = blizsie k plnemu uhlu)
         self.declare_parameter("turn_tolerance_deg",      2.0)
         self.declare_parameter("turn_blocked_deg",    180.0)
+        # lidar_rotation_deg: ak je lidar natoceny voci base_link, posun uhlov sektorov
         self.declare_parameter("lidar_rotation_deg", -90.0)
         self.declare_parameter("cmd_topic",       "/cmd_vel")
+        # imu_angular_z_sign: doladenie znamienka gyroskopu voci skutocnemu otacaniu robota
         self.declare_parameter("imu_angular_z_sign", -1.0)
-        # Ak predok LiDARu ukaze volno pocas otacania, ukonci skor (menej zavisle od gyro integracie)
+        # lidar_early_exit: ak sa pocas otacenia predok otvori, mozno skoncit skor (bez cakania na uhol)
         self.declare_parameter("lidar_early_exit",          False)
         self.declare_parameter("lidar_early_exit_min_deg",   40.0)
-        # Nasobenie omega pred integraciou (1.0 = default); >1 zrychli narast integrala (skorsi koniec otacania)
         self.declare_parameter("imu_integration_scale",       1.0)
-        # Poslednych turn_ramp_deg pred cielom: linearne znizuje |angular.z| az po turn_ramp_min_scale * turn_speed; 0 = vypnute
+        # turn_ramp: pri konci otacenia zmensi angular.z (plynulejsi dojazd na cielovy uhol)
         self.declare_parameter("turn_ramp_deg", 28.0)
         self.declare_parameter("turn_ramp_min_scale",         0.22)
 
@@ -76,7 +79,7 @@ class LidarWanderNode(Node):
 
     def _sector_min(self, ranges, angle_min, angle_inc,
                     lo_deg, hi_deg, rotation_rad) -> float:
-        # Najde minimalnu vzdialenost v useku uhlov (v ramci robota po odcitani rotacie lidaru)
+        # Najblizsi platny bod v uhlovom pasme v suradniciach robota (rotation_rad = offset lidaru).
         lo, hi = math.radians(lo_deg), math.radians(hi_deg)
         best = math.inf
         for i, d in enumerate(ranges):
@@ -101,6 +104,7 @@ class LidarWanderNode(Node):
                                          msg.angle_increment, -135.0, -45.0, rot)
 
     def _imu_cb(self, msg: Imu) -> None:
+        # Po case zaciatku otacenia integruj omega*dt do _turn_accum = natocenie od startu (rad).
         now = self.get_clock().now()
         if (
             self._last_imu_t is not None
@@ -117,6 +121,7 @@ class LidarWanderNode(Node):
         self._last_imu_t = now
 
     def _start_turn(self, direction: float, target_deg: float, reason: str, mode: str) -> None:
+        # direction +1 = dolava (smer musi sediet so znamienkom cmd.angular.z a integraciou v _imu_cb).
         self._turn_dir    = direction
         self._turn_target = math.radians(target_deg)
         self._turn_accum  = 0.0
@@ -132,6 +137,7 @@ class LidarWanderNode(Node):
         )
 
     def _choose_turn(self, reason: str) -> None:
+        # Vyber volnejsiu stranu podla sektorov L/R; ak obe zablokovane, velky "FULL" uhol.
         thr        = self.get_parameter("threshold_m").get_parameter_value().double_value
         tgt        = self.get_parameter("turn_target_deg").get_parameter_value().double_value
         blk        = self.get_parameter("turn_blocked_deg").get_parameter_value().double_value
@@ -175,7 +181,6 @@ class LidarWanderNode(Node):
         elif self._state == self._STOP:
             if self._turn_start is None:
                 self._choose_turn(f"Prekazka {self._d_front:.2f} m")
-            # STOP je explicitny medzikrok; turn sa vykona az v stave _TURN
 
         elif self._state == self._TURN and self._turn_start is not None:
             elapsed = (self.get_clock().now() - self._turn_start).nanoseconds * 1e-9
@@ -220,6 +225,7 @@ class LidarWanderNode(Node):
                         "turn_ramp_min_scale"
                     ).get_parameter_value().double_value))
                     turn_scale = max(lo, remaining / ramp_rad)
+                # Znamienko musi sediet s integraciou v _imu_cb (otacanie v zvolenom smere).
                 cmd.angular.z = -(self._turn_dir * spd * turn_scale)
 
         self._pub.publish(cmd)

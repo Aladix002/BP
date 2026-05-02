@@ -6,63 +6,47 @@
 
 namespace nodes {
 
-// drive_node: Twist (teleop alebo cmd_vel) -> zmiesanie na L/R kolesa (-1..1) ->
-// vyhladenie (EMA) -> volitelne IMU PID -> mapovanie na PWM -> PCA9685.
-// IMU vetva: ciel je uhlova rychlost omega_z = 0 pri "jazde rovno", nie kompas/heading.
+// --- DriveNode ---
+// Vstupy: teleop_cmd_vel, volitelne teleop_cmd_vel_corrected (optical flow),
+//         cmd_vel (auto / wander / planovac), /imu.
+// Vystup: PWM na HAT, drive_debug (PWM%, cl/cr po korekcii, PID, omega filtrovana).
+// Hlavna slucka timer_cb ~100 Hz: timeout cmd -> 0, EMA, PID len pri rovnej jazde, to_duty, apply_drive.
 
 DriveNode::DriveNode(const rclcpp::NodeOptions& options)
     : Node("motor_hat_node", options)
 {
-  // I2C zbernica a adresa Waveshare Motor HAT (0x40 = 64 dec)
+  // I2C sbernica a adresa PCA9685 na HAT (0x40 = 64)
   const int    bus  = declare_parameter<int>("i2c_bus", 1);
   const int    addr = declare_parameter<int>("i2c_address", 0x40);
   const double freq = declare_parameter<double>("pwm_freq_hz", 800.0);
 
-  // pwm_min/pwm_max: rozsah duty PCA9685 (12 bit 0..4095); min = prah kde motor zacne tocit
+  // pwm_min/max: 12-bit duty rozsah; min = prah kde koleso zacne tocit
   declare_parameter<int>("pwm_min", 400);
   declare_parameter<int>("pwm_max", 4095);
-
-  // deadzone: ak je |cmd| mensia ako tato cast z 1.0, PWM = 0 (motor nestoji na sume okolo nuly)
+  // deadzone: ak |normalizovany prikaz| < deadzone, PWM 0 (sum okolo nuly)
   declare_parameter<double>("deadzone", 0.05);
-
-  // smooth_alpha: EMA na cielove prikazy kolesam; nizsie = pomalsi prechod, menej trhania
+  // smooth_alpha: EMA na ciel L/R; mensie = pomalsie zmeny
   declare_parameter<double>("smooth_alpha", 0.15);
-
-  // control_mode: manual = berie teleop (alebo korigovany topic); auto = len /cmd_vel
   declare_parameter<std::string>("control_mode", "manual");
-  // correction_mode: imu = PID v tomto uzle; optical_flow = vstup z optical_flow uzla
   declare_parameter<std::string>("correction_mode", "imu");
-
-  // teleop_max_*: delenie linear.x / angular.z -> normalizacia na -1..1 pred mixerom
+  // teleop_max_*: delenie linear.x / angular.z pred mixerom do -1..1
   declare_parameter<double>("teleop_max_linear",  1.0);
   declare_parameter<double>("teleop_max_angular", 2.0);
   declare_parameter<bool>("invert_linear",  false);
   declare_parameter<bool>("invert_angular", false);
-
   declare_parameter<int>("cmd_vel_timeout_ms", 600);
-  // wheel_base: [m] polovica sa pouziva v cmd_vel unicycle -> L/R rozklad (half_b = wheel_base/2)
   declare_parameter<double>("wheel_base",      0.20);
-  // cmd_vel_invert_linear: ak planovac ma opacne znamienko voci fyzickej jazde
   declare_parameter<bool>("cmd_vel_invert_linear", false);
 
-  // --- IMU / gyro PID (drzanie smeru pri jazde vpred, nie absolutna orientacia) ---
-  // imu_correction: zapne/vypne cely blok nizsie v timer_cb.
+  // IMU PID: setpoint omega_z = 0 (drzanie smeru pri jazde vpred, nie kompas)
   declare_parameter<bool>("imu_correction", false);
-  // imu_kp, imu_ki, imu_kd: diskretny PID na "chybu" = filtrovana omega_z s deadbandom;
-  //   setpoint je 0 rad/s (nechceme rotovat okolo Z).
   declare_parameter<double>("imu_kp",       0.30);
   declare_parameter<double>("imu_ki",       0.05);
   declare_parameter<double>("imu_kd",       0.01);
-  // imu_deadband: ak |omega| <= db, chyba = 0 (ignoruj maly sum a drift v okoli nuly)
   declare_parameter<double>("imu_deadband", 0.02);
-  // imu_windup: limit na |integral| (anti-windup), aby I-clen neprebil pri saturacii kolies
   declare_parameter<double>("imu_windup",   0.30);
-  // imu_sign: vynasobi vystup PID (+1 / -1); doladenie ak IMU os alebo zapojenie motorov
-  //   nezodpoveda ocakavanemu smeru korekcie (lave/prave koleso).
   declare_parameter<double>("imu_sign",    -1.0);
-  // imu_yaw_lowpass_alpha: EMA na angular_velocity.z z /imu pred PID (0..1, vacsi = rychlejsia reakcia)
   declare_parameter<double>("imu_yaw_lowpass_alpha", 0.18);
-  // imu_yaw_noise_floor_rad_s: ak |filtrovana omega| < prah, vynuluj (sum pod prahom)
   declare_parameter<double>("imu_yaw_noise_floor_rad_s", 0.025);
 
   hat_ = std::make_unique<Pca9685>(bus, static_cast<uint8_t>(addr));
@@ -84,13 +68,12 @@ DriveNode::DriveNode(const rclcpp::NodeOptions& options)
       "/imu", rclcpp::SensorDataQoS(),
       std::bind(&DriveNode::imu_cb, this, std::placeholders::_1));
 
-  // drive_debug: pwm_l %%, pwm_r %%, cl, cr po korekcii, imu_corr (PID vystup), yaw filtrovane
+  // pwm_l%, pwm_r%, cl, cr, imu_corr, yaw_filt
   pub_debug_ = create_publisher<std_msgs::msg::Float64MultiArray>("drive_debug", rclcpp::QoS(5));
 
   imu_pid_time_ = std::chrono::steady_clock::now();
   last_cmd_     = std::chrono::steady_clock::now();
 
-  // 10 ms = 100 Hz: vyhladenie motorov + PID krok (dt z realneho casu medzi volaniami)
   timer_ = create_wall_timer(std::chrono::milliseconds(10), [this] { timer_cb(); });
 
   RCLCPP_INFO(get_logger(),
@@ -107,6 +90,7 @@ DriveNode::~DriveNode() {
 }
 
 uint16_t DriveNode::to_duty(double cmd) const {
+  // Mapovanie |cmd| z [deadzone, 1] linearne na [pwm_min, pwm_max]; znamienko riesi apply_drive
   const double m    = std::abs(cmd);
   const double dz   = std::clamp(get_parameter("deadzone").as_double(), 0.0, 0.49);
   const int    pmin = std::clamp(static_cast<int>(get_parameter("pwm_min").as_int()),  0, 4095);
@@ -114,7 +98,6 @@ uint16_t DriveNode::to_duty(double cmd) const {
 
   if (m <= dz) return 0;
 
-  // Linearne mapovanie |cmd| z intervalu [dz, 1] na PWM [pmin, pmax]; smer otacania riesi apply_drive
   const double t = (m - dz) / (1.0 - dz);
 
   const double duty = static_cast<double>(pmin) + t * static_cast<double>(pmax - pmin);
@@ -123,6 +106,7 @@ uint16_t DriveNode::to_duty(double cmd) const {
 
 void DriveNode::teleop_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   if (get_parameter("control_mode").as_string() != "manual") return;
+  // Pri optical flow ide raw teleop do optical_flow uzla; sem len ak nie je optical_flow
   if (get_parameter("correction_mode").as_string() == "optical_flow") return;
   apply_manual_twist(*msg);
 }
@@ -134,6 +118,7 @@ void DriveNode::teleop_corrected_cb(const geometry_msgs::msg::Twist::SharedPtr m
 }
 
 void DriveNode::apply_manual_twist(const geometry_msgs::msg::Twist& msg) {
+  // Tank mix: fb dopredu/dozadu, tr otacanie; znamienka -fb +/- tr su doladene pre tento podvozok
   const double max_lin = std::max(get_parameter("teleop_max_linear").as_double(),  0.01);
   const double max_ang = std::max(get_parameter("teleop_max_angular").as_double(), 0.01);
 
@@ -143,7 +128,6 @@ void DriveNode::apply_manual_twist(const geometry_msgs::msg::Twist& msg) {
   const double fb = std::clamp(lx / max_lin, -1.0, 1.0);
   const double tr = std::clamp(az / max_ang, -1.0, 1.0);
 
-  // Diferencialny "tank" mix: fb vpred/vzad, tr otacanie; znamienka -fb +/- tr su pre tento podvozok (L/R prehodene)
   std::lock_guard<std::mutex> lk(mu_);
   target_l_  = std::clamp(-fb + tr, -1.0, 1.0);
   target_r_  = std::clamp(-fb - tr, -1.0, 1.0);
@@ -154,7 +138,7 @@ void DriveNode::apply_manual_twist(const geometry_msgs::msg::Twist& msg) {
 void DriveNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
   if (get_parameter("control_mode").as_string() == "manual") return;
 
-  // Unicycle -> kazde koleso: v +/- w*polovicna medzer kolies, normalizacia cez max_v
+  // Diferencialna kinematika: v_l, v_r z linear.x a angular.z, normalizacia cez max_v (teleop_max_linear)
   const double max_v  = std::max(get_parameter("teleop_max_linear").as_double(), 0.01);
   const double half_b = 0.5 * std::max(get_parameter("wheel_base").as_double(),  0.01);
 
@@ -174,15 +158,13 @@ void DriveNode::cmd_vel_cb(const geometry_msgs::msg::Twist::SharedPtr msg) {
 }
 
 void DriveNode::imu_cb(const sensor_msgs::msg::Imu::SharedPtr msg) {
-  // Kazda sprava /imu: aktualizuj iba odhad omega_z (v mutexe zdielany s timer_cb).
-  // EMA: imu_yaw_rate_ += a * (meranie - imu_yaw_rate_); a vacsie = menej filtrovania.
+  // EMA na angular_velocity.z; pod noise_floor vynuluj (sum)
   const double a = std::clamp(get_parameter("imu_yaw_lowpass_alpha").as_double(), 0.02, 1.0);
   const double floor_rad =
       std::max(0.0, get_parameter("imu_yaw_noise_floor_rad_s").as_double());
   double z = msg->angular_velocity.z;
   std::lock_guard<std::mutex> lk(mu_);
   imu_yaw_rate_ += a * (z - imu_yaw_rate_);
-  // Pod sumovym prahom vynuluj, aby PID nehonil sum v okoli 0
   if (std::abs(imu_yaw_rate_) < floor_rad) {
     imu_yaw_rate_ = 0.0;
   }
@@ -201,7 +183,7 @@ void DriveNode::timer_cb() {
         now - last_cmd_).count();
     const bool timed_out = !have_cmd_ || (elapsed_ms > timeout);
     if (timed_out) {
-      // Bez cerstveho prikazu vynuluj ciele (bezpecnost, napr. strata spojenia)
+      // Bez noveho Twist vynuluj (bezpecnost pri vypadku spojenia)
       target_l_ = 0.0;
       target_r_ = 0.0;
     }
@@ -209,7 +191,6 @@ void DriveNode::timer_cb() {
     tr = target_r_;
   }
 
-  // Vyhladenie skokov z teleopu/planovaca pred mixerom s IMU
   smooth_l_ += alpha * (tl - smooth_l_);
   smooth_r_ += alpha * (tr - smooth_r_);
 
@@ -219,7 +200,7 @@ void DriveNode::timer_cb() {
   double corr = 0.0;
   const bool imu_on = get_parameter("imu_correction").as_bool();
   const double avg_speed = 0.5 * (std::abs(cl) + std::abs(cr));
-  // PID zmysel len pri "rovnej" jazde: obe kolesa podobne, netocenie na mieste (velky rozdiel L/R)
+  // PID len ked obe kolesa podobne (rovno), nie pri ostrom zatacani na mieste
   const bool going_straight = avg_speed > 0.1 && std::abs(cl - cr) < 0.15;
 
   if (imu_on && going_straight) {
@@ -232,12 +213,10 @@ void DriveNode::timer_cb() {
     double yaw_rate;
     { std::lock_guard<std::mutex> lk(mu_); yaw_rate = imu_yaw_rate_; }
 
-    // dt medzi PID krokmi (ochrana pred divnym dt po pauze alebo prvom kroku)
     const double dt = std::chrono::duration<double>(now - imu_pid_time_).count();
     imu_pid_time_ = now;
 
-    // Chyba = filtrovana omega_z so "mrtvou zonou" okolo 0: regulujeme rychlost otacania k nule,
-    //   nie absolutny uhol. Kladna chyba = meranie ukazuje rotaciu jednym smerom, zaporna = opacne.
+    // Chyba = omega mimo deadband; ciel 0 rad/s
     const double error = std::abs(yaw_rate) <= db ? 0.0
         : (yaw_rate > 0.0 ? yaw_rate - db : yaw_rate + db);
 
@@ -252,13 +231,12 @@ void DriveNode::timer_cb() {
     const double sign = std::clamp(get_parameter("imu_sign").as_double(), -1.0, 1.0);
     corr *= sign;
   } else {
-    // IMU vypnute alebo netocime "rovno": vynuluj stav PID, aby pri opatovnom zapnuti nebol skok
     imu_integral_   = 0.0;
     imu_prev_error_   = 0.0;
     imu_pid_time_     = now;
   }
 
-  // Rozdiel rychlosti kolies: lave zniz o corr, prave zvys -> kompenzacia omega_z (po imu_sign)
+  // Korekcia: zniz lavu / zvys pravu o corr (po imu_sign doladene smerom otacania)
   cl = std::clamp(cl - corr, -1.0, 1.0);
   cr = std::clamp(cr + corr, -1.0, 1.0);
 

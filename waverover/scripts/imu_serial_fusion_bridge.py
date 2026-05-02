@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Arduino (MPU6050) posiela CSV po USB. Tento uzol parsuje riadky, plni sensor_msgs/Imu.
-# Vlakno cita seriu (neblokuje spin); spravy idu cez frontu do timeru co publikuje na /imu.
+# CSV z Arduino (MPU6050) po seriovej linke -> /imu.
 
 import math
 import os

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# Lucas-Kanade sparse optical flow: odhaduje horizontalny drift sceny -> korekcia angular.z teleop prikazu.
-# Aktivny len ked robot ide vpred a pouzivatel netoci (forward_threshold / steer_deadzone).
-# /optical_flow_debug (Float64MultiArray): [mean_dx_px, mean_dx_norm, flow_corr, n_good, n_corners]
+# Optical flow korekcia teleop angular.z.
 
 import threading
 
