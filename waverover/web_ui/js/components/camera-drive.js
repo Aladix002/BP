@@ -5,7 +5,7 @@
 
 var WR = window.WR;
 
-function CameraPanel({ ros, connected, mediaHost }) {
+function CameraPanel({ ros, connected }) {
   const canvasRef = React.useRef(null);
   const videoRef = React.useRef(null);
   const pcRef = React.useRef(null);
@@ -31,9 +31,7 @@ function CameraPanel({ ros, connected, mediaHost }) {
 
     (async () => {
       if (WR.USE_WEBRTC_CAMERA && typeof RTCPeerConnection !== "undefined") {
-        const mh = (mediaHost != null && String(mediaHost).trim())
-          ? String(mediaHost).trim().replace(/^https?:\/\//i, "").split("/")[0].split(":")[0]
-          : WR.robotMediaHost();
+        const mh = WR.robotMediaHost();
         const base = `http://${mh}:${WR.WEBRTC_SIGNAL_PORT}`;
         try {
           const h = await fetch(`${base}/health`, { method: "GET", cache: "no-store", mode: "cors" });
@@ -85,7 +83,7 @@ function CameraPanel({ ros, connected, mediaHost }) {
       setLive(false);
       setTransport("none");
     };
-  }, [ros, connected, mediaHost]);
+  }, [ros, connected]);
 
   const showFeed = live && transport === "webrtc";
 
