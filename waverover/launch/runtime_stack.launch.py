@@ -436,7 +436,12 @@ def _opaque(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        SetEnvironmentVariable(name="ROS_DOMAIN_ID", value="0"),
+        DeclareLaunchArgument(
+            "ros_domain_id",
+            default_value="0",
+            description="ROS 2 DDS domain; rovnaky na vsetkych hostoch v jednej sieti (distribuovany SLAM).",
+        ),
+        SetEnvironmentVariable(name="ROS_DOMAIN_ID", value=LaunchConfiguration("ros_domain_id")),
         DeclareLaunchArgument("stack_mode", default_value="manual", description="manual | wander"),
         DeclareLaunchArgument("use_lidar", default_value="true"),
         DeclareLaunchArgument("use_imu", default_value="true"),
