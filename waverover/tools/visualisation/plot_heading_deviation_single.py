@@ -146,12 +146,7 @@ def main():
     ax.plot(t, smooth_abs, color="#d35400", linewidth=1.8, label=f"|wz| (vyhladené, okno={max(1, int(args.smooth_window))})")
     ax.set_ylabel("|wz| [rad/s]")
     ax.set_xlabel("čas [s]")
-    ax.set_title(
-        f"mean|wz|={m['mean_abs']:.4f}, rmse={m['rmse']:.4f}, p95={m['p95_abs']:.4f}, max={m['max_abs']:.4f}"
-    )
     ax.legend(loc="upper right", fontsize=8)
-
-    fig.suptitle(f"Odchýlka jazdy ({args.label}): {args.csv_file.name}", fontsize=10, y=0.97)
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

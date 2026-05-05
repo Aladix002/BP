@@ -918,7 +918,30 @@
   \end{figure}
 
 
-  Navrhnuté možnosti korekcie tak predstavuú jednoduchý spôsob, ako zlepšiť 
+  V grafoch tejto časti používam veličinu $\omega_z$ (často nepresne písanú ako ``qz''), teda uhlovú rýchlosť okolo zvislej osi robota v jednotkách rad/s. Pri ideálne rovnej jazde má byť jej absolútna hodnota čo najmenšia.
+
+  \begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \includegraphics[width=\linewidth]{obrazky/odchylka_bez_korekcie_5s.png}
+      \caption*{\scriptsize Bez korekcie}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \includegraphics[width=\linewidth]{obrazky/odchylka_imu_5s.png}
+      \caption*{\scriptsize IMU korekcia}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \includegraphics[width=\linewidth]{obrazky/odchylka_flow_5s.png}
+      \caption*{\scriptsize Optical flow}
+    \end{minipage}
+    \caption[Porovnanie odchýlky jazdy]{Porovnanie odchýlky jazdy v strednom 5 s úseku merania pre tri režimy korekcie.}
+    \label{fig:odchylka-jazdy-porovnanie}
+  \end{figure}
+
+  Navrhnuté možnosti korekcie tak predstavujú jednoduchý spôsob, ako zlepšiť
   stabilitu jazdy aj bez dodatočného hardvéru.
 
   \section{Autonómne blúdenie (wander)}
@@ -1262,7 +1285,7 @@
 
   Testovanie ukázalo, že systém je schopný spoľahlivo fungovať vo všetkých hlavných režimoch. Prepínanie medzi manuálnym a autonómnym riadením prebiehalo plynulo, bez potreby reštartu uzlov, čo potvrdzuje správny návrh komunikačnej vrstvy a mechanizmu prepínania režimov.
 
-  Režim wander dokázal reagovať na prekážky a pokračovať v pohybe bez zásahu používateľa. IMU korekcia pomáhala stabilizovať jazdu vpred a bola celkovo spoľahlivejšia než optický tok. Ten síce dokázal korigovať odchýlky, ale jeho kvalita bola výrazne závislá od podmienok v obraze.
+  Režim wander dokázal reagovať na prekážky a pokračovať v pohybe bez zásahu používateľa. V meraniach odchýlky jazdy vychádza najlepšie optical flow, no jeho kvalita je citlivá na osvetlenie a textúru prostredia. Z pohľadu prevádzkovej stability bola najstabilnejšia IMU korekcia, ktorá fungovala použiteľne aj pri rôznych svetelných podmienkach a rozmanitosti prostredia.
 
   Sledovanie lopty fungovalo po doladení HSV prahov a geometrických podmienok pomerne stabilne, pričom problémy sa objavovali pri zmenách svetelných podmienok alebo v tieni. To ale poukazuje na bežné obmedzenia jednoduchých farebných segmentačných metód.
 
