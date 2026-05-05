@@ -100,6 +100,10 @@
   \usepackage{epsfig}
 \else % je to pdftex ! / it is pdftex !
   \ifzadani
+    % graphicx: pdfpages ho síce ťahá ako závislosť, ale explicitné načítanie
+    % pred pdfpages znižuje riziko konfliktov (niekedy sa pri zadani nevyhodnotí
+    % \includepdf a voľby width=/height= sa vysypú ako text na stránku).
+    \usepackage[pdftex]{graphicx}
     \usepackage{pdfpages}
   \else % neni potreba pdfpages / pdfpages is not necessary
     \usepackage[pdftex]{graphicx}
@@ -1033,6 +1037,9 @@ Management}{\@fit@EN}%
   %\ifzadani\includepdf[pages=-,offset=0.6cm -1.7cm]{assignment.pdf}\fi
 }{
   \ifzadani
+    % Bez zlomu strany môže \includepdf skončiť na titulnej strane a voľby príkazu
+    % sa občas zle spracujú (literálny text width=!,height=!,pages=-,offset=...).
+    \clearpage
     \includepdf[pages=-,offset=0.6cm -1.7cm]{zadani.pdf}
     %\ifzadani\includepdf[pages=-,offset=0.6cm -1.7cm]{assignment.pdf}\fi
   \fi

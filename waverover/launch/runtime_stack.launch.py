@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Palubny stack: motor, lidar wander, IMU, kamera, web; use_offboard_slam = SLAM na PC (slam_remote_pc / pc_slam_web).
+# Palubny stack: motor, lidar wander, IMU, kamera, web; use_offboard_slam = SLAM na PC;
+# offboard_optical_flow = optical_flow na PC (cv_remote_pc.launch.py).
 
 import os
 
@@ -221,32 +222,56 @@ def _opaque(context, *args, **kwargs):
         LaunchConfiguration("optical_flow_debug_publish_image").perform(context).lower() == "true"
     )
 
+    offboard_flow = LaunchConfiguration("offboard_optical_flow").perform(context).lower() == "true"
+    ros_domain = LaunchConfiguration("ros_domain_id").perform(context)
+
     if have_cam and use_camera:
+        if use_flow and not offboard_flow:
+            actions.append(
+                Node(
+                    package="waverover",
+                    executable="optical_flow",
+                    name="optical_flow_node",
+                    output="screen",
+                    parameters=[{
+                        "enabled": True,
+                        "correction_gain": 2.4,
+                        "max_correction": 0.45,
+                        "forward_threshold": 0.05,
+                        "steer_deadzone": 0.12,
+                        "min_features": 15,
+                        "image_topic": "/camera/camera_node/image_raw/compressed",
+                        "teleop_topic": "/teleop_cmd_vel",
+                        "output_topic": "/teleop_cmd_vel_corrected",
+                        "debug_show": optical_flow_debug_show,
+                        "debug_publish_image": optical_flow_debug_publish_image,
+                        "debug_window_scale": 2,
+                        "debug_window_name": "optical_flow",
+                    }],
+                )
+            )
+        elif use_flow and offboard_flow:
+            actions.append(
+                LogInfo(
+                    msg=(
+                        "offboard_optical_flow:=true — optical_flow bezi na PC: "
+                        f"export ROS_DOMAIN_ID={ros_domain} && "
+                        "ros2 launch waverover cv_remote_pc.launch.py "
+                        "enable_optical_flow:=true enable_ball_follow:=false"
+                    )
+                )
+            )
+    elif use_flow and not offboard_flow:
+        actions.append(LogInfo(msg="correction_mode:=optical_flow vyzaduje use_camera:=true a camera_ros."))
+    elif use_flow and offboard_flow:
         actions.append(
-            Node(
-                package="waverover",
-                executable="optical_flow",
-                name="optical_flow_node",
-                output="screen",
-                parameters=[{
-                    "enabled": use_flow,
-                    "correction_gain": 2.4,
-                    "max_correction": 0.45,
-                    "forward_threshold": 0.05,
-                    "steer_deadzone": 0.12,
-                    "min_features": 15,
-                    "image_topic": "/camera/camera_node/image_raw/compressed",
-                    "teleop_topic": "/teleop_cmd_vel",
-                    "output_topic": "/teleop_cmd_vel_corrected",
-                    "debug_show": optical_flow_debug_show,
-                    "debug_publish_image": optical_flow_debug_publish_image,
-                    "debug_window_scale": 2,
-                    "debug_window_name": "optical_flow",
-                }],
+            LogInfo(
+                msg=(
+                    "offboard_optical_flow: zapni use_camera:=true na RPi (camera_ros), "
+                    "inak PC nema obraz."
+                )
             )
         )
-    elif use_flow:
-        actions.append(LogInfo(msg="correction_mode:=optical_flow vyzaduje use_camera:=true a camera_ros."))
 
     if use_teleop:
         actions.append(
@@ -454,6 +479,11 @@ def generate_launch_description():
             "correction_mode",
             default_value="imu",
             description="zarovnanie: imu | optical_flow | none",
+        ),
+        DeclareLaunchArgument(
+            "offboard_optical_flow",
+            default_value="false",
+            description="true = optical_flow nespustat na RPi; spustit cv_remote_pc.launch.py na PC (rovnaky ROS_DOMAIN_ID)",
         ),
         DeclareLaunchArgument(
             "optical_flow_debug_show",

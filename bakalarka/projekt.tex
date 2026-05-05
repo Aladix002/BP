@@ -55,9 +55,7 @@
 
 % Pro seznam zkratek lze využít balíček Glossaries - nutno odkomentovat i níže a při kompilaci z konzoly i v Makefile (plnou verzi pro Perl, nebo lite)
 % The Glossaries package can be used for the list of abbreviations - it is necessary to uncomment also below. When compiling from the console also in the Makefile (full version for Perl or lite)
-%\usepackage{glossaries}
-%\usepackage{glossary-superragged}
-%\makeglossaries 
+\usepackage{longtable}
 
 % Nastavení cesty k obrázkům
 % Setting of a path to the pictures
@@ -89,6 +87,8 @@
 \usepackage{amsmath}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+% Zabráni plávajúcim obrázkom z predchádzajúcej sekcie presunu až za \section (napr. BT diagram).
+\usepackage{placeins}
 % =======================================================================
 % balíček "hyperref" vytváří klikací odkazy v pdf, pokud tedy použijeme pdflatex
 % problém je, že balíček hyperref musí být uveden jako poslední, takže nemůže
@@ -157,12 +157,12 @@
   supervisor.title.p={doc. Ing.},   %titul před jménem (nepovinné) / title before the name (optional)
   supervisor.title.a={Ph.D.},    %titul za jménem (nepovinné) / title after the name (optional)
   % Klíčová slova / keywords
-  keywords.cs={mobilná robotika, ROS~2, Wave Rover, Raspberry Pi, LiDAR, kamera, teleprezencia, autonómna navigácia, Gazebo}, % klíčová slova v českém či slovenském jazyce / keywords in czech or slovak language
-  keywords.en={mobile robotics, ROS~2, Wave Rover, Raspberry Pi, lidar, camera, telepresence, autonomous navigation, Gazebo}, % klíčová slova v anglickém jazyce / keywords in english
+  keywords.cs={mobilná robotika, ROS~2, WAVE ROVER, Raspberry Pi~5, LiDAR, kamera, teleprezencia, autonómna navigácia, Gazebo, URDF, simulácia, sledovanie objektu}, % klíčová slova v českém či slovenském jazyce / keywords in czech or slovak language
+  keywords.en={mobile robotics, ROS~2, WAVE ROVER, Raspberry Pi~5, lidar, camera, telepresence, autonomous navigation, Gazebo, URDF, simulation, object tracking}, % klíčová slova v anglickém jazyce / keywords in english
   %keywords.en={Here, individual keywords separated by commas will be written in English.},
   % Abstrakt / Abstract
-  abstract.cs={Táto práca sa zaoberá mobilnou robotikou a teleprezenciou. Cieľom je navrhnúť a implementovať systém riadenia robota na platforme WAVE ROVER s využitím Robot Operating System 2 (ROS~2). Práca zahŕňa prehľad metód vývoja softvéru pre mobilné roboty v ROS~2 a oboznámenie sa s platformou WAVE ROVER, overenie použiteľnosti existujúceho hardvéru a jeho rozšírenie o senzory (lidar, kamera). Navrhovaný systém umožňuje prepínanie medzi diaľkovým ovládaním a autonómnym pohybom s vyhýbaním sa prekážkam. Riadiaci počítač je Raspberry Pi 5 s Ubuntu 24.04.}, % abstrakt v českém či slovenském jazyce / abstract in czech or slovak language
-  abstract.en={This thesis deals with mobile robotics and telepresence. The aim is to design and implement a robot control system on the WAVE ROVER platform using Robot Operating System 2 (ROS~2). The work surveys software development practices for mobile robots in ROS~2, introduces the WAVE ROVER platform, validates the existing hardware, and extends it with sensors (lidar, camera). The proposed system supports switching between remote control and autonomous motion with obstacle avoidance. The onboard computer is a Raspberry Pi 5 running Ubuntu 24.04.}, % abstrakt v anglickém jazyce / abstract in english
+  abstract.cs={Táto práca sa zaoberá mobilnou robotikou a teleprezenciou. Cieľom je navrhnúť a implementovať systém riadenia robota na platforme WAVE ROVER s využitím Robot Operating System~2. Práca zahŕňa prehľad vývoja softvéru pre mobilné roboty v ROS~2, oboznámenie sa s platformou a overenie použiteľnosti existujúceho hardvéru a jeho senzorov. Súčasťou riešenia je vlastný model robota vo formáte URDF/Xacro a jeho nasadenie vo vizualizácii aj vo fyzikálnej simulácii v Gazebo Sim. Navrhovaný systém umožňuje prepínanie medzi diaľkovým ovládaním a autonómnym pohybom s vyhýbaním sa prekážkam. Medzi rozšírenia patrí sledovanie farebného objektu v obraze z kamery. Riadiaci počítač je Raspberry Pi~5 s Ubuntu~24.04.}, % abstrakt v českém či slovenském jazyce / abstract in czech or slovak language
+  abstract.en={This thesis deals with mobile robotics and telepresence. The aim is to design and implement a robot control system on the WAVE ROVER platform using Robot Operating System~2. The work includes a survey of software development for mobile robots in ROS~2, familiarization with the platform, and verification of the existing hardware and its sensors. The solution includes a custom robot model in URDF/Xacro format and its deployment in visualization and in physical simulation in Gazebo Sim. The proposed system allows switching between remote control and autonomous motion with obstacle avoidance. Among the extensions is tracking of a coloured object in the camera image. The onboard computer is a Raspberry Pi~5 with Ubuntu~24.04.}, % abstrakt v anglickém jazyce / abstract in english
   %abstract.en={An abstract of the work in English will be written in this paragraph.},
   % Prohlášení (u anglicky psané práce anglicky, u slovensky psané práce slovensky; u projektové praxe lze zakomentovat) / Declaration (for thesis in english should be in english; for project practice can be commented out)
   declaration={Prehlasujem, že som túto bakalársku prácu vypracoval samostatne pod vedením doc.\ Ing.\ Vladimíra Janouška, Ph.D.
@@ -239,32 +239,61 @@ Uviedol som všetky literárne pramene, publikácie a iné zdroje, z ktorých so
   \fi
   % {\hypersetup{hidelinks}\listoftables}
 
-  % Seznam zkratek / List of abbreviations
-  %\ifczech
-  %  \renewcommand*\glossaryname{Seznam zkratek}%
-  %  \renewcommand*\entryname{Zkratka}
-  %  \renewcommand*\descriptionname{Význam}
-  %\fi
-  %\ifslovak
-  %  \renewcommand*\glossaryname{Zoznam skratiek}%
-  %  \renewcommand*\entryname{Skratka}
-  %  \renewcommand*\descriptionname{Význam}
-  %\fi
-  %\ifenglish
-  %  \renewcommand*\glossaryname{List of abbreviations}%
-  %  \renewcommand*\entryname{Abbreviation}
-  %  \renewcommand*\descriptionname{Meaning}
-  %\fi
-  % Definice zkratek - z textu se odkazují např. \Gls{TF–IDF}
-  % Definition of abbreviations - referred from the text e.g. \Gls{TF–IDF}
-  %\newglossaryentry{TF–IDF}
-  %{
-  %  name={TF–IDF},
-  %  description={Term Frequency-Inverse Document Frequency}
-  %}
-  % 
-  %\setglossarystyle{superragged}
-  %\printglossaries
+  \clearpage
+  % Zoznam skratiek
+  \ifslovak
+    \section*{Zoznam skratiek}
+  \else
+    \ifczech
+      \section*{Seznam zkratek}
+    \else
+      \section*{List of abbreviations}
+    \fi
+  \fi
+
+  \begin{longtable}{p{0.18\textwidth}p{0.78\textwidth}}
+    ACK & Acknowledge (potvrdzovací bit).\\
+    API & Application Programming Interface (programové rozhranie aplikácie).\\
+    BT & Behavior Tree (behaviorálny strom).\\
+    CLI & Command-Line Interface (príkazový riadok).\\
+    CPU & Central Processing Unit (centrálna procesorová jednotka).\\
+    DC & Direct Current (jednosmerný prúd).\\
+    DDS & Data Distribution Service (distribučná middleware vrstva v ROS~2).\\
+    ESP32 & Mikrokontrolérová platforma od Espressif.\\
+    GPIO & General Purpose Input/Output (všeobecné vstupno-výstupné piny).\\
+    HDR & High Dynamic Range (vysoký dynamický rozsah).\\
+    I\textsuperscript{2}C & Inter-Integrated Circuit (dvojvodičová sériová zbernica).\\
+    IMU & Inertial Measurement Unit (inerciálna meracia jednotka).\\
+    JSON & JavaScript Object Notation (textový formát na prenos dát).\\
+    LD19 & 2D lidarový snímač použitý na platforme Wave Rover.\\
+    MCU & Microcontroller Unit (mikrokontrolér).\\
+    MEMS & Micro-Electro-Mechanical Systems (mikroelektromechanické systémy).\\
+    Nav2 & Navigation2 (navigačný stack pre ROS~2).\\
+    PID & Proportional-Integral-Derivative regulátor (proporcionálno-integračno-derivačný regulátor).\\
+    PWM & Pulse Width Modulation (šírkovo-pulzná modulácia).\\
+    QoS & Quality of Service (kvalita služby komunikácie).\\
+    RCL & ROS Client Library (klientská knižničná vrstva ROS).\\
+    RMW & ROS Middleware Interface (rozhranie middleware vrstvy ROS).\\
+    ROS1 & Robot Operating System 1.\\
+    ROS~2 & Robot Operating System 2.\\
+    RPi & Raspberry Pi.\\
+    RViz2 & Vizualizačný nástroj pre ROS~2.\\
+    RX & Receive (príjem dát).\\
+    SDA & Serial Data line (dátová linka I\textsuperscript{2}C).\\
+    SCL & Serial Clock line (hodinová linka I\textsuperscript{2}C).\\
+    SLAM & Simultaneous Localization and Mapping (simultánne mapovanie a lokalizácia).\\
+    STM32 & Rodina 32-bit mikrokontrolérov STMicroelectronics.\\
+    ToF & Time of Flight (meranie vzdialenosti podľa času letu signálu).\\
+    TX & Transmit (vysielanie dát).\\
+    UART & Universal Asynchronous Receiver-Transmitter (asynchrónne sériové rozhranie).\\
+    URDF & Unified Robot Description Format (formát popisu robota).\\
+    USB & Universal Serial Bus.\\
+    WebRTC & Web Real-Time Communication (prenos obrazu/dát v reálnom čase cez web).\\
+    WebSocket & Protokol pre obojsmernú komunikáciu klient--server.\\
+    WiFi & IEEE 802.11 bezdrôtová lokálna sieť.\\
+    Xacro & XML macro language pre parametrizáciu URDF.\\
+    YAML & YAML Ain't Markup Language (konfiguračný textový formát).\\
+  \end{longtable}
 
 
   \ifODSAZ
