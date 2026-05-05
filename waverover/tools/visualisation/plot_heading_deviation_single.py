@@ -113,6 +113,7 @@ def main():
     ap.add_argument("--end-s", type=float, default=-1.0, help="Koniec analýzy [s], -1 = do konca")
     ap.add_argument("--use-imu-raw", action="store_true", help="Použi imu_wz_rad_s namiesto yaw_filt_rad_s")
     ap.add_argument("--smooth-window", type=int, default=9, help="Veľkosť okna kĺzavého priemeru pre |wz|")
+    ap.add_argument("--y-max", type=float, default=0.2, help="Fixná horná hranica osi y pre |wz| [rad/s]")
     ap.add_argument("--dpi", type=int, default=160)
     args = ap.parse_args()
 
@@ -146,6 +147,7 @@ def main():
     ax.plot(t, smooth_abs, color="#d35400", linewidth=1.8, label=f"|wz| (vyhladené, okno={max(1, int(args.smooth_window))})")
     ax.set_ylabel("|wz| [rad/s]")
     ax.set_xlabel("čas [s]")
+    ax.set_ylim(0.0, max(0.01, float(args.y_max)))
     ax.legend(loc="upper right", fontsize=8)
 
     if args.output:
