@@ -87,16 +87,32 @@ def metrics(sig):
     }
 
 
+def smooth_abs_signal(sig, window: int):
+    vals = [abs(v) for v in sig]
+    if window <= 1 or len(vals) < 3:
+        return vals
+    if window % 2 == 0:
+        window += 1
+    half = window // 2
+    out = []
+    for i in range(len(vals)):
+        lo = max(0, i - half)
+        hi = min(len(vals), i + half + 1)
+        out.append(statistics.fmean(vals[lo:hi]))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(
-        description="Graf odchylky jazdy pre jeden beh (spusti 3x pre porovnanie rezimov)."
+        description="Graf odchýlky jazdy pre jeden beh (spusti 3x pre porovnanie režimov)."
     )
     ap.add_argument("csv_file", type=Path, help="CSV z log_imu_drive_csv.py")
-    ap.add_argument("-o", "--output", type=Path, help="Ulozit PNG")
-    ap.add_argument("--label", default="beh", help="Nazov rezimu v titulku (napr. bez_korekcie)")
-    ap.add_argument("--start-s", type=float, default=0.0, help="Zaciatok analyzy [s]")
-    ap.add_argument("--end-s", type=float, default=-1.0, help="Koniec analyzy [s], -1 = do konca")
-    ap.add_argument("--use-imu-raw", action="store_true", help="Pouzi imu_wz_rad_s namiesto yaw_filt_rad_s")
+    ap.add_argument("-o", "--output", type=Path, help="Uložiť PNG")
+    ap.add_argument("--label", default="beh", help="Názov režimu v titulku (napr. bez_korekcie)")
+    ap.add_argument("--start-s", type=float, default=0.0, help="Začiatok analýzy [s]")
+    ap.add_argument("--end-s", type=float, default=-1.0, help="Koniec analýzy [s], -1 = do konca")
+    ap.add_argument("--use-imu-raw", action="store_true", help="Použi imu_wz_rad_s namiesto yaw_filt_rad_s")
+    ap.add_argument("--smooth-window", type=int, default=9, help="Veľkosť okna kĺzavého priemeru pre |wz|")
     ap.add_argument("--dpi", type=int, default=160)
     args = ap.parse_args()
 
@@ -112,7 +128,7 @@ def main():
     try:
         import matplotlib.pyplot as plt
     except ImportError as e:
-        raise SystemExit("Chyba importu matplotlib. Nainstaluj: python3 -m pip install --user matplotlib") from e
+        raise SystemExit("Chyba importu matplotlib. Nainštaluj: python3 -m pip install --user matplotlib") from e
 
     for style in ("seaborn-v0_8-whitegrid", "ggplot", "bmh"):
         try:
@@ -121,25 +137,21 @@ def main():
         except OSError:
             continue
 
-    fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
-    fig.subplots_adjust(hspace=0.25, bottom=0.12, top=0.88)
-
-    ax0.plot(t, s, color="#2980b9", linewidth=1.0, label="wz")
-    ax0.axhline(0.0, color="#2c3e50", linewidth=0.7, linestyle="--", alpha=0.7)
-    ax0.set_ylabel("wz [rad/s]")
-    ax0.set_title(f"{args.label}: uhlova odchylka okolo osi z")
-    ax0.legend(loc="upper right", fontsize=8)
+    fig, ax = plt.subplots(1, 1, figsize=(10, 4.8))
+    fig.subplots_adjust(bottom=0.14, top=0.84)
 
     abs_s = [abs(v) for v in s]
-    ax1.plot(t, abs_s, color="#d35400", linewidth=1.0, label="|wz|")
-    ax1.set_ylabel("|wz| [rad/s]")
-    ax1.set_xlabel("cas [s]")
-    ax1.set_title(
+    smooth_abs = smooth_abs_signal(s, max(1, int(args.smooth_window)))
+    ax.plot(t, abs_s, color="#f6ad55", linewidth=0.9, alpha=0.45, label="|wz| (merané)")
+    ax.plot(t, smooth_abs, color="#d35400", linewidth=1.8, label=f"|wz| (vyhladené, okno={max(1, int(args.smooth_window))})")
+    ax.set_ylabel("|wz| [rad/s]")
+    ax.set_xlabel("čas [s]")
+    ax.set_title(
         f"mean|wz|={m['mean_abs']:.4f}, rmse={m['rmse']:.4f}, p95={m['p95_abs']:.4f}, max={m['max_abs']:.4f}"
     )
-    ax1.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right", fontsize=8)
 
-    fig.suptitle(f"Odchylka jazdy: {args.csv_file.name}", fontsize=10, y=0.98)
+    fig.suptitle(f"Odchýlka jazdy ({args.label}): {args.csv_file.name}", fontsize=10, y=0.97)
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

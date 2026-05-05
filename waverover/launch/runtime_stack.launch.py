@@ -226,7 +226,7 @@ def _opaque(context, *args, **kwargs):
     ros_domain = LaunchConfiguration("ros_domain_id").perform(context)
 
     if have_cam and use_camera:
-        if use_flow and not offboard_flow:
+        if not offboard_flow:
             actions.append(
                 Node(
                     package="waverover",
@@ -234,7 +234,9 @@ def _opaque(context, *args, **kwargs):
                     name="optical_flow_node",
                     output="screen",
                     parameters=[{
-                        "enabled": True,
+                        # Uzol bezi stale (ked je kamera), zapina sa dynamicky cez set_parameters
+                        # pri prepinani rezimu v UI.
+                        "enabled": use_flow,
                         "correction_gain": 2.4,
                         "max_correction": 0.45,
                         "forward_threshold": 0.05,
