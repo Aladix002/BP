@@ -44,14 +44,29 @@
   note         = {Prehľad princípov MEMS akcelerometra a gyroskopu, aplikácie a súvislosti s fúziou dát.}
 }
 
-@webpage{complementary_filter,
-  author       = {Adams, V. Hunter},
-  title        = {Complementary Filters},
-  howpublished = {online},
-  year         = {2024},
-  url          = {https://vanhunteradams.com/Pico/ReactionWheel/Complementary_Filters.html},
-  cited        = {2025-10-14},
-  note         = {Teoretický úvod k fúzii akcelerometra a gyroskopu, váhy filtra a poznámky k alternatívam.}
+@article{mahony_filter,
+  author  = {Mahony, Robert and Hamel, Tarek and Pflimlin, Jean-Michel},
+  title   = {Nonlinear Complementary Filters on the Special Orthogonal Group},
+  journal = {IEEE Transactions on Automatic Control},
+  volume  = {55},
+  number  = {5},
+  pages   = {1203--1218},
+  year    = {2010},
+  doi     = {10.1109/TAC.2009.2037315},
+  issn    = {0018-9286},
+  url     = {https://hal.science/hal-00488376/document},
+  cited   = {2025-10-12},
+  note    = {Teoretický rámec komplementárnej filtrácie orientácie na SO(3); úplný text voľne na HAL.}
+}
+
+@misc{complementary_filter_practical,
+  author       = {Mayitzín, Alejandro},
+  title        = {{AHRS}: Complementary filter},
+  howpublished = {Dokumentácia balíka AHRS},
+  year         = {2025},
+  url          = {https://ahrs.readthedocs.io/en/latest/filters/complementary.html},
+  cited        = {2025-10-13},
+  note         = {Praktický popis diskrétnej zmiešanej formy odhadu z integrácie gyroskopu a akcelerometra s koeficientom alfa (vektorová forma zahŕňa jednoosový prípad).}
 }
 
 @webpage{britannica_lidar,
@@ -97,13 +112,13 @@
 }
 
 @webpage{uart_fundamentals_aticleworld,
-  author       = {{Aticleworld}},
-  title        = {Fundamentals of {UART} Communication},
+  author       = {{Analog Devices}},
+  title        = {{UART}: A Hardware Communication Protocol},
   howpublished = {online},
   year         = {2026},
-  url          = {https://aticleworld.com/fundamentals-of-uart-communication/},
-  cited        = {2025-10-31},
-  note         = {Úvod k asynchrónnemu sériovému rámcu, baud rate a linkám {TX}/{RX}.}
+  url          = {https://www.analog.com/en/resources/analog-dialogue/articles/uart-a-hardware-communication-protocol.html},
+  cited        = {2026-04-30},
+  note         = {Technický prehľad asynchrónnej UART komunikácie: rámec, baud rate, linky TX/RX.}
 }
 
 @webpage{ros2_doc,
@@ -135,34 +150,24 @@
   note         = {Štandard middleware pod ROS 2.}
 }
 
-@book{siegwart2011introduction,
-  author    = {Siegwart, Roland and Nourbakhsh, Illah R. and Scaramuzza, Davide},
-  title     = {Introduction to Autonomous Mobile Robots},
-  publisher = {MIT Press},
-  year      = {2011},
-  edition   = {2nd},
-  isbn      = {978-0-262-01535-4},
-  note      = {Kinematika diferenciálneho podvozku a model unicycle.}
-}
-
-@book{smith1997scientist,
-  author    = {Smith, Steven W.},
-  title     = {The Scientist and Engineer's Guide to Digital Signal Processing},
-  publisher = {California Technical Publishing},
-  year      = {1997},
-  isbn      = {978-0-9660176-3-2},
-  url       = {http://www.dspguide.com/},
-  cited     = {2026-05-04},
-  note      = {Rekurzívne filtre a jednoduché exponenciálne vyhladenie (EMA) ako IIR prvého rádu.}
+@webpage{smith1997scientist,
+  author       = {{ScienceDirect Topics}},
+  title        = {Exponentially Weighted Moving Average},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://www.sciencedirect.com/topics/mathematics/exponentially-weighted-moving-average},
+  cited        = {2026-04-30},
+  note         = {Prehľad metódy EMA (EWMA) a jej použitia pri vyhladzovani casovych radov.}
 }
 
 @webpage{gazebo,
-  author       = {Gazebo Sim},
-  title        = {Building a Robot},
+  author       = {{Gazebo Sim Documentation}},
+  title        = {{ROS 2 Integration}},
   howpublished = {online},
   year         = {2024},
-  url          = {https://gazebosim.org/docs/latest/building_robot/},
-  cited        = {2026-01-18}
+  url          = {https://gazebosim.org/docs/garden/ros2_integration/},
+  cited        = {2026-04-30},
+  note         = {Integrácia Gazebo a ROS~2, vrátane použitia ros\_gz\_bridge.}
 }
 
 @webpage{RPCameraRP5,
@@ -173,6 +178,16 @@
   url          = {https://github.com/ARLunan/Raspberry-Pi-Camera-ROS/blob/main/Documents/RPCamera-Installation-RP5.md#1-raspberry-pi-camera-installation-on-raspberry-pi-5--ubuntu-2404-noble-ros-2-jazzy},
   cited        = {2026-01-09},
   note         = {Dokumentácia inštalácie kamery pre RPi5, Ubuntu 24.04 a ROS 2 Jazzy.}
+}
+
+@webpage{camera_ros_repo,
+  author       = {Rauch, Christian and contributors},
+  title        = {camera\_ros},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://github.com/christianrauch/camera_ros},
+  cited        = {2026-04-30},
+  note         = {Oficiálny repozitár balíka camera\_ros pre ROS~2.}
 }
 
 @webpage{opencv_optical_flow_tutorial,
@@ -237,22 +252,6 @@
   note    = {Práca dostupná v DSpace VUT; inšpirácia štruktúrou implementačnej kapitoly.}
 }
 
-@article{chaumette2006visual,
-  author    = {Chaumette, Fran{\c{c}}ois and Hutchinson, Seth},
-  title     = {Visual servo control, part I: Basic approaches},
-  journal   = {IEEE Robotics and Automation Magazine},
-  edition   = {1},
-  volume    = {13},
-  number    = {4},
-  pages     = {82--90},
-  year      = {2006},
-  issn      = {1070-9932},
-  doi       = {10.1109/MRA.2006.250573},
-  url       = {https://inria.hal.science/inria-00350283v1/document},
-  cited     = {2026-02-04},
-  note      = {Prehľad obrazového sérvoriadenia (IBVS); voľne dostupná verzia článku.}
-}
-
 @bachelorsthesis{Pysny,
   author  = {Py{\v{s}}n{\'y}, Radek},
   title   = {Typografick{\'e} a bibliografick{\'e} z{\'a}sady pro textov{\'e} zpracov{\'a}n{\'i} kvalifika{\v{c}}n{\'i}ch prac{\'i}},
@@ -300,23 +299,13 @@
   note         = {Oficiálny tutoriál OpenCV pre farebnú segmentáciu v priestore HSV.}
 }
 
-@webpage{opencv_simple_blob_detector,
-  author       = {{OpenCV}},
-  title        = {cv::SimpleBlobDetector Class Reference},
-  howpublished = {online},
-  year         = {2025},
-  url          = {https://docs.opencv.org/4.x/d0/d7a/classcv_1_1SimpleBlobDetector.html},
-  cited        = {2026-03-27},
-  note         = {Referenčná dokumentácia OpenCV pre detekciu blobov.}
-}
-
 @webpage{opencv_contours_tutorial,
   author       = {{OpenCV}},
   title        = {Contours: Getting Started},
   howpublished = {online},
   year         = {2025},
   url          = {https://docs.opencv.org/4.x/d4/d73/tutorial_py_contours_begin.html},
-  cited        = {2026-05-02},
+  cited        = {2026-04-30},
   note         = {Oficiálny tutoriál OpenCV k nájdeniu a práci s kontúrami (\texttt{findContours}).}
 }
 
@@ -326,18 +315,59 @@
   howpublished = {online},
   year         = {2025},
   url          = {https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html},
-  cited        = {2026-05-02},
+  cited        = {2026-04-30},
   note         = {Oficiálny tutoriál OpenCV k morfologickým operáciám (opening, closing).}
 }
 
-@webpage{raspberrypi_docs_storage,
-  author       = {{Raspberry Pi Ltd}},
-  title        = {Raspberry Pi Documentation: Storage and boot options},
+@webpage{kingston_industrial_sd,
+  author       = {{Kingston Technology}},
+  title        = {Industrial Grade microSD Cards},
   howpublished = {online},
-  year         = {2025},
-  url          = {https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#storage-and-booting},
-  cited        = {2026-04-21},
-  note         = {Oficiálna dokumentácia možností bootovania zo SD karty, USB zariadení a úložiska na Raspberry Pi.}
+  year         = {2026},
+  url          = {https://www.kingston.com/en/memory-cards/industrial-grade-microsd-uhs-i-u3},
+  cited        = {2026-04-30},
+  note         = {Priemyselné microSD karty určené pre náročné podmienky a vyššiu zápisovú záťaž.}
+}
+
+@webpage{waveshare_waverover,
+  author       = {Waveshare},
+  title        = {Wave Rover},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://www.waveshare.com/wave-rover.htm},
+  cited        = {2026-04-30},
+  note         = {Produktová dokumentácia mobilnej platformy Wave Rover.}
+}
+
+@misc{nxp_pca9685,
+  author       = {{NXP Semiconductors}},
+  title        = {PCA9685: 16-channel, 12-bit PWM Fm+ I2C-bus LED controller},
+  howpublished = {datasheet},
+  year         = {2021},
+  url          = {https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf},
+  cited        = {2026-04-30},
+  note         = {Datasheet čipu PCA9685 použitého na generovanie PWM pre motorový HAT.}
+}
+
+@webpage{py_trees_docs,
+  author       = {{py\_trees developers}},
+  title        = {py\_trees documentation},
+  howpublished = {online},
+  year         = {2026},
+  url          = {https://py-trees.readthedocs.io/},
+  cited        = {2026-04-30},
+  note         = {Dokumentácia knižnice py\_trees pre behaviorálne stromy.}
+}
+
+@inproceedings{redmon2016yolo,
+  author    = {Redmon, Joseph and Divvala, Santosh and Girshick, Ross and Farhadi, Ali},
+  title     = {You Only Look Once: Unified, Real-Time Object Detection},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2016},
+  pages     = {779--788},
+  doi       = {10.1109/CVPR.2016.91},
+  url       = {https://arxiv.org/abs/1506.02640},
+  cited     = {2026-04-30}
 }
 
 @book{astrom_murray_feedback,
@@ -373,4 +403,14 @@
   url       = {https://publications.ri.cmu.edu/storage/publications/pub_files/pub2/shi_jianbo_1994_1/shi_jianbo_1994_1.pdf},
   cited     = {2026-02-12},
   note      = {Pôvodná práca ku výberu sledovateľných bodov (Shi--Tomasi). ISBN papierového zborníka CVPR 1994 (IEEE Computer Society).}
+}
+
+@webpage{roboticsbook_diff_drive,
+  author       = {Corke, Peter and Haviland, Jesse},
+  title        = {Robotics, Vision and Control: Differential Drive Robot},
+  howpublished = {online},
+  year         = {2023},
+  url          = {https://www.roboticsbook.org/S52_diffdrive_actions.html},
+  cited        = {2026-04-30},
+  note         = {Odvodenie kinematiky diferenciálneho podvozku a vzťah medzi lineárnou a uhlovou rýchlosťou.}
 }

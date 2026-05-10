@@ -1,0 +1,39 @@
+\babel@toc {slovak}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Špecifikácie Raspberry Pi~5 (prehľad platformy)}}{5}{figure.2.1}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Wave Rover}}{6}{figure.2.2}%
+\contentsline {figure}{\numberline {2.3}{\ignorespaces Vľavo DC motor, vpravo PWM}}{7}{figure.2.3}%
+\contentsline {figure}{\numberline {2.4}{\ignorespaces General Driver for Robots}}{8}{figure.2.4}%
+\contentsline {figure}{\numberline {2.5}{\ignorespaces Arduino Nano}}{9}{figure.2.5}%
+\contentsline {figure}{\numberline {2.6}{\ignorespaces Vľavo MEMS akcelerometer, vpravo mechanický model}}{10}{figure.2.6}%
+\contentsline {figure}{\numberline {2.7}{\ignorespaces Princíp LiDAR}}{11}{figure.2.7}%
+\contentsline {figure}{\numberline {2.8}{\ignorespaces Raspberry Pi Camera Module 3}}{12}{figure.2.8}%
+\contentsline {figure}{\numberline {2.9}{\ignorespaces Príklad prenosu dát po I\textsuperscript {2}C}}{13}{figure.2.9}%
+\contentsline {figure}{\numberline {2.10}{\ignorespaces Časový diagram UART}}{13}{figure.2.10}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Zásobník klientskych knižníc ROS~2}}{15}{figure.3.1}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Model publisher a subscriber na téme}}{18}{figure.3.2}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Strom súradnicových rámov tf2}}{22}{figure.3.3}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Model Wave Rovera: vľavo RViz2, vpravo Gazebo Sim}}{26}{figure.4.1}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Wave Rover -- fyzická zostava}}{27}{figure.4.2}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Spätnoväzbová slučka regulácie}}{30}{figure.4.3}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces Priebeh IMU a korekcia pohonu}}{31}{figure.4.4}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Sledované body optického toku}}{32}{figure.4.5}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces Priebeh korekcie podľa optického toku}}{33}{figure.4.6}%
+\contentsline {figure}{\numberline {4.7}{\ignorespaces Porovnanie odchýlky jazdy}}{34}{figure.4.7}%
+\contentsline {figure}{\numberline {4.8}{\ignorespaces Bloková schéma režimu wander}}{35}{figure.4.8}%
+\contentsline {figure}{\numberline {4.9}{\ignorespaces Stavový automat uzla wander}}{35}{figure.4.9}%
+\contentsline {figure}{\numberline {4.10}{\ignorespaces Laserový sken pri režime wander}}{36}{figure.4.10}%
+\contentsline {figure}{\numberline {4.11}{\ignorespaces Graf uzlov pri manuálnom ovládaní a SLAM}}{37}{figure.4.11}%
+\contentsline {figure}{\numberline {4.12}{\ignorespaces Sledovanie objektu: debug obraz}}{39}{figure.4.12}%
+\contentsline {figure}{\numberline {4.13}{\ignorespaces Rozhodovací diagram režimov sledovania lopty (\texttt {BallController}, metóda \texttt {update()}).}}{40}{figure.4.13}%
+\contentsline {figure}{\numberline {4.14}{\ignorespaces Sledovanie objektu: priebeh rýchlostí}}{40}{figure.4.14}%
+\contentsline {figure}{\numberline {4.15}{\ignorespaces Behaviorálny strom sledovania lopty}}{41}{figure.4.15}%
+\contentsline {figure}{\numberline {4.16}{\ignorespaces Webové rozhranie robota}}{42}{figure.4.16}%
+\contentsline {figure}{\numberline {4.17}{\ignorespaces Graf uzlov pri runtime stacku}}{43}{figure.4.17}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Plagát k~bakalárskej práci}}{52}{figure.A.1}%
+\contentsfinish 

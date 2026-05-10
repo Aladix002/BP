@@ -1,0 +1,13 @@
+# Fdb version 4
+["pdflatex"] 1778059653.79096 "PosterTemplate.tex" "PosterTemplate.pdf" "PosterTemplate" 1778059653.83521 2
+  "/home/aladix/.TinyTeX/texmf-dist/web2c/texmf.cnf" 1770478701 43630 e9fa012910491fe5ae08a72c3c2997a7 ""
+  "/home/aladix/.TinyTeX/texmf-var/web2c/pdftex/pdflatex.fmt" 1775879868 2241598 b20ee00f44dcac63a86e6138a3490b30 ""
+  "/home/aladix/.TinyTeX/texmf.cnf" 1775879832 637 edd806fb06a89761a6034e1968af9017 ""
+  "PosterTemplate.aux" 1778059645.7903 32 3985256e7290058c681f74d7a3565a19 "pdflatex"
+  "PosterTemplate.tex" 1778059642.80638 9369 9f37c86746318a4c4c907e4d306dce1e ""
+  "beamer.cls" 0 -1 0 ""
+  (generated)
+  "PosterTemplate.aux"
+  "PosterTemplate.log"
+  "PosterTemplate.pdf"
+  (rewritten before read)

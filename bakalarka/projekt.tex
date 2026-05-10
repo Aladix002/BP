@@ -1,3 +1,4 @@
+% !TEX program = pdflatex
 %==============================================================================
 % Tento soubor použijte jako základ
 % This file should be used as a base for the thesis
@@ -24,7 +25,7 @@
 % (Undefined \chapter, Missing \begin{document}).
 % IMPORTANT: Keep the preamble here; chapter body belongs in projekt-01-kapitoly-chapters.tex only.
 %==============================================================================
-\documentclass[slovak,zadani]{fitthesis} % se zadáním - vloží stranu zadání před abstrakt
+\documentclass[slovak,zadani,twoside]{fitthesis} % se zadáním - vloží stranu zadání před abstrakt; twoside = obojstranný tisk
 %\documentclass[english]{fitthesis} % without assignment - for the work start to avoid compilation problem
 %\documentclass[zadani]{fitthesis} % odevzdani do IS VUT a/nebo tisk s barevnými odkazy - odkazy jsou barevné
 %\documentclass[english,zadani]{fitthesis} % for submission to the IS VUT and/or print with color links - links are color
@@ -89,6 +90,7 @@
 \usepackage{algpseudocode}
 % Zabráni plávajúcim obrázkom z predchádzajúcej sekcie presunu až za \section (napr. BT diagram).
 \usepackage{placeins}
+\usepackage{fancyvrb}
 % =======================================================================
 % balíček "hyperref" vytváří klikací odkazy v pdf, pokud tedy použijeme pdflatex
 % problém je, že balíček hyperref musí být uveden jako poslední, takže nemůže
@@ -128,6 +130,20 @@
 \fi
 % Řešení problému, kdy klikací odkazy na obrázky vedou za obrázek
 % This solves the problems with links which leads after the picture
+\DefineVerbatimEnvironment{verbatim}{Verbatim}{
+  commandchars=\\\{\},
+  gobble=8,
+  numbers=left,
+  numbersep=5pt,
+  frame=lines,
+  rulecolor=\color{black},
+  framesep=4pt,
+  frameleftmargin=2.2em,
+  framerule=0.4pt,
+  formatcom=\color{black},
+  fontsize=\small,
+  xleftmargin=0pt
+}
 \usepackage[all]{hypcap}
 
 
@@ -215,7 +231,22 @@ Uviedol som všetky literárne pramene, publikácie a iné zdroje, z ktorých so
 
 \begin{document}
   \emergencystretch=3em
-  \lstset{breaklines=true,breakatwhitespace=true}
+  \lstset{
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    numberstyle=\scriptsize\color{black},
+    numbersep=5pt,
+    frame=lines,
+    rulecolor=\color{black},
+    framesep=4pt,
+    framexleftmargin=2.2em,
+    framerule=0.4pt,
+    xleftmargin=0pt,
+    breaklines=true,
+    breakatwhitespace=true,
+    showstringspaces=false,
+    tabsize=2
+  }
   % Vysazeni titulnich stran / Typesetting of the title pages
   % ----------------------------------------------
   \maketitle

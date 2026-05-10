@@ -1,3 +1,4 @@
+% !TEX root = projekt.tex
 % Tento soubor nahraďte vlastním souborem s přílohami (nadpisy níže jsou pouze pro příklad)
 
 % Pro kompilaci po částech (viz projekt.tex), nutno odkomentovat a upravit
@@ -13,7 +14,25 @@
 
 %\chapter{RelaxNG Schéma konfiguračního souboru}
 
-%\chapter{Plakát}
+\chapter{Plagát}
+\label{priloha-plagat}
+
+Plagát k~bakalárskej práci je zobrazený na obr.~\ref{fig:priloha-plagat}.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{poster.pdf}{%
+    \includegraphics[page=1,width=\textwidth,height=0.65\textheight,keepaspectratio]{poster.pdf}%
+  }{%
+  \IfFileExists{poster/PosterTemplate.pdf}{%
+    \includegraphics[page=1,width=\textwidth,height=0.76\textheight,keepaspectratio]{poster/PosterTemplate.pdf}%
+  }{%
+    \includegraphics[width=\textwidth,height=0.76\textheight,keepaspectratio]{obrazky/poster.png}%
+  }}
+  \caption{Plagát k~bakalárskej práci}
+  \label{fig:priloha-plagat}
+\end{figure}
+
 \iffalse
 \chapter{Jak pracovat s touto šablonou}
 \label{jak}
