@@ -316,8 +316,7 @@ def _opaque(context, *args, **kwargs):
                 msg=(
                     "use_offboard_slam:=true — SLAM na RPi vypnuty. Na PC: "
                     "source install/setup.bash && export ROS_DOMAIN_ID=<rovnake_ako_RPi> && "
-                    "ros2 launch waverover slam_remote_pc.launch.py "
-                    "(alebo pc_slam_web.launch.py ak DOMAIN_ID=0 vsade)"
+                    "ros2 launch waverover slam_remote_pc.launch.py"
                 )
             )
         )
@@ -545,7 +544,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "use_offboard_slam",
             default_value="false",
-            description="true = SLAM na PC (slam_remote_pc alebo pc_slam_web); web na RPi (use_web); RPi: senzory + motor + /scan + odom TF",
+            description="true = SLAM na PC (slam_remote_pc.launch.py); web na RPi (use_web); RPi: senzory + motor + /scan + odom TF",
         ),
         DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
         DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),
