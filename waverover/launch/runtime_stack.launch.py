@@ -549,6 +549,14 @@ def generate_launch_description():
         DeclareLaunchArgument("use_ekf", default_value="false", description="robot_localization EKF (IMU->odom)"),
         DeclareLaunchArgument("use_rviz", default_value="false", description="RViz2 + slam.rviz"),
         DeclareLaunchArgument("use_cmd_vel_odom", default_value="true", description="odometria z cmd_vel -> odom->base_link TF"),
+        DeclareLaunchArgument(
+            "cmd_vel_odom_distance_scale",
+            default_value="2.0",
+            description=(
+                "Násobiteľ linear_scale v cmd_vel_odom (0.4/teleop_max_linear * scale). "
+                "2.0 ak RViz/SLAM ukazuje kratšiu trasu než realita."
+            ),
+        ),
         LogInfo(msg="runtime_stack: /waverover/switch_to_{manual,wander}; web ak use_web:=true"),
         OpaqueFunction(function=_opaque),
     ])

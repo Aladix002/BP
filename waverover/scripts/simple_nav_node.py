@@ -55,7 +55,7 @@ class SimpleNavNode(Node):
         # D-clen: tlmi oscilaciu pomocou IMU angular_velocity.z; 0 = vypnute
         self.declare_parameter("rotate_kd", 0.3)
         # Hotovo otacanie (IMU): |chyba| < tol [deg]
-        self.declare_parameter("rotate_done_deg", 10.0)
+        self.declare_parameter("rotate_done_deg", 7.0)
         # Nad tymto uhlom plny |omega| (nie pomaly P); sirsi = dlhsia zona brzdenia
         self.declare_parameter("rotate_fast_deg", 45.0)
         # Min |omega| pri P-faze (bez 0.45*max_om flooru ktory sposoboval oscilacnu)
@@ -81,6 +81,12 @@ class SimpleNavNode(Node):
         self.declare_parameter("tf_timeout_sec", 0.15)
         # Pri prijati ciela automaticky prepne motor do auto; po DONE spat do manual
         self.declare_parameter("auto_mode_switch", True)
+        # Kompenzacia motor_hat wheel_base: simple_nav.launch pouziva 1.0, runtime_stack 0.20
+        # → na PC (slam_remote_pc) napr. cmd_vel_angular_gain=5 (alebo 10 ak aj 2x rychlejsie otacanie).
+        self.declare_parameter("cmd_vel_angular_gain", 1.0)
+        self.declare_parameter("cmd_vel_linear_gain", 1.0)
+        # EMA na vystup cmd_vel: filt += alpha * (ciel - filt); nizsie = hladkejsie (typ. 0.25–0.45 pri SLAM na PC)
+        self.declare_parameter("cmd_vel_filter_alpha", 1.0)
 
         self.tf_buf = Buffer()
         self._tf_listener = TransformListener(self.tf_buf, self)
@@ -105,6 +111,8 @@ class SimpleNavNode(Node):
         # imu_yaw + _imu_to_map_yaw == map yaw (v okamihu sync pri vstupe do ROTATING)
         self._imu_to_map_yaw = 0.0
         self._have_imu_sync = False
+        self._cmd_filt_lx = 0.0
+        self._cmd_filt_az = 0.0
 
         hz = self.get_parameter("loop_hz").value
         self.create_timer(1.0 / max(1.0, float(hz)), self._loop)
@@ -126,6 +134,8 @@ class SimpleNavNode(Node):
         self._rotate_ok_streak = 0
         self._rotate_t0 = self.get_clock().now()
         self._have_imu_sync = False
+        self._cmd_filt_lx = 0.0
+        self._cmd_filt_az = 0.0
         self._switch_mode(self._cli_nav, "/waverover/switch_to_nav")
         self.get_logger().info(
             f"Novy ciel map=({self.goal_x:.2f}, {self.goal_y:.2f}) m → ROTATING (IMU kurz)"
@@ -179,7 +189,36 @@ class SimpleNavNode(Node):
             self.get_logger().warn(f"{name} service not ready, skipping mode switch")
 
     def _stop(self):
+        self._cmd_filt_lx = 0.0
+        self._cmd_filt_az = 0.0
         self.pub_cmd.publish(Twist())
+
+    def _publish_cmd(self, cmd: Twist) -> None:
+        gl = max(0.0, float(self.get_parameter("cmd_vel_linear_gain").value))
+        ga = max(0.0, float(self.get_parameter("cmd_vel_angular_gain").value))
+        tx = cmd.linear.x * gl
+        ty = cmd.linear.y * gl
+        tz = cmd.linear.z * gl
+        ta = cmd.angular.z * ga
+        fa = float(self.get_parameter("cmd_vel_filter_alpha").value)
+        if fa <= 1e-9:
+            fa = 1.0
+        fa = clamp(fa, 0.0, 1.0)
+        out = Twist()
+        out.linear.y = ty
+        out.linear.z = tz
+        out.angular.x = cmd.angular.x
+        out.angular.y = cmd.angular.y
+        if fa >= 1.0 - 1e-12:
+            out.linear.x = tx
+            out.angular.z = ta
+        else:
+            self._cmd_filt_lx += fa * (tx - self._cmd_filt_lx)
+            self._cmd_filt_az += fa * (ta - self._cmd_filt_az)
+            out.linear.x = self._cmd_filt_lx
+            out.angular.z = self._cmd_filt_az
+
+        self.pub_cmd.publish(out)
 
     def _loop(self):
         if self.state in (self.IDLE, self.DONE):
@@ -263,7 +302,7 @@ class SimpleNavNode(Node):
             cmd = Twist()
             cmd.linear.x = nudge
             cmd.angular.z = rot_sign * omega
-            self.pub_cmd.publish(cmd)
+            self._publish_cmd(cmd)
 
             force_drive = False
             if stuck_sec > 0.5 and self._rotate_t0 is not None and abs(h_err) < stuck_rad:
@@ -317,15 +356,18 @@ class SimpleNavNode(Node):
             lin_x = min(1.0, spd * fwd_scale)
 
             deadband = math.radians(float(self.get_parameter("drive_steer_deadband_deg").value))
-            if abs(h_err) < deadband:
-                omega = 0.0
+            raw_omega = clamp(kp_st * h_err, -max_st, max_st)
+            # Namiesto skoku 0 | omega za deadband: jemne skalovanie (kvadraticke) znizi „sekavanie“ od SLAM sumu
+            if deadband > 1e-9:
+                w_gate = min(1.0, abs(h_err) / deadband)
+                omega = raw_omega * (w_gate * w_gate)
             else:
-                omega = clamp(kp_st * h_err, -max_st, max_st)
+                omega = raw_omega
 
             cmd = Twist()
             cmd.linear.x = lin_x
             cmd.angular.z = omega
-            self.pub_cmd.publish(cmd)
+            self._publish_cmd(cmd)
 
         self._publish_status(dist, angle_diff(bearing, ryaw_map))
 
