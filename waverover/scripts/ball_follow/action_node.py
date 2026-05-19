@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 import rclpy
 import rclpy.qos
-from cv_bridge import CvBridge
 from geometry_msgs.msg import Twist
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -28,7 +27,7 @@ class BallFollowerNode(Node):
         super().__init__("ball_follower")
         self._declare_params()
 
-        self._bridge = CvBridge()
+        self._bridge = None  # CvBridge len pri subscribe_compressed:=false
         self._det  = OrangeDetector(self._detector_cfg())
         self._ctrl = BallController(self._controller_cfg())
 
@@ -164,6 +163,9 @@ class BallFollowerNode(Node):
         self._process_frame(frame)
 
     def _image_cb(self, msg: Image) -> None:
+        if self._bridge is None:
+            from cv_bridge import CvBridge
+            self._bridge = CvBridge()
         try:
             frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:

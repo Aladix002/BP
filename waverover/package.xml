@@ -44,6 +44,8 @@
     <exec_depend>ament_index_python</exec_depend>
     <exec_depend>rclpy</exec_depend>
     <exec_depend>rclpy_action</exec_depend>
+    <!-- ball_follow bt_runner.py -->
+    <exec_depend>py_trees</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>
