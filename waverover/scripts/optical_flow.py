@@ -2,6 +2,7 @@
 # Optical flow korekcia teleop angular.z.
 
 import threading
+import time
 
 import cv2
 import numpy as np
@@ -30,7 +31,11 @@ class OpticalFlowNode(Node):
         self.declare_parameter("debug_show",               False)
         self.declare_parameter("debug_publish_image",      False)
         self.declare_parameter("debug_image_topic",        "/optical_flow/viz/compressed")
-        self.declare_parameter("debug_window_scale",       2)
+        self.declare_parameter("debug_image_max_hz",       5.0)
+        self.declare_parameter("debug_image_max_width",    240)
+        self.declare_parameter("debug_jpeg_quality",       55)
+        self.declare_parameter("debug_max_draw_points",    40)
+        self.declare_parameter("debug_window_scale",       1)
         self.declare_parameter("debug_window_name",        "optical_flow")
 
         img_topic    = self.get_parameter("image_topic").value
@@ -41,6 +46,7 @@ class OpticalFlowNode(Node):
         self._prev_gray       = None
         self._flow_correction = 0.0
         self._latest_teleop   = Twist()
+        self._last_viz_t      = 0.0
 
         self._sub_image  = self.create_subscription(
             CompressedImage, img_topic, self._image_cb, qos_profile_sensor_data)
@@ -122,7 +128,7 @@ class OpticalFlowNode(Node):
 
             self._publish_debug(mean_dx_px, mean_dx_norm, flow_corr, n_good, n_corners)
 
-            if (want_show or want_pub) and n_good > 0:
+            if (want_show or want_pub) and n_good > 0 and self._viz_allowed():
                 viz_data = (frame.copy(), good_prev, good_curr)
 
             self._prev_gray = frame
@@ -130,6 +136,15 @@ class OpticalFlowNode(Node):
         if viz_data is not None:
             self._publish_viz(viz_data, mean_dx_px, mean_dx_norm, flow_corr, n_good, n_corners,
                               want_show, want_pub, msg)
+
+    def _viz_allowed(self) -> bool:
+        max_hz = float(self.get_parameter("debug_image_max_hz").value)
+        if max_hz <= 0:
+            return True
+        now = time.monotonic()
+        if (now - self._last_viz_t) < (1.0 / max_hz):
+            return False
+        return True
 
     def _publish_debug(self, mean_dx_px: float, mean_dx_norm: float, flow_corr: float,
                        n_good: int, n_corners: int) -> None:
@@ -141,21 +156,36 @@ class OpticalFlowNode(Node):
                      n_good, n_corners, want_show, want_pub, src_msg) -> None:
         frame_gray, good_prev, good_curr = viz_data
         vis = cv2.cvtColor(frame_gray, cv2.COLOR_GRAY2BGR)
-        for a, b in zip(good_prev.reshape(-1, 2), good_curr.reshape(-1, 2)):
-            cv2.line(vis, tuple(a.astype(int)), tuple(b.astype(int)), (0, 255, 120), 1, cv2.LINE_AA)
-            cv2.circle(vis, tuple(a.astype(int)), 2, (255, 80, 0), -1, cv2.LINE_AA)
-            cv2.circle(vis, tuple(b.astype(int)), 2, (200, 0, 255), -1, cv2.LINE_AA)
+        pts_a = good_prev.reshape(-1, 2)
+        pts_b = good_curr.reshape(-1, 2)
+        max_draw = int(self.get_parameter("debug_max_draw_points").value)
+        if max_draw > 0 and len(pts_a) > max_draw:
+            step = max(1, len(pts_a) // max_draw)
+            pts_a = pts_a[::step]
+            pts_b = pts_b[::step]
+        for a, b in zip(pts_a, pts_b):
+            ai = tuple(a.astype(int))
+            bi = tuple(b.astype(int))
+            cv2.line(vis, ai, bi, (0, 255, 120), 1)
+            cv2.circle(vis, ai, 2, (255, 80, 0), -1)
+            cv2.circle(vis, bi, 2, (200, 0, 255), -1)
         cv2.putText(vis,
                     f"mean_dx_px {mean_dx_px:.3f}  norm {mean_dx_norm:.3f}"
                     f"  corr {flow_corr:.3f}  ok {n_good}/{n_corners}",
                     (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
 
+        max_w = int(self.get_parameter("debug_image_max_width").value)
+        if max_w > 0 and vis.shape[1] > max_w:
+            h, w = vis.shape[:2]
+            vis = cv2.resize(vis, (max_w, int(h * max_w / w)), interpolation=cv2.INTER_AREA)
+
         sc = int(np.clip(self.get_parameter("debug_window_scale").value, 1, 8))
         if sc > 1:
             vis = cv2.resize(vis, None, fx=sc, fy=sc, interpolation=cv2.INTER_NEAREST)
 
+        jpeg_q = int(np.clip(self.get_parameter("debug_jpeg_quality").value, 20, 95))
         if want_pub:
-            ok, jpeg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            ok, jpeg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, jpeg_q])
             if ok:
                 out = CompressedImage()
                 out.header = src_msg.header
@@ -168,6 +198,8 @@ class OpticalFlowNode(Node):
         if want_show:
             cv2.imshow(self.get_parameter("debug_window_name").value, vis)
             cv2.waitKey(1)
+
+        self._last_viz_t = time.monotonic()
 
     def _timer_cb(self) -> None:
         with self._lock:

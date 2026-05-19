@@ -50,7 +50,11 @@ class WebrtcCameraNode(Node):
         super().__init__("webrtc_camera")
         self.declare_parameter("image_topic", "/camera/camera_node/image_raw/compressed")
         self.declare_parameter("http_port", 8765)
+        self.declare_parameter("stream_width", 160)
+        self.declare_parameter("stream_height", 120)
 
+        self._stream_w = max(1, int(self.get_parameter("stream_width").value))
+        self._stream_h = max(1, int(self.get_parameter("stream_height").value))
         self._lock = threading.Lock()
         self._bgr: Optional[np.ndarray] = None
         self._cb_group = ReentrantCallbackGroup()
@@ -64,14 +68,25 @@ class WebrtcCameraNode(Node):
         )
         self._pcs: Set[RTCPeerConnection] = set()
         self.get_logger().info(
-            f"WebRTC camera: topic={topic}  signal http://0.0.0.0:{self.get_parameter('http_port').value}/offer"
+            f"WebRTC camera: topic={topic}  stream={self._stream_w}x{self._stream_h}  "
+            f"signal http://0.0.0.0:{self.get_parameter('http_port').value}/offer"
+        )
+
+    def _resize_for_stream(self, frame: np.ndarray) -> np.ndarray:
+        h, w = frame.shape[:2]
+        if w == self._stream_w and h == self._stream_h:
+            return frame
+        return cv2.resize(
+            frame,
+            (self._stream_w, self._stream_h),
+            interpolation=cv2.INTER_AREA,
         )
 
     def _get_latest_bgr(self) -> np.ndarray:
         with self._lock:
             if self._bgr is not None:
-                return self._bgr.copy()
-        return np.zeros((240, 320, 3), dtype=np.uint8)
+                return self._resize_for_stream(self._bgr)
+        return np.zeros((self._stream_h, self._stream_w, 3), dtype=np.uint8)
 
     def _image_cb(self, msg: CompressedImage) -> None:
         if not msg.data:

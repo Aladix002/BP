@@ -18,6 +18,9 @@ WANDER_TURN_RATIO = 18.0
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 CAMERA_FORMAT = "XRGB8888"
+# WebRTC do prehliadaca 
+WEB_STREAM_WIDTH = 160
+WEB_STREAM_HEIGHT = 120
 
 
 def _opaque(context, *args, **kwargs):
@@ -189,6 +192,8 @@ def _opaque(context, *args, **kwargs):
                     parameters=[{
                         "image_topic": "/camera/camera_node/image_raw/compressed",
                         "http_port": 8765,
+                        "stream_width": WEB_STREAM_WIDTH,
+                        "stream_height": WEB_STREAM_HEIGHT,
                     }],
                 )
             )
@@ -247,7 +252,11 @@ def _opaque(context, *args, **kwargs):
                         "output_topic": "/teleop_cmd_vel_corrected",
                         "debug_show": optical_flow_debug_show,
                         "debug_publish_image": optical_flow_debug_publish_image,
-                        "debug_window_scale": 2,
+                        "debug_image_max_hz": 5.0,
+                        "debug_image_max_width": 240,
+                        "debug_jpeg_quality": 55,
+                        "debug_max_draw_points": 40,
+                        "debug_window_scale": 1,
                         "debug_window_name": "optical_flow",
                     }],
                 )

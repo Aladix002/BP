@@ -44,3 +44,6 @@
     burst_speed:  10.0
     burst_on_sec:  0.45
     burst_off_sec: 0.90
+
+    # Debug /ball_follower/debug_image/compressed (max 2 sn./s)
+    debug_image_max_hz: 2.0

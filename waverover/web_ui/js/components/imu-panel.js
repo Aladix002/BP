@@ -4,7 +4,7 @@
 
 var WR = window.WR;
 
-const IMU_TUNE_KEYS = ["imu_kp", "imu_ki", "imu_kd", "imu_deadband", "imu_windup"];
+const IMU_TUNE_KEYS = ["imu_kp", "imu_ki", "imu_kd", "imu_deadband"];
 const FLOW_TUNE_KEYS = ["correction_gain", "max_correction", "forward_threshold", "steer_deadzone"];
 
 const IMU_TUNE_LABELS = {
@@ -12,7 +12,6 @@ const IMU_TUNE_LABELS = {
   imu_ki: "Ki",
   imu_kd: "Kd",
   imu_deadband: "Deadband rad/s",
-  imu_windup: "I windup limit",
 };
 const FLOW_TUNE_LABELS = {
   correction_gain: "Gain",
@@ -22,7 +21,7 @@ const FLOW_TUNE_LABELS = {
 };
 
 const IMU_TUNE_STEPS = {
-  imu_kp: 0.01, imu_ki: 0.005, imu_kd: 0.005, imu_deadband: 0.005, imu_windup: 0.05,
+  imu_kp: 0.01, imu_ki: 0.005, imu_kd: 0.005, imu_deadband: 0.005,
 };
 const FLOW_TUNE_STEPS = {
   correction_gain: 0.1, max_correction: 0.05, forward_threshold: 0.01, steer_deadzone: 0.02,
@@ -50,7 +49,7 @@ function ImuPanel({ ros, connected }) {
   const [modeBusy, setModeBusy] = React.useState(false);
 
   const [imuTune, setImuTune] = React.useState({
-    imu_kp: 0.3, imu_ki: 0.05, imu_kd: 0.01, imu_deadband: 0.02, imu_windup: 0.3,
+    imu_kp: 0.3, imu_ki: 0.05, imu_kd: 0.01, imu_deadband: 0.02,
   });
   const [flowTune, setFlowTune] = React.useState({
     correction_gain: 1.5, max_correction: 0.3, forward_threshold: 0.05, steer_deadzone: 0.12,

@@ -62,7 +62,11 @@ def _opaque(context, *args, **kwargs):
                     "output_topic": LaunchConfiguration("optical_flow_output_topic").perform(context),
                     "debug_show": dbg_show,
                     "debug_publish_image": dbg_img,
-                    "debug_window_scale": 2,
+                    "debug_image_max_hz": 8.0,
+                    "debug_image_max_width": 320,
+                    "debug_jpeg_quality": 60,
+                    "debug_max_draw_points": 40,
+                    "debug_window_scale": 1,
                     "debug_window_name": "optical_flow",
                 }],
             )

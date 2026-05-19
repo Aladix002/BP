@@ -115,7 +115,7 @@ class BallFollowerNode(Node):
         dp("burst_on_sec",  0.45);  dp("burst_off_sec", 0.90)
         # Debug obraz do rqt (obmedzena frekvencia kvoli vykonu RPi)
         dp("publish_debug_image", True)
-        dp("debug_image_max_hz",  3.0)
+        dp("debug_image_max_hz",  2.0)
 
     def _detector_cfg(self) -> DetectorConfig:
         g = lambda n: self.get_parameter(n).value
