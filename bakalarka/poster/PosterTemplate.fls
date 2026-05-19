@@ -1,6 +1,0 @@
-PWD /home/aladix/Desktop/School/Bakalarka /bakalarka/poster
-INPUT /home/aladix/.TinyTeX/texmf.cnf
-INPUT /home/aladix/.TinyTeX/texmf-dist/web2c/texmf.cnf
-INPUT /home/aladix/.TinyTeX/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT PosterTemplate.tex
-OUTPUT PosterTemplate.log
